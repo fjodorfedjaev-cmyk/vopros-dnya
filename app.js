@@ -2009,7 +2009,8 @@
         el('button', { type: 'button', class: 'btn', text: 'Выйти', onclick: signOut })
       ])
     ]);
-    return viewStats().concat([el('h2', { class: 'sect-title', text: 'Настройки профиля' }), form, account]);
+    var inst = installCard();
+    return viewStats().concat(inst ? [inst] : []).concat([el('h2', { class: 'sect-title', text: 'Настройки профиля' }), form, account]);
   }
 
   /* ---------- выход и запуск ---------- */
@@ -2053,8 +2054,54 @@
     }
   }
 
+  /* ----- приложение на экране телефона ----- */
+  var installEvt = null; // Android/Chrome даёт событие, по которому можно показать окно установки
+  function isStandalone() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  }
+  function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  function setupInstall() {
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      navigator.serviceWorker.register('sw.js').catch(function () { /* сайт работает и без него */ });
+    }
+    window.addEventListener('beforeinstallprompt', function (ev) {
+      ev.preventDefault();
+      installEvt = ev;
+      if (S.stage === 'app' && S.view === 'profile') render();
+    });
+    window.addEventListener('appinstalled', function () {
+      installEvt = null;
+      toast('Приложение установлено 🎉');
+      if (S.stage === 'app' && S.view === 'profile') render();
+    });
+  }
+  function installCard() {
+    if (isStandalone()) return null; // уже открыто как приложение
+    var body;
+    if (installEvt) {
+      body = [
+        el('p', { class: 'muted', text: 'Иконка появится на экране телефона, и сайт будет открываться как отдельное приложение.' }),
+        el('div', { class: 'row actions' }, [el('button', {
+          type: 'button', class: 'btn primary', text: 'Установить',
+          onclick: function () {
+            var e = installEvt; if (!e) return;
+            installEvt = null;
+            e.prompt();
+            e.userChoice.then(function () { render(); }).catch(function () { render(); });
+          }
+        })])
+      ];
+    } else if (isIOS()) {
+      body = [el('p', { class: 'muted', text: 'Открой сайт в Safari, нажми «Поделиться» (квадрат со стрелкой) и выбери «На экран «Домой»».' })];
+    } else {
+      body = [el('p', { class: 'muted', text: 'В Chrome открой меню ⋮ и выбери «Добавить на главный экран» или «Установить приложение».' })];
+    }
+    return el('div', { class: 'card stack tight install-card' }, [el('p', { class: 'install-title', text: '📱 Приложение на телефоне' })].concat(body));
+  }
+
   function init() {
     document.title = APP;
+    setupInstall();
     if (!window.supabase || typeof window.supabase.createClient !== 'function') {
       S.stage = 'fatal';
       S.fatal = new Error('Не загрузилась библиотека Supabase. Проверь интернет и обнови страницу.');

@@ -653,3 +653,7 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs { touch-action: manipulation
 
 /* вопрос дня — оранжевым, чтобы сразу бросался в глаза */
 .qtext.q-accent { color: var(--accent); }
+
+/* карточка «Приложение на телефоне» в профиле */
+.install-title { margin: 0; font-weight: 600; }
+.install-card .muted { margin: 0; }
