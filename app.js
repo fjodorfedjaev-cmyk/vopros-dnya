@@ -2119,7 +2119,7 @@
     function main() {
       box.replaceChildren(
         el('div', { class: 'ih-row' }, [
-          el('img', { class: 'ih-icon', src: 'icon-192.png', alt: '', width: 48, height: 48 }),
+          el('img', { class: 'ih-icon', src: 'icon-192.png?v=3', alt: '', width: 48, height: 48 }),
           el('div', { class: 'ih-text' }, [
             el('p', { class: 'ih-title', text: 'Теперь можно установить как приложение' }),
             el('p', { class: 'ih-sub', text: 'Иконка на экране телефона, открывается без браузера. Если не сейчас — это можно сделать позже в Профиле.' })
