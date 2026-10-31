@@ -618,7 +618,11 @@ html, body { overflow-x: hidden; }
   touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
   outline: none; border-radius: 50%;
 }
-.sector.playing .sector-field { cursor: pointer; touch-action: none; }
+.sector.playing .sector-field { cursor: pointer; }
+/* во время игры любое касание — нажатие: без прокрутки, зума и выделения текста */
+html.sector-on, html.sector-on body { touch-action: none; overscroll-behavior: none; }
+html.sector-on .wrap { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+html.sector-on .bottom-nav, html.sector-on nav.tabs { touch-action: manipulation; }
 .sector-field:focus-visible { box-shadow: 0 0 0 3px var(--soft); }
 .sector-canvas { display: block; }
 .sector-hub { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }

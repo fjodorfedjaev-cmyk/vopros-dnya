@@ -82,7 +82,7 @@
     var wrapEl = h('div', 'sector');
     var field = h('div', 'sector-field');
     field.setAttribute('role', 'button');
-    field.setAttribute('aria-label', 'Игровое поле: нажми, когда стрелка в секторе');
+    field.setAttribute('aria-label', 'Игровое поле: нажми в любом месте экрана, когда стрелка в секторе');
     var canvas = h('canvas', 'sector-canvas');
     var hub = h('div', 'sector-hub');
     var scoreEl = h('div', 'sector-score', '0');
@@ -214,6 +214,7 @@
       center = placeSector(0, width, Math.random());
       setScore(0); hint.textContent = ''; pop.textContent = ''; pop.className = 'sector-pop';
       wrapEl.classList.add('playing'); wrapEl.classList.remove('over');
+      document.documentElement.classList.add('sector-on');
       renderPanel();
       if (opts.onStateChange) opts.onStateChange('play');
       if (opts.onStart) { try { opts.onStart(); } catch (e) { /* игра идёт и без базы */ } }
@@ -260,6 +261,7 @@
       phase = 'dead';
       missAt = performance.now();
       wrapEl.classList.remove('playing');
+      document.documentElement.classList.remove('sector-on');
       draw(performance.now());
       var result = { score: score, hits: hits, perfects: perfects };
       var prevBest = opts.best ? (opts.best() || 0) : 0;
@@ -313,8 +315,6 @@
         btn.type = 'button';
         btn.addEventListener('click', function (ev) { ev.stopPropagation(); start(); });
         panel.appendChild(btn);
-      } else if (screen === 'play') {
-        panel.appendChild(h('p', 'sector-tip', 'Нажимай на круг или пробел'));
       } else if (screen === 'over') {
         var best = Math.max(prevBest || 0, result.score, info && info.best ? info.best : 0);
         var isNew = result.score > 0 && result.score > (prevBest || 0);
@@ -335,10 +335,13 @@
       }
     }
 
-    // Ввод: касание или клик по полю, пробел на клавиатуре.
+    // Ввод: касание или клик в любом месте экрана (кроме меню сайта), пробел на клавиатуре.
+    // Так палец не закрывает круг: можно нажимать хоть под ним.
     function onPointer(ev) {
       if (screen !== 'play') return;
       if (ev.button !== undefined && ev.button > 0) return;
+      var t = ev.target;
+      if (t && t.closest && t.closest('.bottom-nav, nav.tabs, .me, a')) return; // по меню можно уйти из игры
       ev.preventDefault();
       press(ev.timeStamp);
     }
@@ -354,7 +357,7 @@
     function onFocus() { if (!document.hidden) startCountdown(); }
 
     field.tabIndex = 0;
-    field.addEventListener('pointerdown', onPointer);
+    document.addEventListener('pointerdown', onPointer);
     document.addEventListener('keydown', onKey);
     document.addEventListener('visibilitychange', onVisibility);
     root.addEventListener('blur', onBlur);
@@ -370,7 +373,8 @@
         destroyed = true;
         if (raf) cancelAnimationFrame(raf);
         raf = 0;
-        field.removeEventListener('pointerdown', onPointer);
+        document.removeEventListener('pointerdown', onPointer);
+        document.documentElement.classList.remove('sector-on');
         document.removeEventListener('keydown', onKey);
         document.removeEventListener('visibilitychange', onVisibility);
         root.removeEventListener('blur', onBlur);
