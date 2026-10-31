@@ -341,7 +341,7 @@
       if (screen !== 'play') return;
       if (ev.button !== undefined && ev.button > 0) return;
       var t = ev.target;
-      if (t && t.closest && t.closest('.bottom-nav, nav.tabs, .me, a')) return; // по меню можно уйти из игры
+      if (t && t.closest && t.closest('.bottom-nav, nav.tabs, .me, a, .install-hint, .toast')) return; // по меню можно уйти из игры
       ev.preventDefault();
       press(ev.timeStamp);
     }

@@ -903,6 +903,7 @@
       await loadToday();
       if (seq !== S.loadSeq) return;
       S.stage = 'app'; S.view = 'today'; S.kind = 'question'; render();
+      maybeShowInstallHint();
       startPolling();
     } catch (e) {
       if (seq !== S.loadSeq) return;
@@ -2071,10 +2072,82 @@
     });
     window.addEventListener('appinstalled', function () {
       installEvt = null;
+      markHintSeen();
+      var h = document.querySelector('.install-hint'); if (h) h.remove();
       toast('Приложение установлено 🎉');
       if (S.stage === 'app' && S.view === 'profile') render();
     });
   }
+  // Текст-инструкция, если браузер сам не умеет показывать окно установки.
+  function installHowTo() {
+    return isIOS()
+      ? 'Открой сайт в Safari, нажми «Поделиться» (квадрат со стрелкой) и выбери «На экран «Домой»».'
+      : 'В Chrome открой меню ⋮ и выбери «Добавить на главный экран» или «Установить приложение».';
+  }
+  function runInstall(done) {
+    var e = installEvt; if (!e) return false;
+    installEvt = null;
+    e.prompt();
+    e.userChoice.then(done, done);
+    return true;
+  }
+
+  /* Всплывающая подсказка при входе: «теперь можно установить». Показывается один раз;
+     если отложить — остаётся карточка в профиле. */
+  var HINT_KEY = 'install-hint-seen';
+  function hintSeen() { try { return localStorage.getItem(HINT_KEY) === '1'; } catch (e) { return true; } }
+  function markHintSeen() { try { localStorage.setItem(HINT_KEY, '1'); } catch (e) { /* ничего */ } }
+  function maybeShowInstallHint() {
+    if (maybeShowInstallHint.done || isStandalone() || hintSeen()) return;
+    var phone = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || window.innerWidth <= 640;
+    if (!phone) return;
+    maybeShowInstallHint.done = true;
+    setTimeout(function tryShow() {
+      if (S.stage !== 'app' || isStandalone()) return;
+      if (document.querySelector('.celebrate') || S.gameState === 'play') { setTimeout(tryShow, 4000); return; }
+      showInstallHint();
+    }, 1500);
+  }
+  function showInstallHint() {
+    var box = el('div', { class: 'install-hint', role: 'dialog', 'aria-label': 'Установить приложение' });
+    function close(later) {
+      markHintSeen();
+      box.classList.add('out');
+      setTimeout(function () { box.remove(); }, reduceMotion ? 0 : 220);
+      if (later) toast('Установить можно позже в Профиле');
+    }
+    function main() {
+      box.replaceChildren(
+        el('div', { class: 'ih-row' }, [
+          el('img', { class: 'ih-icon', src: 'icon-192.png', alt: '', width: 48, height: 48 }),
+          el('div', { class: 'ih-text' }, [
+            el('p', { class: 'ih-title', text: 'Теперь можно установить как приложение' }),
+            el('p', { class: 'ih-sub', text: 'Иконка на экране телефона, открывается без браузера. Если не сейчас — это можно сделать позже в Профиле.' })
+          ])
+        ]),
+        el('div', { class: 'ih-actions' }, [
+          el('button', { type: 'button', class: 'btn', text: 'Позже', onclick: function () { close(true); } }),
+          el('button', {
+            type: 'button', class: 'btn primary', text: 'Установить',
+            onclick: function () {
+              if (runInstall(function () { if (S.view === 'profile') render(); })) { close(false); return; }
+              howTo();
+            }
+          })
+        ])
+      );
+    }
+    function howTo() {
+      box.replaceChildren(
+        el('p', { class: 'ih-title', text: 'Как установить' }),
+        el('p', { class: 'ih-sub', text: installHowTo() }),
+        el('div', { class: 'ih-actions' }, [el('button', { type: 'button', class: 'btn primary', text: 'Понятно', onclick: function () { close(false); } })])
+      );
+    }
+    main();
+    document.body.appendChild(box);
+  }
+
   function installCard() {
     if (isStandalone()) return null; // уже открыто как приложение
     var body;
@@ -2083,18 +2156,11 @@
         el('p', { class: 'muted', text: 'Иконка появится на экране телефона, и сайт будет открываться как отдельное приложение.' }),
         el('div', { class: 'row actions' }, [el('button', {
           type: 'button', class: 'btn primary', text: 'Установить',
-          onclick: function () {
-            var e = installEvt; if (!e) return;
-            installEvt = null;
-            e.prompt();
-            e.userChoice.then(function () { render(); }).catch(function () { render(); });
-          }
+          onclick: function () { runInstall(function () { render(); }); }
         })])
       ];
-    } else if (isIOS()) {
-      body = [el('p', { class: 'muted', text: 'Открой сайт в Safari, нажми «Поделиться» (квадрат со стрелкой) и выбери «На экран «Домой»».' })];
     } else {
-      body = [el('p', { class: 'muted', text: 'В Chrome открой меню ⋮ и выбери «Добавить на главный экран» или «Установить приложение».' })];
+      body = [el('p', { class: 'muted', text: installHowTo() })];
     }
     return el('div', { class: 'card stack tight install-card' }, [el('p', { class: 'install-title', text: '📱 Приложение на телефоне' })].concat(body));
   }
