@@ -604,3 +604,45 @@ html, body { overflow-x: hidden; }
   .glow, .rise, .react.bump, .slide-fade > *, .cmt-list, .cmt-form { animation: none !important; }
   .horo-panel, .horo-text { transition: none !important; }
 }
+
+/* ссылка на архив внизу «Вопроса» и «Слова», и «назад» в архиве */
+.past-link { display: flex; justify-content: center; padding: 4px 0 8px; }
+.past-link .link, .back-link { text-decoration: none; }
+.back-row { margin: -4px 0 -2px; }
+
+/* ===== игра «Сектор» ===== */
+.game-sect { gap: 14px; }
+.sector { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 18px 12px 20px; background: var(--surface); border-radius: 20px; }
+.sector-field {
+  position: relative; width: 100%; max-width: 360px; display: flex; justify-content: center;
+  touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  outline: none; border-radius: 50%;
+}
+.sector.playing .sector-field { cursor: pointer; touch-action: none; }
+.sector-field:focus-visible { box-shadow: 0 0 0 3px var(--soft); }
+.sector-canvas { display: block; }
+.sector-hub { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.sector-score { font: 600 44px/1 var(--font-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.sector-score.bump { animation: bumpSoft 0.22s ease-out; }
+.sector-hint { font: 500 13px var(--font-mono); color: var(--muted); min-height: 16px; margin-top: 4px; }
+.sector.over .sector-score { color: var(--err); }
+.sector-pop {
+  position: absolute; left: 0; right: 0; top: 50%; margin-top: 46px; text-align: center; pointer-events: none;
+  font: 600 13px var(--font-mono); letter-spacing: 0.08em; color: var(--accent); opacity: 0;
+}
+.sector-pop.show { animation: popUp 0.7s ease-out; }
+@keyframes popUp { 0% { opacity: 0; transform: translateY(4px); } 20% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
+.sector-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; min-height: 128px; width: 100%; max-width: 360px; }
+.sector-lead { margin: 0; font-size: 17px; color: var(--ink); }
+.sector-best, .sector-tip { margin: 0; color: var(--muted); font-size: 14px; }
+.sector-play { min-width: 180px; margin-top: 6px; }
+.sector-over { margin: 0; font: 600 20px var(--font-mono); letter-spacing: 0.12em; color: var(--ink); }
+.sector-new { margin: 0; font: 600 13px var(--font-mono); letter-spacing: 0.1em; color: var(--accent); }
+.sector-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; margin-top: 2px; }
+.sector-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 6px; background: var(--soft); border-radius: 12px; }
+.sector-stat .n { font: 600 22px var(--font-mono); color: var(--ink); }
+.sector-stat .l { font-size: 12px; color: var(--muted); }
+.sector-warn { margin: 0; font-size: 13px; color: var(--err); }
+.lb .col-rank { width: 40px; text-align: center; }
+.lb-score { font-weight: 600; color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .sector-score.bump, .sector-pop.show { animation: none !important; } }

@@ -35,6 +35,9 @@
     view: 'today',           // today (вопрос) | fill (слово) | horo | archive | profile
     kind: 'question',        // какая игра сейчас на экране: question или fill
     archiveKind: 'question', // какая игра выбрана в архиве
+    board: { week: null, all: null }, // рейтинг «Сектора»
+    boardPeriod: 'week',
+    gameState: null,         // start | play | over, пока открыта вкладка «Игра»
     horoOpen: { love: true }, // какие категории гороскопа раскрыты
     members: [],             // все участники
     stats: [],               // серии и счётчики по участникам
@@ -230,6 +233,7 @@
     archive: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
     horo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.4 5.6 6 .6-4.6 4 1.4 5.9L12 16l-5.2 3.1 1.4-5.9-4.6-4 6-.6z"/></svg>',
     fill: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h6M14 18h6"/><path d="M15.5 4.5l3 3L10 16l-4 1 1-4z"/></svg>',
+    game: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 12l4.5-4.5"/><path d="M12 3.5a8.5 8.5 0 0 1 7.4 4.3"/></svg>',
     stats: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg>',
     profile: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.6-4 4.6-6 8-6s6.4 2 8 6"/></svg>',
     // серый контурный смайлик с плюсом — кнопка «поставить реакцию»
@@ -1202,8 +1206,12 @@
 
   /* ----- основной экран ----- */
 
-  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', horo: 'Гороскоп дня', archive: 'Архив', profile: 'Профиль' };
-  var TABS = [['today', 'Вопрос'], ['fill', 'Слово'], ['horo', 'Гороскоп'], ['archive', 'Архив'], ['profile', 'Профиль']];
+  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', horo: 'Гороскоп дня', game: 'Сектор', archive: 'Архив', profile: 'Профиль' };
+  var TABS = [['today', 'Вопрос'], ['fill', 'Слово'], ['horo', 'Гороскоп'], ['game', 'Игра'], ['profile', 'Профиль']];
+  function titleFor(view) {
+    if (view === 'archive') return S.archiveKind === 'fill' ? 'Прошлые фразы' : 'Прошлые вопросы';
+    return TITLES[view] || APP;
+  }
 
   function header() {
     var tabs = TABS;
@@ -1217,7 +1225,7 @@
     chip.hidden = !n;
     return el('header', { class: 'sect' }, [
       el('div', { class: 'top' }, [
-        el('h1', { class: 'brand', text: TITLES[S.view] || APP }),
+        el('h1', { class: 'brand', text: titleFor(S.view) }),
         el('span', { class: 'me' }, [
           chip,
           el('span', { class: 'name', text: S.profile.display_name }),
@@ -1258,13 +1266,20 @@
       await Promise.all([loadGroup(), loadStats()]);
       if (S.view !== view) return;
     }
+    if (view === 'game') {
+      render();
+      loadBoard().then(function () { if (S.view === 'game') fillBoard(); });
+      return;
+    }
     render();
     if (view === 'today' || view === 'fill') refreshQuietly();
   }
 
   function screenApp() {
     var body;
-    if (S.view === 'archive') body = viewArchive();
+    if (S.view !== 'game') stopGame();
+    if (S.view === 'game') body = viewGame();
+    else if (S.view === 'archive') body = viewArchive();
     else if (S.view === 'profile') body = viewProfile();
     else if (S.view === 'horo') body = viewHoroscope();
     else if (!S.today) body = [el('p', { class: 'muted', text: 'Загружаю…' })];
@@ -1299,6 +1314,7 @@
       var t = ev.target;
       if (t.closest && t.closest('input, textarea, .table-wrap, .picker, .menu, .celebrate, .bottom-nav, .emojis, .zodiacs, .swatches')) return;
       if (openPicker) return;
+      if (S.gameState === 'play' || (t.closest && t.closest('.sector-field'))) return; // во время игры вкладки не листаются
       sx = ev.touches[0].clientX; sy = ev.touches[0].clientY; t0 = Date.now(); active = true;
     }, { passive: true });
     document.addEventListener('touchend', function (ev) {
@@ -1363,7 +1379,12 @@
     var f = el('section', { class: 'sect', id: 'friends' });
     fillFriends(f);
     // В «Слове» карточка с фразой живёт внутри answer-sect: после ответа она же показывает твой вариант.
-    return S.kind === 'fill' ? [a, f] : [questionCard(S.today), a, f];
+    var past = el('div', { class: 'past-link' }, [el('button', {
+      type: 'button', class: 'link quiet',
+      text: S.kind === 'fill' ? 'Прошлые фразы →' : 'Прошлые вопросы →',
+      onclick: function () { openArchive(S.kind); }
+    })]);
+    return S.kind === 'fill' ? [a, f, past] : [questionCard(S.today), a, f, past];
   }
 
   function fillAnswer(sect) {
@@ -1724,20 +1745,142 @@
     }
   }
 
+  /* ----- игра «Сектор» ----- */
+  // Игра не влияет на серию дней. Рекорд хранится на телефоне и в базе (для рейтинга).
+
+  function localBestKey() { return 'sector-best:' + (S.userId || 'anon'); }
+  function localBest() {
+    try { return parseInt(localStorage.getItem(localBestKey()), 10) || 0; } catch (e) { return 0; }
+  }
+  function saveLocalBest(v) {
+    try { if (v > localBest()) localStorage.setItem(localBestKey(), String(v)); } catch (e) { /* без хранилища тоже работает */ }
+  }
+  function serverBest() {
+    var rows = S.board.all || [];
+    for (var i = 0; i < rows.length; i++) if (rows[i].user_id === S.userId) return rows[i].best || 0;
+    return 0;
+  }
+  function gameBest() { return Math.max(localBest(), serverBest()); }
+
+  async function loadBoard() {
+    var out = await Promise.all(['week', 'all'].map(function (p) { return sb.rpc('game_leaderboard', { p_period: p }); }));
+    if (!out[0].error) S.board.week = out[0].data || [];
+    if (!out[1].error) S.board.all = out[1].data || [];
+  }
+
+  function stopGame() {
+    if (S.game) { try { S.game.destroy(); } catch (e) { /* уже остановлена */ } }
+    S.game = null; S.gameBox = null; S.gameState = null; S.gameSession = null;
+  }
+
+  function startGameSession() {
+    // Если база не ответит, игра всё равно идёт — просто результат останется только на телефоне.
+    S.gameSession = sb.rpc('game_start').then(function (r) {
+      if (r.error) return null;
+      return typeof r.data === 'string' ? r.data : (firstRow(r.data) || null);
+    }).catch(function () { return null; });
+  }
+
+  async function finishGameSession(res) {
+    saveLocalBest(res.score);
+    var pending = S.gameSession;
+    S.gameSession = null;
+    var id = pending ? await pending : null;
+    if (!id) return { best: gameBest() };
+    var r = await sb.rpc('game_finish', { p_session: id, p_score: res.score, p_hits: res.hits, p_perfects: res.perfects });
+    if (r.error) return { best: gameBest() };
+    var row = firstRow(r.data) || {};
+    await loadBoard();
+    if (S.view === 'game') fillBoard();
+    return { best: Math.max(gameBest(), row.best_all || 0), valid: row.valid };
+  }
+
+  function viewGame() {
+    if (!S.gameBox && window.SectorGame) {
+      S.gameBox = el('section', { class: 'sect game-sect', 'aria-label': 'Игра «Сектор»' });
+      S.gameState = 'start';
+      S.game = window.SectorGame.mount(S.gameBox, {
+        best: gameBest,
+        onStart: startGameSession,
+        onOver: finishGameSession,
+        onStateChange: function (st) { if (st !== 'gone') S.gameState = st; }
+      });
+    }
+    var game = S.gameBox || el('p', { class: 'empty', text: 'Игра не загрузилась. Обнови страницу.' });
+    var board = el('section', { class: 'sect', id: 'board' });
+    fillBoard(board);
+    return [game, board];
+  }
+
+  function fillBoard(sect) {
+    sect = sect || document.getElementById('board');
+    if (!sect) return;
+    var period = S.boardPeriod;
+    var seg = el('div', { class: 'segment', role: 'group', 'aria-label': 'За какое время' }, [['week', 'Неделя'], ['all', 'Всё время']].map(function (p) {
+      return el('button', {
+        type: 'button', text: p[1], 'aria-pressed': String(period === p[0]),
+        onclick: function () { if (S.boardPeriod !== p[0]) { S.boardPeriod = p[0]; fillBoard(); } }
+      });
+    }));
+    var rows = S.board[period];
+    var body;
+    if (!rows) body = el('p', { class: 'muted', text: 'Загружаю…' });
+    else if (!rows.length) body = el('p', { class: 'empty', text: period === 'week'
+      ? 'На этой неделе ещё никто не играл. Стань первым!'
+      : 'Рекордов пока нет. Стань первым!' });
+    else {
+      var mine = null;
+      body = el('div', { class: 'card table-wrap' }, [el('table', { class: 'board lb' }, [
+        el('thead', null, [el('tr', null, [
+          el('th', { scope: 'col', class: 'col-rank', text: '#' }),
+          el('th', { scope: 'col', text: 'Кто' }),
+          el('th', { scope: 'col', text: 'Очки' }),
+          el('th', { scope: 'col', text: 'Perfect' })
+        ])]),
+        el('tbody', null, rows.map(function (r) {
+          var me = r.user_id === S.userId;
+          if (me) mine = r;
+          var medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : String(r.rank);
+          return el('tr', { class: me ? 'me-row' : null }, [
+            el('td', { class: 'col-rank', text: medal }),
+            el('th', { scope: 'row' }, [el('span', { class: 'who' }, [
+              avatar(r.display_name, r.color, true, r.avatar),
+              el('span', { class: 'who-name' }, [el('span', { text: r.display_name })])
+            ])]),
+            el('td', { class: 'lb-score', text: String(r.best) }),
+            el('td', { text: String(r.perfects) })
+          ]);
+        }))
+      ])]);
+      var note = mine
+        ? 'Твоё место: ' + mine.rank + ' из ' + rows.length
+        : (period === 'week' ? 'Сыграй, чтобы попасть в рейтинг недели.' : 'Сыграй, чтобы попасть в рейтинг.');
+      body = el('div', { class: 'stack tight' }, [body, el('p', { class: 'muted small', text: note })]);
+    }
+    sect.replaceChildren(
+      el('h2', { text: 'Рейтинг' }),
+      seg,
+      body,
+      el('p', { class: 'count', text: period === 'week' ? 'Неделя начинается в понедельник в 00:00 по Таллину. Игра не влияет на серию дней.' : 'Лучший результат каждого за всё время. Игра не влияет на серию дней.' })
+    );
+  }
+
   /* ----- архив ----- */
 
+  // Архив открывается ссылкой внизу «Вопроса» или «Слова».
+  function openArchive(kind) {
+    S.archiveKind = kind;
+    S.archiveFrom = kind === 'fill' ? 'fill' : 'today';
+    switchTab('archive', 'left');
+  }
+
   function viewArchive() {
-    function pick(k) {
-      return function () {
-        if (S.archiveKind === k) return;
-        S.archiveKind = k;
-        go('archive');
-      };
-    }
-    var seg = el('div', { class: 'segment', role: 'group', 'aria-label': 'Какая игра' }, [
-      el('button', { type: 'button', text: 'Вопросы', 'aria-pressed': String(S.archiveKind === 'question'), onclick: pick('question') }),
-      el('button', { type: 'button', text: 'Слово', 'aria-pressed': String(S.archiveKind === 'fill'), onclick: pick('fill') })
-    ]);
+    var back = S.archiveFrom || (S.archiveKind === 'fill' ? 'fill' : 'today');
+    var seg = el('div', { class: 'back-row' }, [el('button', {
+      type: 'button', class: 'link quiet back-link',
+      text: '← ' + (back === 'fill' ? 'Слово дня' : 'Вопрос дня'),
+      onclick: function () { switchTab(back, 'right'); }
+    })]);
     var list = S.kd[S.archiveKind].archive;
     if (!list) return [seg, el('p', { class: 'muted', text: 'Загружаю…' })];
     if (!list.length) return [seg, el('p', { class: 'empty', text: S.archiveKind === 'fill'
@@ -1876,6 +2019,7 @@
     stopPolling();
     S.loadSeq++;
     S.session = null; S.userId = null; S.profile = null;
+    stopGame(); S.board = { week: null, all: null };
     S.kd = { question: blankGame(), fill: blankGame() }; S.kind = 'question'; S.archiveKind = 'question';
     S.members = []; S.stats = []; S.group = null;
     S.view = 'today'; S.stage = 'auth'; S.authMode = 'login';
