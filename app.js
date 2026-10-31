@@ -38,7 +38,7 @@
     board: { week: null, all: null }, // рейтинг «Сектора»
     boardPeriod: 'week',
     gameState: null,         // start | play | over, пока открыта вкладка «Игра»
-    horoOpen: { love: true }, // какие категории гороскопа раскрыты
+    horoOpen: {},            // какие категории гороскопа раскрыты (сначала все закрыты)
     members: [],             // все участники
     stats: [],               // серии и счётчики по участникам
     group: null,             // общая статистика компании
@@ -1361,7 +1361,7 @@
         el('span', { class: 'tag cat-' + q.category, text: CAT[q.category] || 'Вопрос' }),
         el('span', { class: 'date', text: dayLabel(q.day) })
       ]),
-      el('p', { class: 'qtext', text: q.text })
+      el('p', { class: 'qtext q-accent', text: q.text })
     ]);
   }
 

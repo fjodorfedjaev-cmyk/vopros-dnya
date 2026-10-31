@@ -650,3 +650,6 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs { touch-action: manipulation
 .lb .col-rank { width: 40px; text-align: center; }
 .lb-score { font-weight: 600; color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .sector-score.bump, .sector-pop.show { animation: none !important; } }
+
+/* вопрос дня — оранжевым, чтобы сразу бросался в глаза */
+.qtext.q-accent { color: var(--accent); }
