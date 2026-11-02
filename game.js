@@ -331,7 +331,7 @@
         if (info && info.valid !== false && typeof info.points === 'number') {
           var txt = info.points > 0
             ? '+' + info.points + ' 🪙 за эту игру'
-            : 'Баллы: 1 за каждые 10 очков';
+            : 'Монеты: 1 за каждые 10 очков';
           panel.appendChild(h('p', 'sector-points' + (info.points > 0 ? ' got' : ''), txt));
         }
         var again = h('button', 'btn primary sector-play', 'Играть ещё');

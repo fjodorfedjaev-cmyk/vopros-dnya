@@ -37,7 +37,6 @@
     archiveKind: 'question', // какая игра выбрана в архиве
     board: { week: null, all: null }, // рейтинг «Сектора»
     points: null,            // мои баллы: { balance, today, game_today }
-    memberPoints: {},        // баллы участников: user_id → баланс
     boardPeriod: 'week',
     gameState: null,         // start | play | over, пока открыта вкладка «Игра»
     horoOpen: {},            // какие категории гороскопа раскрыты (сначала все закрыты)
@@ -236,6 +235,7 @@
     horo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.4 5.6 6 .6-4.6 4 1.4 5.9L12 16l-5.2 3.1 1.4-5.9-4.6-4 6-.6z"/></svg>',
     fill: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h6M14 18h6"/><path d="M15.5 4.5l3 3L10 16l-4 1 1-4z"/></svg>',
     game: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 12l4.5-4.5"/><path d="M12 3.5a8.5 8.5 0 0 1 7.4 4.3"/></svg>',
+    casino: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3M6 6l2.1 2.1M15.9 15.9L18 18M6 18l2.1-2.1M15.9 8.1L18 6"/></svg>',
     stats: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg>',
     profile: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.6-4 4.6-6 8-6s6.4 2 8 6"/></svg>',
     // серый контурный смайлик с плюсом — кнопка «поставить реакцию»
@@ -934,11 +934,10 @@
       sb.rpc('who_answered', { p_day: day, p_kind: k }),
       sb.from('profiles').select('id, display_name, color, avatar, zodiac').order('created_at', { ascending: true }),
       sb.rpc('member_stats'),
-      sb.rpc('my_points'),
-      sb.rpc('member_points')
+      sb.rpc('my_points')
     ]);
     for (var i = 0; i < 3; i++) if (res[i].error) throw res[i].error;
-    applyPoints(res[4], res[5]);
+    applyPoints(res[4]);
     var answers = res[0].data || [];
     var extra = await Promise.all([loadReactions(answers), loadComments(answers)]);
     G.answers = answers;
@@ -994,34 +993,37 @@
   }
 
   async function loadStats() {
-    var res = await Promise.all([sb.rpc('member_stats'), sb.rpc('my_points'), sb.rpc('member_points')]);
+    var res = await Promise.all([sb.rpc('member_stats'), sb.rpc('my_points')]);
     if (!res[0].error) S.stats = res[0].data || [];
-    applyPoints(res[1], res[2]);
+    applyPoints(res[1]);
   }
 
-  /* ----- баллы ----- */
-  // Баллы начисляет база: за ответы, серию и игру. Здесь только показываем.
-  function applyPoints(mine, all) {
+  /* ----- монеты (валюта сайта) ----- */
+  // Монеты начисляет база: за ответы, серию и игру; тратятся и выигрываются в казино. Здесь только показываем.
+  function applyPoints(mine) {
     if (mine && !mine.error) S.points = firstRow(mine.data) || null;
-    if (all && !all.error) {
-      S.memberPoints = {};
-      (all.data || []).forEach(function (r) { S.memberPoints[r.user_id] = r.balance; });
-    }
     updatePointsChip();
   }
   async function loadPoints() {
-    var res = await Promise.all([sb.rpc('my_points'), sb.rpc('member_points')]);
-    applyPoints(res[0], res[1]);
+    applyPoints(await sb.rpc('my_points'));
   }
   function balance() { return S.points ? S.points.balance || 0 : 0; }
+  // Казино сообщает новый баланс сразу после ставки.
+  function setBalance(v) {
+    if (typeof v !== 'number') return;
+    if (!S.points) S.points = { balance: 0, today: 0, game_today: 0 };
+    S.points.balance = v;
+    updatePointsChip();
+  }
+  function fmt(n) { return Number(n || 0).toLocaleString('ru-RU'); }
   function updatePointsChip() {
     var c = document.getElementById('points-chip');
     if (!c) return;
     c.hidden = !S.points;
-    c.textContent = '🪙 ' + balance();
-    c.setAttribute('title', 'Баллы: ' + balance());
+    c.textContent = '🪙 ' + fmt(balance());
+    c.setAttribute('title', 'Монеты: ' + fmt(balance()));
   }
-  function pointsWord(n) { return plural(n, 'балл', 'балла', 'баллов'); }
+  function pointsWord(n) { return plural(n, 'монета', 'монеты', 'монет'); }
 
   function startPolling() {
     if (!S.timer) S.timer = setInterval(refreshQuietly, POLL_MS);
@@ -1239,8 +1241,11 @@
 
   /* ----- основной экран ----- */
 
-  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', horo: 'Гороскоп дня', game: 'Сектор', archive: 'Архив', profile: 'Профиль' };
-  var TABS = [['today', 'Вопрос'], ['fill', 'Слово'], ['horo', 'Гороскоп'], ['game', 'Игра'], ['profile', 'Профиль']];
+  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', horo: 'Гороскоп дня', game: 'Сектор', casino: 'Казино', archive: 'Архив', profile: 'Профиль' };
+  var TABS = [['today', 'Вопрос'], ['horo', 'Гороскоп'], ['game', 'Игра'], ['casino', 'Казино'], ['profile', 'Профиль']];
+  // «Вопрос» и «Слово» живут на одной вкладке: внутри переключатель.
+  function navKey(view) { return view === 'fill' ? 'today' : view; }
+  function navTarget(key) { return key === 'today' ? (S.lastDay || 'today') : key; }
   function titleFor(view) {
     if (view === 'archive') return S.archiveKind === 'fill' ? 'Прошлые фразы' : 'Прошлые вопросы';
     return TITLES[view] || APP;
@@ -1258,7 +1263,7 @@
     chip.hidden = !n;
     var pchip = el('button', {
       type: 'button', id: 'points-chip', class: 'streak-chip points-chip',
-      title: 'Баллы: ' + balance(), text: '🪙 ' + balance(), onclick: function () { go('profile'); }
+      title: 'Монеты: ' + fmt(balance()), text: '🪙 ' + fmt(balance()), onclick: function () { go('profile'); }
     });
     pchip.hidden = !S.points;
     return el('header', { class: 'sect' }, [
@@ -1273,8 +1278,8 @@
       ]),
       el('nav', { class: 'tabs', 'aria-label': 'Разделы' }, tabs.map(function (t) {
         return el('button', {
-          type: 'button', class: 'tab', text: t[1], 'aria-current': S.view === t[0] ? 'page' : null,
-          onclick: function () { switchTab(t[0]); }
+          type: 'button', class: 'tab', text: t[1], 'aria-current': navKey(S.view) === t[0] ? 'page' : null,
+          onclick: function () { switchTab(navTarget(t[0])); }
         });
       }))
     ]);
@@ -1285,6 +1290,7 @@
     S.view = view;
     if (view === 'today' || view === 'fill') {
       S.kind = view === 'fill' ? 'fill' : 'question';
+      S.lastDay = view;
       S.editing = false;
       if (!S.today) {
         render();
@@ -1310,6 +1316,11 @@
       loadBoard().then(function () { if (S.view === 'game') fillBoard(); });
       return;
     }
+    if (view === 'casino') {
+      render();
+      if (window.Casino) window.Casino.enter();
+      return;
+    }
     render();
     if (view === 'today' || view === 'fill') refreshQuietly();
   }
@@ -1317,7 +1328,9 @@
   function screenApp() {
     var body;
     if (S.view !== 'game') stopGame();
+    if (S.view !== 'casino' && window.Casino) window.Casino.leave();
     if (S.view === 'game') body = viewGame();
+    else if (S.view === 'casino') body = window.Casino ? window.Casino.view() : [el('p', { class: 'empty', text: 'Казино не загрузилось. Обнови страницу.' })];
     else if (S.view === 'archive') body = viewArchive();
     else if (S.view === 'profile') body = viewProfile();
     else if (S.view === 'horo') body = viewHoroscope();
@@ -1364,10 +1377,10 @@
       if (Date.now() - t0 > 700 || Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8) return;
       var sel = window.getSelection ? String(window.getSelection()) : '';
       if (sel) return;
-      var i = TABS.map(function (x) { return x[0]; }).indexOf(S.view);
+      var i = TABS.map(function (x) { return x[0]; }).indexOf(navKey(S.view));
       var next = i + (dx < 0 ? 1 : -1);
       if (i < 0 || next < 0 || next >= TABS.length) return;
-      switchTab(TABS[next][0], dx < 0 ? 'left' : 'right');
+      switchTab(navTarget(TABS[next][0]), dx < 0 ? 'left' : 'right');
     }, { passive: true });
   }
 
@@ -1376,8 +1389,8 @@
     var items = TABS;
     return el('nav', { class: 'bottom-nav', 'aria-label': 'Разделы' }, items.map(function (t) {
       return el('button', {
-        type: 'button', class: 'bn-item', 'aria-current': S.view === t[0] ? 'page' : null,
-        onclick: function () { switchTab(t[0]); }
+        type: 'button', class: 'bn-item', 'aria-current': navKey(S.view) === t[0] ? 'page' : null,
+        onclick: function () { switchTab(navTarget(t[0])); }
       }, [icon(t[0]), el('span', { class: 'bn-label', text: t[1] })]);
     }));
   }
@@ -1422,7 +1435,13 @@
       text: S.kind === 'fill' ? 'Прошлые фразы →' : 'Прошлые вопросы →',
       onclick: function () { openArchive(S.kind); }
     })]);
-    return S.kind === 'fill' ? [a, f, past] : [questionCard(S.today), a, f, past];
+    var seg = el('div', { class: 'segment day-switch', role: 'group', 'aria-label': 'Вопрос или слово' }, [['today', 'Вопрос дня'], ['fill', 'Слово дня']].map(function (x) {
+      return el('button', {
+        type: 'button', text: x[1], 'aria-pressed': String(S.view === x[0]),
+        onclick: function () { if (S.view !== x[0]) switchTab(x[0], x[0] === 'fill' ? 'left' : 'right'); }
+      });
+    }));
+    return S.kind === 'fill' ? [seg, a, f, past] : [seg, questionCard(S.today), a, f, past];
   }
 
   function fillAnswer(sect) {
@@ -1536,18 +1555,19 @@
     if (S.points) {
       var pt = S.points;
       out.push(el('section', { class: 'sect' }, [
-        el('h2', { text: 'Баллы' }),
+        el('h2', { text: 'Монеты' }),
         el('div', { class: 'card stack tight' }, [
           el('div', { class: 'points-card' }, [
-            el('span', { class: 'points-big', text: '🪙 ' + (pt.balance || 0) }),
-            el('span', { class: 'muted', text: pt.today ? 'сегодня +' + pt.today : 'сегодня пока 0' })
+            el('span', { class: 'points-big', text: '🪙 ' + fmt(pt.balance) }),
+            el('span', { class: 'muted', text: pt.today ? 'заработано сегодня +' + fmt(pt.today) : 'сегодня пока 0' })
           ]),
           el('ul', { class: 'points-rules' }, [
             el('li', null, [el('b', { text: '+20' }), document.createTextNode(' за ответ на вопрос дня')]),
             el('li', null, [el('b', { text: '+20' }), document.createTextNode(' за слово дня')]),
             el('li', null, [el('b', { text: '+20 / +50 / +150 / +500' }), document.createTextNode(' за серию 3 / 7 / 30 / 100 дней')]),
-            el('li', null, [el('b', { text: '1 балл' }), document.createTextNode(' за каждые 10 очков в «Секторе», без ограничений (сегодня за игру ' + (pt.game_today || 0) + ')')])
-          ])
+            el('li', null, [el('b', { text: '1 монета' }), document.createTextNode(' за каждые 10 очков в «Секторе», без ограничений')])
+          ]),
+          el('p', { class: 'muted small', text: 'Монеты — валюта сайта: их можно тратить и выигрывать в «Казино». Купить или вывести их нельзя.' })
         ])
       ]));
     }
@@ -1577,7 +1597,6 @@
           ])
         ]),
         el('td', { text: s.current_streak ? '🔥 ' + s.current_streak : '—' }),
-        el('td', { text: String(S.memberPoints[s.user_id] || 0) }),
         el('td', { class: 'col-best', text: String(s.best_streak) }),
         el('td', { text: String(s.total_answers) }),
         el('td', { text: String(s.reactions_received) })
@@ -1590,7 +1609,6 @@
           el('thead', null, [el('tr', null, [
             el('th', { scope: 'col', text: 'Кто' }),
             el('th', { scope: 'col', text: 'Серия дней' }),
-            el('th', { scope: 'col', text: 'Баллы' }),
             el('th', { scope: 'col', class: 'col-best', text: 'Рекорд' }),
             el('th', { scope: 'col', text: 'Ответы' }),
             el('th', { scope: 'col', text: 'Реакции' })
@@ -2386,7 +2404,7 @@
     try { tab = new URLSearchParams(location.search).get('tab'); } catch (e) { return; }
     if (!tab) return;
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ничего */ }
-    var ok = TABS.some(function (t) { return t[0] === tab; });
+    var ok = tab === 'fill' || TABS.some(function (t) { return t[0] === tab; });
     if (ok && tab !== S.view) go(tab);
   }
 
@@ -2428,6 +2446,12 @@
         fetch: function (url, opts) { return fetch(url, Object.assign({}, opts, { cache: 'no-store' })); }
       }
     });
+
+    // Помощники для казино (casino.js).
+    window.AppAPI = {
+      sb: function () { return sb; }, el: el, toast: toast, plural: plural, fmt: fmt,
+      balance: balance, setBalance: setBalance, loadPoints: loadPoints
+    };
 
     // Реакция на вход или выход в другой вкладке. Внутри обработчика нельзя ждать запросы к Supabase, поэтому setTimeout.
     sb.auth.onAuthStateChange(function (event, session) {
