@@ -11,7 +11,7 @@
     bet: parseInt(load('casino-bet', '10'), 10) || 10,
     busy: false,
     history: {},               // game → последние раунды
-    mines: { count: parseInt(load('casino-mines', '3'), 10) || 3, round: null, opened: [], mult: 1, payout: 0, over: null },
+    mines: { count: Math.min(24, Math.max(2, parseInt(load('casino-mines', '3'), 10) || 3)), round: null, opened: [], mult: 1, payout: 0, over: null },
     crash: { auto: load('casino-auto', ''), round: null, startMs: 0, offset: 0, timer: 0, raf: 0, last: null }
   };
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -271,7 +271,7 @@
         text: 'Забрать ' + fmt(M.payout || C.bet) + ' 🪙', onclick: cashMines
       })]);
     } else {
-      var minesIn = el('input', { type: 'range', min: 1, max: 24, step: 1, value: String(M.count), id: 'mines-n', 'aria-label': 'Сколько мин' });
+      var minesIn = el('input', { type: 'range', min: 2, max: 24, step: 1, value: String(M.count), id: 'mines-n', 'aria-label': 'Сколько мин' });
       var minesLbl = el('span', { class: 'mines-n', text: M.count + ' ' + A.plural(M.count, 'мина', 'мины', 'мин') });
       var hint = el('span', { class: 'muted small', text: 'первая клетка ×' + minesMult(M.count, 1).toFixed(2) });
       minesIn.addEventListener('input', function () {
