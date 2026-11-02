@@ -185,7 +185,9 @@
       el('p', { class: 'muted small', text: 'Выпало зелёное — ставки на красное и чёрное возвращаются.' })
     );
     // начальная позиция ленты: зелёная ячейка по центру
-    requestAnimationFrame(function () { placeStrip(strip, 2, 0, 0, true); });
+    // лента стоит там, где остановилась в прошлый раз (сначала — на зелёной)
+    var pos = C.dblPos || { rep: 2, idx: 0, jitter: 0 };
+    requestAnimationFrame(function () { placeStrip(strip, pos.rep, pos.idx, pos.jitter, true); });
   }
 
   // Ставит ячейку (повтор rep, позиция idx в ORDER) под маркер.
@@ -219,10 +221,9 @@
     }
     setTimeout(function () {
       C.busy = false;
+      C.dblPos = { rep: 6, idx: idx, jitter: jitter };
       updBal(res.balance);
       draw();
-      var s2 = document.getElementById('dbl-strip');
-      if (s2) placeStrip(s2, 6, idx, jitter, true);
       var d = res.payout - bet;
       var name = res.color === 'red' ? 'красное' : res.color === 'black' ? 'чёрное' : 'зелёное';
       setResult('dbl-res', 'Выпало ' + name + ' ' + res.slot + ' · ' + (d === 0 ? 'ставка вернулась' : signed(d)), d > 0 ? 'win' : d < 0 ? 'lose' : '');
@@ -231,6 +232,10 @@
   }
 
   /* ---------- Сапёр ---------- */
+  // Оранжевый кристалл (статичная разметка, без пользовательских данных).
+  var GEM = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10l4 6-9 12L3 9z" fill="#F2782C"/><path d="M3 9h18M7 3l2 6 3 12M17 3l-2 6-3 12M9 9l3-6 3 6" fill="none" stroke="#FFB37A" stroke-width="1.1" stroke-linejoin="round"/><path d="M7 3h10l4 6-9 12L3 9z" fill="none" stroke="#C4500B" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+  function gem() { var g = el('span', { class: 'gem' }); g.innerHTML = GEM; return g; }
+
   function minesMult(m, k) { var x = 1; for (var i = 0; i < k; i++) x *= (25 - i) / (25 - m - i); return x; }
 
   function drawMines(box) {
@@ -246,9 +251,10 @@
         var b = el('button', {
           type: 'button', class: cls, 'aria-label': 'Клетка ' + (cell + 1),
           disabled: (!playing || opened || C.busy) ? true : null,
-          text: opened ? '💎' : isMine ? '💣' : '',
+          text: isMine && !opened ? '💣' : '',
           onclick: function () { openCell(cell); }
         });
+        if (opened) b.appendChild(gem());
         grid.appendChild(b);
       })(i);
     }

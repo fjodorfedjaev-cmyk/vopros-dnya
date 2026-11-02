@@ -707,21 +707,21 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .casino-bet-in { flex: 1; min-width: 0; font: 600 18px var(--font-mono); padding: 10px 12px; min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 .casino-q { min-width: 52px; padding: 8px 10px; font: 600 14px var(--font-mono); }
 .casino-res { margin: 0; min-height: 22px; font: 500 15px var(--font-mono); color: var(--muted); text-align: center; }
-.casino-res.win { color: #6FCF97; }
+.casino-res.win { color: var(--accent); }
 .casino-res.lose { color: var(--err); }
 .casino-note { margin: 0; text-align: center; }
 .casino-hist .empty { margin: 0; }
 .casino-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .casino-row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 14px; background: var(--surface); border-radius: 12px; font-size: 14px; }
 .casino-row-d { font: 600 14px var(--font-mono); white-space: nowrap; }
-.casino-row-d.win { color: #6FCF97; }
+.casino-row-d.win { color: var(--accent); }
 .casino-row-d.lose { color: var(--err); }
 
 /* Дабл */
 .dbl-window { position: relative; height: 72px; overflow: hidden; border-radius: 14px; background: var(--bg); }
 .dbl-strip { position: absolute; top: 8px; left: 0; display: flex; gap: 6px; will-change: transform; }
 .dbl-tile { flex: none; width: 58px; height: 56px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font: 600 18px var(--font-mono); color: #fff; }
-.dbl-tile.red, .dbl-dot.red, .dbl-pick.red { background: #C0392B; }
+.dbl-tile.red, .dbl-dot.red, .dbl-pick.red { background: var(--btn); } /* «красное» в цвете сайта */
 .dbl-tile.black, .dbl-dot.black, .dbl-pick.black { background: #2B2B2B; }
 .dbl-tile.green, .dbl-dot.green, .dbl-pick.green { background: #1E8E4E; }
 .dbl-marker { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; margin-left: -1.5px; background: var(--accent); box-shadow: 0 0 10px var(--accent); border-radius: 2px; }
@@ -739,9 +739,11 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .mine-cell { aspect-ratio: 1; min-height: 0; border-radius: 10px; border: 1px solid var(--line); background: var(--tile); font-size: 24px; display: flex; align-items: center; justify-content: center; padding: 0; transition: transform 0.12s, background 0.2s; }
 .mine-cell:not(:disabled):active { transform: scale(0.94); }
 .mine-cell:disabled { opacity: 1; cursor: default; }
-.mine-cell.safe { background: rgba(111, 207, 151, 0.18); border-color: rgba(111, 207, 151, 0.5); }
-.mine-cell.bomb { background: rgba(255, 122, 107, 0.12); }
-.mine-cell.boom { background: rgba(255, 122, 107, 0.45); border-color: var(--err); }
+.mine-cell.safe { background: rgba(242, 120, 44, 0.10); border-color: rgba(242, 120, 44, 0.45); }
+.mine-cell .gem { width: 62%; height: 62%; display: flex; }
+.mine-cell .gem svg { width: 100%; height: 100%; }
+.mine-cell.bomb { background: rgba(196, 80, 11, 0.30); border-color: rgba(196, 80, 11, 0.6); }
+.mine-cell.boom { background: var(--btn); border-color: var(--accent); }
 .mines-info { display: flex; justify-content: space-between; font: 600 16px var(--font-mono); }
 .mines-setup { display: flex; flex-direction: column; gap: 8px; }
 .mines-setup input[type=range] { width: 100%; accent-color: var(--accent); }
@@ -752,11 +754,15 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .crash-stage { position: relative; border-radius: 14px; background: var(--bg); overflow: hidden; }
 .crash-canvas { display: block; }
 .crash-mult { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 44px var(--font-mono); color: var(--ink); pointer-events: none; text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
-.crash-mult.win { color: #6FCF97; }
+.crash-mult.win { color: var(--accent); }
 .crash-mult.lose { color: var(--err); }
 .crash-btn { width: 100%; min-height: 52px; font-size: 17px; }
-.crash-btn.cash { background: #2F7D4F; border-color: #2F7D4F; }
+.crash-btn.cash { background: var(--btn); border-color: var(--btn); }
 .crash-hist { display: flex; flex-wrap: wrap; gap: 6px; }
-.crash-chip { padding: 4px 9px; border-radius: 999px; font: 600 12px var(--font-mono); background: var(--soft); color: var(--err); }
-.crash-chip.hi { color: #6FCF97; }
+.crash-chip { padding: 4px 9px; border-radius: 999px; font: 600 12px var(--font-mono); background: var(--soft); color: var(--muted); }
+.crash-chip.hi { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .mine-cell { transition: none; } }
+/* цветные кнопки Дабла не темнеют после нажатия (на телефоне наведение «залипает») */
+.dbl-pick.red:hover:not(:disabled) { background: var(--btn); filter: brightness(1.1); }
+.dbl-pick.green:hover:not(:disabled) { background: #1E8E4E; filter: brightness(1.1); }
+.dbl-pick.black:hover:not(:disabled) { background: #2B2B2B; filter: brightness(1.2); }
