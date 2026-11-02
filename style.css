@@ -623,7 +623,8 @@ html, body { overflow-x: hidden; }
 html.sector-on, html.sector-on body { touch-action: none; overscroll-behavior: none; }
 html.sector-on .wrap { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; cursor: pointer; }
 /* пока идёт игра, меню и шапка не нажимаются (касание по ним считается нажатием в игре) */
-html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me { pointer-events: none; opacity: 0.35; transition: opacity 0.2s; }
+html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, html.sector-on #board { pointer-events: none; opacity: 0.35; transition: opacity 0.2s; }
+#board { transition: opacity 0.2s; }
 .bottom-nav, nav.tabs, header .me { transition: opacity 0.2s; }
 .sector-field:focus-visible { box-shadow: 0 0 0 3px var(--soft); }
 .sector-canvas { display: block; }
