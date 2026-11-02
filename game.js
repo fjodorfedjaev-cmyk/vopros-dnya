@@ -327,6 +327,14 @@
         row.appendChild(stat(best, 'рекорд'));
         panel.appendChild(row);
         if (info && info.valid === false) panel.appendChild(h('p', 'sector-warn', 'Этот результат не прошёл проверку и не попадёт в рейтинг.'));
+        // баллы за игру (их начисляет база: 1 балл за 5 очков, до лимита в день)
+        if (info && info.valid !== false && typeof info.points === 'number') {
+          var full = info.gameToday >= info.gameCap;
+          var txt = info.points > 0
+            ? '+' + info.points + ' 🪙 · за игру сегодня ' + info.gameToday + ' из ' + info.gameCap
+            : (full ? 'Лимит баллов за игру на сегодня набран (' + info.gameCap + ')' : 'Баллы: 1 за каждые 5 очков');
+          panel.appendChild(h('p', 'sector-points' + (info.points > 0 ? ' got' : ''), txt));
+        }
         var again = h('button', 'btn primary sector-play', 'Играть ещё');
         again.type = 'button';
         again.addEventListener('click', function (ev) { ev.stopPropagation(); start(); });
@@ -341,7 +349,7 @@
       if (screen !== 'play') return;
       if (ev.button !== undefined && ev.button > 0) return;
       var t = ev.target;
-      if (t && t.closest && t.closest('.bottom-nav, nav.tabs, .me, a, .install-hint, .toast')) return; // по меню можно уйти из игры
+      if (t && t.closest && t.closest('.bottom-nav, nav.tabs, .me, a, .install-hint, .toast')) return; // на всякий случай: меню во время игры и так не нажимается (см. style.css)
       ev.preventDefault();
       press(ev.timeStamp);
     }

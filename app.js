@@ -36,6 +36,8 @@
     kind: 'question',        // какая игра сейчас на экране: question или fill
     archiveKind: 'question', // какая игра выбрана в архиве
     board: { week: null, all: null }, // рейтинг «Сектора»
+    points: null,            // мои баллы: { balance, today, game_today, game_cap }
+    memberPoints: {},        // баллы участников: user_id → баланс
     boardPeriod: 'week',
     gameState: null,         // start | play | over, пока открыта вкладка «Игра»
     horoOpen: {},            // какие категории гороскопа раскрыты (сначала все закрыты)
@@ -903,7 +905,9 @@
       await loadToday();
       if (seq !== S.loadSeq) return;
       S.stage = 'app'; S.view = 'today'; S.kind = 'question'; render();
+      openTabFromLink();
       maybeShowInstallHint();
+      refreshPushState(true).then(maybeShowPushHint);
       startPolling();
     } catch (e) {
       if (seq !== S.loadSeq) return;
@@ -929,9 +933,12 @@
       sb.from('answers').select('id, user_id, body, created_at, updated_at, profiles!answers_user_id_fkey(display_name, color, avatar)').eq('day', day).eq('kind', k).order('created_at', { ascending: true }),
       sb.rpc('who_answered', { p_day: day, p_kind: k }),
       sb.from('profiles').select('id, display_name, color, avatar, zodiac').order('created_at', { ascending: true }),
-      sb.rpc('member_stats')
+      sb.rpc('member_stats'),
+      sb.rpc('my_points'),
+      sb.rpc('member_points')
     ]);
     for (var i = 0; i < 3; i++) if (res[i].error) throw res[i].error;
+    applyPoints(res[4], res[5]);
     var answers = res[0].data || [];
     var extra = await Promise.all([loadReactions(answers), loadComments(answers)]);
     G.answers = answers;
@@ -987,9 +994,34 @@
   }
 
   async function loadStats() {
-    var r = await sb.rpc('member_stats');
-    if (!r.error) S.stats = r.data || [];
+    var res = await Promise.all([sb.rpc('member_stats'), sb.rpc('my_points'), sb.rpc('member_points')]);
+    if (!res[0].error) S.stats = res[0].data || [];
+    applyPoints(res[1], res[2]);
   }
+
+  /* ----- баллы ----- */
+  // Баллы начисляет база: за ответы, серию и игру. Здесь только показываем.
+  function applyPoints(mine, all) {
+    if (mine && !mine.error) S.points = firstRow(mine.data) || null;
+    if (all && !all.error) {
+      S.memberPoints = {};
+      (all.data || []).forEach(function (r) { S.memberPoints[r.user_id] = r.balance; });
+    }
+    updatePointsChip();
+  }
+  async function loadPoints() {
+    var res = await Promise.all([sb.rpc('my_points'), sb.rpc('member_points')]);
+    applyPoints(res[0], res[1]);
+  }
+  function balance() { return S.points ? S.points.balance || 0 : 0; }
+  function updatePointsChip() {
+    var c = document.getElementById('points-chip');
+    if (!c) return;
+    c.hidden = !S.points;
+    c.textContent = '🪙 ' + balance();
+    c.setAttribute('title', 'Баллы: ' + balance());
+  }
+  function pointsWord(n) { return plural(n, 'балл', 'балла', 'баллов'); }
 
   function startPolling() {
     if (!S.timer) S.timer = setInterval(refreshQuietly, POLL_MS);
@@ -1224,10 +1256,16 @@
       text: '🔥 ' + n, onclick: function () { go('profile'); }
     });
     chip.hidden = !n;
+    var pchip = el('button', {
+      type: 'button', id: 'points-chip', class: 'streak-chip points-chip',
+      title: 'Баллы: ' + balance(), text: '🪙 ' + balance(), onclick: function () { go('profile'); }
+    });
+    pchip.hidden = !S.points;
     return el('header', { class: 'sect' }, [
       el('div', { class: 'top' }, [
         el('h1', { class: 'brand', text: titleFor(S.view) }),
         el('span', { class: 'me' }, [
+          pchip,
           chip,
           el('span', { class: 'name', text: S.profile.display_name }),
           avatar(S.profile.display_name, S.profile.color, false, S.profile.avatar)
@@ -1427,6 +1465,7 @@
           var firstToday = !mine;
           var before = myStats();
           var wasToday = !!(before && before.answered_today);
+          var balBefore = balance();
           // Короткое подтверждение на самой кнопке, пока подгружаются ответы друзей.
           showMsg(msg, '', '');
           btn.textContent = '✓ Сохранено';
@@ -1442,6 +1481,8 @@
           // Большой праздник — только на вехах серии.
           var st = myStats();
           if (firstToday && !wasToday && st && [3, 7, 30, 100].indexOf(st.current_streak) >= 0) showCelebration();
+          var gained = balance() - balBefore;
+          if (gained > 0) setTimeout(function () { toast('+' + gained + ' ' + pointsWord(gained) + ' 🪙'); }, reduceMotion ? 0 : 600);
         } catch (e) {
           showError(msg, e);
           btn.disabled = false;
@@ -1493,6 +1534,25 @@
       ])
     ])];
 
+    if (S.points) {
+      var pt = S.points;
+      out.push(el('section', { class: 'sect' }, [
+        el('h2', { text: 'Баллы' }),
+        el('div', { class: 'card stack tight' }, [
+          el('div', { class: 'points-card' }, [
+            el('span', { class: 'points-big', text: '🪙 ' + (pt.balance || 0) }),
+            el('span', { class: 'muted', text: pt.today ? 'сегодня +' + pt.today : 'сегодня пока 0' })
+          ]),
+          el('ul', { class: 'points-rules' }, [
+            el('li', null, [el('b', { text: '+10' }), document.createTextNode(' за ответ на вопрос дня')]),
+            el('li', null, [el('b', { text: '+10' }), document.createTextNode(' за слово дня')]),
+            el('li', null, [el('b', { text: '+20 / +50 / +150 / +500' }), document.createTextNode(' за серию 3 / 7 / 30 / 100 дней')]),
+            el('li', null, [el('b', { text: '1 балл' }), document.createTextNode(' за каждые 5 очков в «Секторе», до ' + (pt.game_cap || 20) + ' в день (сегодня ' + (pt.game_today || 0) + ')')])
+          ])
+        ])
+      ]));
+    }
+
     if (S.group) {
       out.push(el('section', { class: 'sect' }, [
         el('h2', { text: 'Вся компания' }),
@@ -1518,6 +1578,7 @@
           ])
         ]),
         el('td', { text: s.current_streak ? '🔥 ' + s.current_streak : '—' }),
+        el('td', { text: String(S.memberPoints[s.user_id] || 0) }),
         el('td', { class: 'col-best', text: String(s.best_streak) }),
         el('td', { text: String(s.total_answers) }),
         el('td', { text: String(s.reactions_received) })
@@ -1530,6 +1591,7 @@
           el('thead', null, [el('tr', null, [
             el('th', { scope: 'col', text: 'Кто' }),
             el('th', { scope: 'col', text: 'Серия дней' }),
+            el('th', { scope: 'col', text: 'Баллы' }),
             el('th', { scope: 'col', class: 'col-best', text: 'Рекорд' }),
             el('th', { scope: 'col', text: 'Ответы' }),
             el('th', { scope: 'col', text: 'Реакции' })
@@ -1791,9 +1853,15 @@
     var r = await sb.rpc('game_finish', { p_session: id, p_score: res.score, p_hits: res.hits, p_perfects: res.perfects });
     if (r.error) return { best: gameBest() };
     var row = firstRow(r.data) || {};
-    await loadBoard();
+    var balBefore = balance();
+    await Promise.all([loadBoard(), loadPoints()]);
     if (S.view === 'game') fillBoard();
-    return { best: Math.max(gameBest(), row.best_all || 0), valid: row.valid };
+    var p = S.points || {};
+    return {
+      best: Math.max(gameBest(), row.best_all || 0), valid: row.valid,
+      points: S.points ? Math.max(0, balance() - balBefore) : null,
+      gameToday: p.game_today || 0, gameCap: p.game_cap || 20
+    };
   }
 
   function viewGame() {
@@ -2011,7 +2079,7 @@
       ])
     ]);
     var inst = installCard();
-    return viewStats().concat(inst ? [inst] : []).concat([el('h2', { class: 'sect-title', text: 'Настройки профиля' }), form, account]);
+    return viewStats().concat([pushCard()]).concat(inst ? [inst] : []).concat([el('h2', { class: 'sect-title', text: 'Настройки профиля' }), form, account]);
   }
 
   /* ---------- выход и запуск ---------- */
@@ -2146,6 +2214,183 @@
     }
     main();
     document.body.appendChild(box);
+  }
+
+  /* ----- уведомления ----- */
+  // Напоминание раз в 3 дня (если не ответил на вопрос) и уведомление о комментарии к твоему ответу.
+  // Отправляет их база (функция push), здесь только подписка на этом устройстве.
+  S.push = 'loading'; // loading | unsupported | ios-install | denied | on | off
+  function pushSupported() {
+    return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext && location.protocol !== 'file:';
+  }
+  function swReady() {
+    // если помощник приложения не запустился (например, страница открыта как файл), не ждём вечно
+    return Promise.race([navigator.serviceWorker.ready, new Promise(function (res) { setTimeout(function () { res(null); }, 4000); })]);
+  }
+  function keyBytes(b64) {
+    var s = b64.replace(/-/g, '+').replace(/_/g, '/'); s += '==='.slice((s.length + 3) % 4);
+    var bin = atob(s), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function sameKey(buf, b64) {
+    if (!buf) return false;
+    var a = new Uint8Array(buf), b = keyBytes(b64);
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  async function saveSub(sub) {
+    var j = sub.toJSON();
+    var r = await sb.rpc('push_subscribe', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+    if (r.error) throw r.error;
+  }
+  // sync=true — при входе тихо обновить подписку на сервере (адрес подписки иногда меняется).
+  async function refreshPushState(sync) {
+    var st;
+    if (isIOS() && !isStandalone()) st = 'ios-install';
+    else if (!pushSupported()) st = 'unsupported';
+    else if (Notification.permission === 'denied') st = 'denied';
+    else {
+      st = 'off';
+      try {
+        var reg = await swReady();
+        var sub = reg ? await reg.pushManager.getSubscription() : null;
+        if (sub && Notification.permission === 'granted') {
+          st = 'on';
+          if (sync) await saveSub(sub);
+        }
+      } catch (e) { /* оставим «выключены» */ }
+    }
+    S.push = st;
+    if (S.stage === 'app' && S.view === 'profile') fillPushCard();
+    return st;
+  }
+  async function enablePush() {
+    var perm = await Notification.requestPermission();
+    if (perm !== 'granted') { await refreshPushState(); return false; }
+    var k = await sb.rpc('push_vapid_public');
+    if (k.error || !k.data) throw new Error('Не удалось получить ключ уведомлений. Попробуй позже.');
+    var reg = await swReady();
+    if (!reg) throw new Error('Помощник приложения не запустился. Обнови страницу и попробуй ещё раз.');
+    var sub = await reg.pushManager.getSubscription();
+    if (sub && !sameKey(sub.options && sub.options.applicationServerKey, k.data)) { await sub.unsubscribe(); sub = null; }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(k.data) });
+    await saveSub(sub);
+    await refreshPushState();
+    return true;
+  }
+  async function disablePush() {
+    var reg = await swReady();
+    var sub = reg ? await reg.pushManager.getSubscription() : null;
+    if (sub) {
+      await sb.rpc('push_unsubscribe', { p_endpoint: sub.endpoint });
+      try { await sub.unsubscribe(); } catch (e) { /* уже отписан */ }
+    }
+    await refreshPushState();
+  }
+
+  function pushCard() {
+    var card = el('div', { class: 'card stack tight push-card', id: 'push-card' });
+    fillPushCard(card);
+    return card;
+  }
+  function fillPushCard(card) {
+    card = card || document.getElementById('push-card');
+    if (!card) return;
+    var st = S.push;
+    var msg = el('p', { class: 'msg', role: 'status' });
+    function act(label, primary, fn) {
+      return el('button', {
+        type: 'button', class: 'btn' + (primary ? ' primary' : ''), text: label,
+        onclick: async function (ev) {
+          var b = ev.currentTarget; b.disabled = true;
+          try { await fn(); } catch (e) { showError(msg, e); } finally { b.disabled = false; }
+        }
+      });
+    }
+    var info, buttons = [];
+    if (st === 'loading') info = 'Проверяю…';
+    else if (st === 'unsupported') info = 'Этот браузер не умеет показывать уведомления. Открой сайт в Chrome или установи приложение.';
+    else if (st === 'ios-install') info = 'На iPhone уведомления работают только в установленном приложении: Safari → «Поделиться» → «На экран «Домой»». Потом открой приложение с экрана и включи здесь.';
+    else if (st === 'denied') info = 'Уведомления запрещены в настройках браузера. Разреши их для этого сайта (значок слева от адреса → «Уведомления»), потом обнови страницу.';
+    else if (st === 'on') {
+      info = 'Включены на этом устройстве ✓';
+      buttons = [
+        act('Проверить', false, async function () {
+          var r = await sb.rpc('push_test');
+          if (r.error) throw r.error;
+          toast(r.data ? 'Отправил — сейчас придёт 🔔' : 'Подожди несколько секунд и попробуй ещё раз');
+        }),
+        act('Выключить', false, async function () { await disablePush(); toast('Уведомления выключены'); })
+      ];
+    } else {
+      info = 'Выключены.';
+      buttons = [act('Включить', true, async function () {
+        var ok = await enablePush();
+        toast(ok ? 'Уведомления включены 🔔' : 'Без разрешения браузера уведомления не придут');
+      })];
+    }
+    card.replaceChildren(
+      el('p', { class: 'install-title', text: '🔔 Уведомления' }),
+      el('p', { class: 'muted push-what', text: 'Напоминание раз в 3 дня, если вопрос дня ещё без твоего ответа, и уведомление, когда кто-то комментирует твой ответ или слово.' }),
+      el('p', { class: 'push-state' + (st === 'on' ? ' on' : ''), text: info }),
+      buttons.length ? el('div', { class: 'row actions' }, buttons) : null,
+      msg
+    );
+  }
+
+  // Один раз предложить включить уведомления (если не показывали подсказку об установке в этот раз).
+  var PUSH_HINT_KEY = 'push-hint-seen';
+  function maybeShowPushHint() {
+    if (S.push !== 'off' || !pushSupported() || Notification.permission !== 'default') return;
+    try { if (localStorage.getItem(PUSH_HINT_KEY) === '1') return; } catch (e) { return; }
+    if (maybeShowInstallHint.done) return; // в этот раз уже показали подсказку об установке
+    setTimeout(function tryShow() {
+      if (S.stage !== 'app' || S.push !== 'off') return;
+      if (document.querySelector('.celebrate, .install-hint') || S.gameState === 'play') { setTimeout(tryShow, 4000); return; }
+      showPushHint();
+    }, 2500);
+  }
+  function showPushHint() {
+    var box = el('div', { class: 'install-hint', role: 'dialog', 'aria-label': 'Включить уведомления' });
+    function close(later) {
+      try { localStorage.setItem(PUSH_HINT_KEY, '1'); } catch (e) { /* ничего */ }
+      box.classList.add('out');
+      setTimeout(function () { box.remove(); }, reduceMotion ? 0 : 220);
+      if (later) toast('Включить можно позже в Профиле');
+    }
+    box.replaceChildren(
+      el('div', { class: 'ih-row' }, [
+        el('span', { class: 'ih-bell', text: '🔔', 'aria-hidden': 'true' }),
+        el('div', { class: 'ih-text' }, [
+          el('p', { class: 'ih-title', text: 'Включить уведомления?' }),
+          el('p', { class: 'ih-sub', text: 'Напомним раз в 3 дня про вопрос дня и сообщим, когда кто-то прокомментирует твой ответ. Можно выключить в Профиле.' })
+        ])
+      ]),
+      el('div', { class: 'ih-actions' }, [
+        el('button', { type: 'button', class: 'btn', text: 'Не сейчас', onclick: function () { close(true); } }),
+        el('button', {
+          type: 'button', class: 'btn primary', text: 'Включить',
+          onclick: async function () {
+            close(false);
+            try { var ok = await enablePush(); toast(ok ? 'Уведомления включены 🔔' : 'Без разрешения браузера уведомления не придут'); }
+            catch (e) { toast('Не получилось включить. Попробуй в Профиле.'); }
+          }
+        })
+      ])
+    );
+    document.body.appendChild(box);
+  }
+
+  // Ссылка из уведомления: ?tab=fill / today / profile …
+  function openTabFromLink() {
+    var tab = null;
+    try { tab = new URLSearchParams(location.search).get('tab'); } catch (e) { return; }
+    if (!tab) return;
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* ничего */ }
+    var ok = TABS.some(function (t) { return t[0] === tab; });
+    if (ok && tab !== S.view) go(tab);
   }
 
   function installCard() {
