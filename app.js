@@ -36,7 +36,7 @@
     kind: 'question',        // какая игра сейчас на экране: question или fill
     archiveKind: 'question', // какая игра выбрана в архиве
     board: { week: null, all: null }, // рейтинг «Сектора»
-    points: null,            // мои баллы: { balance, today, game_today, game_cap }
+    points: null,            // мои баллы: { balance, today, game_today }
     memberPoints: {},        // баллы участников: user_id → баланс
     boardPeriod: 'week',
     gameState: null,         // start | play | over, пока открыта вкладка «Игра»
@@ -1546,7 +1546,7 @@
             el('li', null, [el('b', { text: '+20' }), document.createTextNode(' за ответ на вопрос дня')]),
             el('li', null, [el('b', { text: '+20' }), document.createTextNode(' за слово дня')]),
             el('li', null, [el('b', { text: '+20 / +50 / +150 / +500' }), document.createTextNode(' за серию 3 / 7 / 30 / 100 дней')]),
-            el('li', null, [el('b', { text: '1 балл' }), document.createTextNode(' за каждые 10 очков в «Секторе», до ' + (pt.game_cap || 20) + ' в день (сегодня ' + (pt.game_today || 0) + ')')])
+            el('li', null, [el('b', { text: '1 балл' }), document.createTextNode(' за каждые 10 очков в «Секторе», без ограничений (сегодня за игру ' + (pt.game_today || 0) + ')')])
           ])
         ])
       ]));
@@ -1859,7 +1859,7 @@
     return {
       best: Math.max(gameBest(), row.best_all || 0), valid: row.valid,
       points: S.points ? Math.max(0, balance() - balBefore) : null,
-      gameToday: p.game_today || 0, gameCap: p.game_cap || 20
+      gameToday: p.game_today || 0
     };
   }
 
