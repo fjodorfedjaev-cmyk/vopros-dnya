@@ -1397,7 +1397,6 @@
     }
     return el('section', { class: 'card qcard', 'aria-label': 'Вопрос дня' }, [
       el('div', { class: 'qhead' }, [
-        el('span', { class: 'tag cat-' + q.category, text: CAT[q.category] || 'Вопрос' }),
         el('span', { class: 'date', text: dayLabel(q.day) })
       ]),
       el('p', { class: 'qtext q-accent', text: q.text })
@@ -1544,10 +1543,10 @@
             el('span', { class: 'muted', text: pt.today ? 'сегодня +' + pt.today : 'сегодня пока 0' })
           ]),
           el('ul', { class: 'points-rules' }, [
-            el('li', null, [el('b', { text: '+10' }), document.createTextNode(' за ответ на вопрос дня')]),
-            el('li', null, [el('b', { text: '+10' }), document.createTextNode(' за слово дня')]),
+            el('li', null, [el('b', { text: '+20' }), document.createTextNode(' за ответ на вопрос дня')]),
+            el('li', null, [el('b', { text: '+20' }), document.createTextNode(' за слово дня')]),
             el('li', null, [el('b', { text: '+20 / +50 / +150 / +500' }), document.createTextNode(' за серию 3 / 7 / 30 / 100 дней')]),
-            el('li', null, [el('b', { text: '1 балл' }), document.createTextNode(' за каждые 5 очков в «Секторе», до ' + (pt.game_cap || 20) + ' в день (сегодня ' + (pt.game_today || 0) + ')')])
+            el('li', null, [el('b', { text: '1 балл' }), document.createTextNode(' за каждые 10 очков в «Секторе», до ' + (pt.game_cap || 20) + ' в день (сегодня ' + (pt.game_today || 0) + ')')])
           ])
         ])
       ]));
@@ -1962,9 +1961,7 @@
     var d = el('details', { class: 'day' }, [
       el('summary', null, [
         el('div', { class: 'qhead' }, [
-          kind === 'fill'
-            ? el('span', { class: 'tag cat-fill', text: 'Впиши слово' })
-            : el('span', { class: 'tag cat-' + q.q_category, text: CAT[q.q_category] || 'Вопрос' }),
+          kind === 'fill' ? el('span', { class: 'tag cat-fill', text: 'Впиши слово' }) : null,
           el('span', { class: 'date', text: dayLabel(q.q_day) })
         ]),
         kind === 'fill' ? fillSentence(q.q_text, '', 'day-q') : el('span', { class: 'day-q', text: q.q_text })

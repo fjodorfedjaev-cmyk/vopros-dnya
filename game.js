@@ -327,12 +327,12 @@
         row.appendChild(stat(best, 'рекорд'));
         panel.appendChild(row);
         if (info && info.valid === false) panel.appendChild(h('p', 'sector-warn', 'Этот результат не прошёл проверку и не попадёт в рейтинг.'));
-        // баллы за игру (их начисляет база: 1 балл за 5 очков, до лимита в день)
+        // баллы за игру (их начисляет база: 1 балл за 10 очков, до лимита в день)
         if (info && info.valid !== false && typeof info.points === 'number') {
           var full = info.gameToday >= info.gameCap;
           var txt = info.points > 0
             ? '+' + info.points + ' 🪙 · за игру сегодня ' + info.gameToday + ' из ' + info.gameCap
-            : (full ? 'Лимит баллов за игру на сегодня набран (' + info.gameCap + ')' : 'Баллы: 1 за каждые 5 очков');
+            : (full ? 'Лимит баллов за игру на сегодня набран (' + info.gameCap + ')' : 'Баллы: 1 за каждые 10 очков');
           panel.appendChild(h('p', 'sector-points' + (info.points > 0 ? ' got' : ''), txt));
         }
         var again = h('button', 'btn primary sector-play', 'Играть ещё');
