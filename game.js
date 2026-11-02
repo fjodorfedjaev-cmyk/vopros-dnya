@@ -330,7 +330,7 @@
         // баллы за игру (их начисляет база: 1 балл за 10 очков, без ограничений)
         if (info && info.valid !== false && typeof info.points === 'number') {
           var txt = info.points > 0
-            ? '+' + info.points + ' 🪙 · за игры сегодня ' + info.gameToday
+            ? '+' + info.points + ' 🪙 за эту игру'
             : 'Баллы: 1 за каждые 10 очков';
           panel.appendChild(h('p', 'sector-points' + (info.points > 0 ? ' got' : ''), txt));
         }
