@@ -1007,7 +1007,7 @@
   async function loadPoints() {
     applyPoints(await sb.rpc('my_points'));
   }
-  function balance() { return S.points ? S.points.balance || 0 : 0; }
+  function balance() { return S.points ? Number(S.points.balance) || 0 : 0; }
   // Казино сообщает новый баланс сразу после ставки.
   function setBalance(v) {
     if (typeof v !== 'number') return;
@@ -1015,12 +1015,19 @@
     S.points.balance = v;
     updatePointsChip();
   }
-  function fmt(n) { return Number(n || 0).toLocaleString('ru-RU'); }
+  // Монеты до сотых: 1 234,56 (лишние нули не показываем).
+  function fmt(n) { return (Math.round(Number(n || 0) * 100) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
+  // В шапке — целые монеты; сотые видны только когда осталось меньше 10.
+  function fmtHead(n) {
+    n = Number(n || 0);
+    if (n < 10) return n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return Math.floor(n).toLocaleString('ru-RU');
+  }
   function updatePointsChip() {
     var c = document.getElementById('points-chip');
     if (!c) return;
     c.hidden = !S.points;
-    c.textContent = '🪙 ' + fmt(balance());
+    c.textContent = '🪙 ' + fmtHead(balance());
     c.setAttribute('title', 'Монеты: ' + fmt(balance()));
   }
   function pointsWord(n) { return plural(n, 'монета', 'монеты', 'монет'); }
@@ -1263,7 +1270,7 @@
     chip.hidden = !n;
     var pchip = el('button', {
       type: 'button', id: 'points-chip', class: 'streak-chip points-chip',
-      title: 'Монеты: ' + fmt(balance()), text: '🪙 ' + fmt(balance()), onclick: function () { go('profile'); }
+      title: 'Монеты: ' + fmt(balance()), text: '🪙 ' + fmtHead(balance()), onclick: function () { go('profile'); }
     });
     pchip.hidden = !S.points;
     return el('header', { class: 'sect' }, [
@@ -1566,8 +1573,7 @@
             el('li', null, [el('b', { text: '+20' }), document.createTextNode(' за слово дня')]),
             el('li', null, [el('b', { text: '+20 / +50 / +150 / +500' }), document.createTextNode(' за серию 3 / 7 / 30 / 100 дней')]),
             el('li', null, [el('b', { text: '1 монета' }), document.createTextNode(' за каждые 10 очков в «Секторе», без ограничений')])
-          ]),
-          el('p', { class: 'muted small', text: 'Монеты — валюта сайта: их можно тратить и выигрывать в «Казино». Купить или вывести их нельзя.' })
+          ])
         ])
       ]));
     }

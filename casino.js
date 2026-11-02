@@ -8,7 +8,7 @@
   var root = null;             // корневой элемент вкладки (живёт между перерисовками)
   var C = {
     game: load('casino-game', 'double'),
-    bet: parseInt(load('casino-bet', '10'), 10) || 10,
+    bet: c2(parseFloat(load('casino-bet', '10'))) || 10,
     busy: false,
     history: {},               // game → последние раунды
     mines: { count: Math.min(24, Math.max(2, parseInt(load('casino-mines', '3'), 10) || 3)), round: null, opened: [], mult: 1, payout: 0, over: null },
@@ -16,6 +16,9 @@
   };
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
+  // монеты считаются до сотых
+  function c2(x) { x = Number(x); return isFinite(x) ? Math.round(x * 100) / 100 : 0; }
+  function floor2(x) { return Math.floor(Number(x) * 100 + 1e-7) / 100; }
   function load(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
   function save(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) { /* ничего */ } }
   function el() { return A.el.apply(null, arguments); }
@@ -26,7 +29,7 @@
   function errText(e) {
     var m = String((e && (e.message || e.details)) || e || '');
     if (/not_enough/.test(m)) return 'Не хватает монет на такую ставку.';
-    if (/bad_bet/.test(m)) return 'Ставка — целое число от 1.';
+    if (/bad_bet/.test(m)) return 'Ставка — от 0,01 монеты, не больше двух знаков после запятой.';
     if (/active_round/.test(m)) return 'У тебя уже идёт раунд — продолжим его.';
     if (/round_over/.test(m)) return 'Этот раунд уже закончился.';
     if (/not_member/.test(m)) return 'Сначала войди по коду приглашения.';
@@ -67,15 +70,14 @@
     else drawCrash(game);
     var hist = el('section', { class: 'sect casino-hist', id: 'casino-hist' });
     drawHistory(hist);
-    root.replaceChildren(head, seg, game, hist,
-      el('p', { class: 'muted small casino-note', text: 'Монеты — только валюта сайта, купить или вывести их нельзя.' }));
+    root.replaceChildren(head, seg, game, hist);
   }
 
   // во время раунда нельзя переключать игру
   function locked() { return C.busy || !!C.mines.round || !!C.crash.round; }
 
   function updBal(v) {
-    if (typeof v === 'number') A.setBalance(v);
+    if (v !== undefined && v !== null && isFinite(Number(v))) A.setBalance(c2(v));
     var b = document.getElementById('casino-bal');
     if (b) b.textContent = '🪙 ' + fmt(bal());
   }
@@ -83,17 +85,17 @@
   // Поле ставки с быстрыми кнопками.
   function betRow(disabled) {
     var input = el('input', {
-      type: 'number', inputmode: 'numeric', min: 1, step: 1, id: 'casino-bet', class: 'casino-bet-in',
+      type: 'number', inputmode: 'decimal', min: 0.01, step: 0.01, id: 'casino-bet', class: 'casino-bet-in',
       'aria-label': 'Ставка', value: String(C.bet), disabled: disabled ? true : null
     });
     input.addEventListener('input', function () {
-      var v = parseInt(input.value, 10);
+      var v = c2(parseFloat(String(input.value).replace(',', '.')));
       if (v > 0) { C.bet = v; save('casino-bet', v); }
     });
     function quick(label, fn) {
       return el('button', {
         type: 'button', class: 'btn casino-q', text: label, disabled: disabled ? true : null,
-        onclick: function () { C.bet = Math.max(1, Math.floor(fn(C.bet))); input.value = String(C.bet); save('casino-bet', C.bet); }
+        onclick: function () { C.bet = Math.max(0.01, floor2(fn(C.bet))); input.value = String(C.bet); save('casino-bet', C.bet); }
       });
     }
     return el('div', { class: 'casino-betrow' }, [
@@ -101,16 +103,17 @@
       el('div', { class: 'casino-betline' }, [
         input,
         quick('½', function (b) { return b / 2; }),
-        quick('×2', function (b) { return Math.min(b * 2, Math.max(bal(), 1)); }),
-        quick('Всё', function () { return Math.max(bal(), 1); })
+        quick('×2', function (b) { return Math.min(b * 2, Math.max(bal(), 0.01)); }),
+        quick('Всё', function () { return Math.max(bal(), 0.01); })
       ])
     ]);
   }
   function readBet() {
     var i = document.getElementById('casino-bet');
-    var v = i ? parseInt(i.value, 10) : C.bet;
-    if (!(v >= 1)) { A.toast('Ставка — целое число от 1'); return 0; }
-    if (v > bal()) { A.toast('Не хватает монет: у тебя ' + fmt(bal())); return 0; }
+    var raw = i ? parseFloat(String(i.value).replace(',', '.')) : C.bet;
+    var v = c2(raw);
+    if (!(v >= 0.01)) { A.toast('Ставка — от 0,01 монеты'); return 0; }
+    if (v > bal() + 1e-9) { A.toast('Не хватает монет: у тебя ' + fmt(bal())); return 0; }
     C.bet = v; save('casino-bet', v);
     return v;
   }
@@ -121,7 +124,7 @@
     r.textContent = text;
     r.className = 'casino-res' + (cls ? ' ' + cls : '');
   }
-  function signed(delta) { return (delta > 0 ? '+' : delta < 0 ? '−' : '±') + fmt(Math.abs(delta)) + ' 🪙'; }
+  function signed(delta) { delta = c2(delta); return (delta > 0 ? '+' : delta < 0 ? '−' : '±') + fmt(Math.abs(delta)) + ' 🪙'; }
 
   /* ---------- история ---------- */
   async function loadHistory() {
@@ -138,7 +141,7 @@
     if (C.game === 'double') {
       sect.appendChild(el('div', { class: 'dbl-hist' }, list.map(function (r) {
         var c = r.info && r.info.color;
-        return el('span', { class: 'dbl-dot ' + c, title: (r.payout - r.bet >= 0 ? '+' : '') + (r.payout - r.bet), text: String(r.info ? r.info.slot : '') });
+        return el('span', { class: 'dbl-dot ' + c, title: signed(Number(r.payout) - Number(r.bet)), text: String(r.info ? r.info.slot : '') });
       })));
     } else if (C.game === 'crash') {
       sect.appendChild(el('div', { class: 'crash-hist' }, list.map(function (r) {
@@ -147,7 +150,7 @@
       })));
     }
     sect.appendChild(el('div', { class: 'casino-rows' }, list.slice(0, 8).map(function (r) {
-      var d = (r.payout || 0) - r.bet;
+      var d = Number(r.payout || 0) - Number(r.bet);
       var what = C.game === 'double' ? colorName(r.info && r.info.pick)
         : C.game === 'mines' ? (r.info.mines + ' ' + A.plural(r.info.mines, 'мина', 'мины', 'мин') + ', открыто ' + (r.info.opened || []).length)
           : (r.info && r.info.cashed ? 'забрал на ×' + Number(r.info.cashed).toFixed(2) : 'взрыв ×' + Number(r.info.crash).toFixed(2));
@@ -209,7 +212,7 @@
     } catch (e) {
       C.busy = false; draw(); setResult('dbl-res', errText(e), 'lose'); return;
     }
-    updBal(res.balance - res.payout); // ставка уже списана; выигрыш покажем после остановки
+    updBal(Number(res.balance) - Number(res.payout)); // ставка уже списана; выигрыш покажем после остановки
     var idx = ORDER.indexOf(res.slot);
     var jitter = (Math.random() - 0.5) * (TILE - 16);
     var ms = reduce ? 200 : 4200;
@@ -453,7 +456,7 @@
       var m = document.getElementById('crash-mult');
       if (m) m.textContent = '×' + crashMult(s).toFixed(2);
       var b = document.getElementById('crash-btn');
-      if (b && !C.busy) b.textContent = 'Забрать ' + fmt(Math.floor(R.bet * crashMult(s))) + ' 🪙';
+      if (b && !C.busy) b.textContent = 'Забрать ' + fmt(floor2(R.bet * crashMult(s))) + ' 🪙';
       paintCrash(s, false);
       R.raf = requestAnimationFrame(frame);
     }
@@ -520,7 +523,7 @@
       if (r.game === 'mines') {
         C.mines.round = r.round; C.mines.bet = r.bet; C.mines.count = r.info.mines;
         C.mines.opened = r.info.opened || []; C.mines.over = null;
-        C.mines.payout = Math.floor(r.bet * minesMult(r.info.mines, C.mines.opened.length));
+        C.mines.payout = floor2(Number(r.bet) * minesMult(r.info.mines, C.mines.opened.length));
         C.game = 'mines';
       } else if (r.game === 'crash') {
         C.crash.round = r.round; C.crash.bet = r.bet; C.crash.startMs = Number(r.started_ms);
