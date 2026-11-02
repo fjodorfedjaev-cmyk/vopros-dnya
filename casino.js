@@ -358,7 +358,9 @@
     var running = !!R.round;
     var canvas = el('canvas', { class: 'crash-canvas', id: 'crash-canvas', 'aria-hidden': 'true' });
     var big = el('div', { class: 'crash-mult' + (R.last && R.last.cls ? ' ' + R.last.cls : ''), id: 'crash-mult', text: running ? '×1.00' : (R.last ? R.last.big : '×1.00') });
-    var stage = el('div', { class: 'crash-stage' }, [canvas, big]);
+    var badge = el('div', { class: 'crash-badge', id: 'crash-badge', text: (!running && R.last && R.last.badge) || '' });
+    badge.hidden = running || !(R.last && R.last.badge);
+    var stage = el('div', { class: 'crash-stage' }, [canvas, big, badge]);
     var autoIn = el('input', {
       type: 'number', inputmode: 'decimal', min: 1.01, step: 0.01, id: 'crash-auto', class: 'casino-bet-in',
       placeholder: 'нет', value: R.auto || '', 'aria-label': 'Автозабор, множитель', disabled: running || C.busy ? true : null
@@ -377,7 +379,11 @@
       el('div', { class: 'row actions' }, [btn]),
       resultLine('crash-res')
     );
-    requestAnimationFrame(function () { sizeCanvas(); paintCrash(running ? liveSec() : (R.last ? R.last.sec : 0), R.last && R.last.cls === 'lose'); });
+    requestAnimationFrame(function () {
+      sizeCanvas();
+      if (R.anim) return; // идёт показ «до взрыва» — рисует он
+      paintCrash(running ? liveSec() : (R.last ? R.last.sec : 0), R.last && R.last.cls === 'lose', R.last && !running ? R.last.cashedSec : null);
+    });
     if (R.last && R.last.text) { var rt = R.last.text, rc = R.last.cls; setTimeout(function () { setResult('crash-res', rt, rc); }, 0); }
   }
 
@@ -392,7 +398,7 @@
   }
   function liveSec() { var R = C.crash; return (Date.now() + R.offset - R.startMs) / 1000; }
 
-  function paintCrash(sec, crashed) {
+  function paintCrash(sec, crashed, cashedSec) {
     var c = document.getElementById('crash-canvas');
     if (!c) return;
     var ctx = c.getContext('2d'), dpr = c.width / (c.clientWidth || 1);
@@ -421,13 +427,57 @@
     var ex = X(sec), ey = Y(Math.exp(K * sec));
     ctx.fillStyle = crashed ? err : acc;
     ctx.beginPath(); ctx.arc(ex, ey, 5, 0, Math.PI * 2); ctx.fill();
+    // где сработал забор — светлая точка с обводкой
+    if (typeof cashedSec === 'number' && cashedSec > 0 && cashedSec <= sec + 1e-6) {
+      var cx = X(cashedSec), cy = Y(Math.exp(K * cashedSec));
+      ctx.fillStyle = '#FFB37A'; ctx.strokeStyle = acc; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
   }
+
+  // После выигрыша: сначала множитель, на котором забрал, затем быстро «догоняем» до взрыва этого раунда.
+  function revealAfterWin(cashed, cp) {
+    var R = C.crash;
+    stopReveal();
+    var big = document.getElementById('crash-mult');
+    var s0 = Math.log(cashed) / K, s1 = Math.log(cp) / K;
+    if (!big || reduce || cp <= cashed) return;
+    big.textContent = '×' + cashed.toFixed(2);
+    big.className = 'crash-mult win';
+    paintCrash(s0, false, s0);
+    var dur = Math.max(700, Math.min(1600, 600 + (s1 - s0) * 90));
+    var hold = 650; // даём увидеть свой множитель
+    var t0 = 0;
+    function frame(now) {
+      if (C.crash.round || !document.getElementById('crash-mult')) { R.anim = 0; return; }
+      if (!t0) t0 = now;
+      var p = Math.min(1, Math.max(0, (now - t0 - hold) / dur));
+      var e = 1 - Math.pow(1 - p, 3);
+      var sec = s0 + (s1 - s0) * e;
+      var b = document.getElementById('crash-mult');
+      if (p <= 0) { paintCrash(s0, false, s0); R.anim = requestAnimationFrame(frame); return; }
+      if (p < 1) {
+        b.textContent = '×' + Math.min(cp, crashMult(sec)).toFixed(2);
+        b.className = 'crash-mult rising';
+        paintCrash(sec, false, s0);
+        R.anim = requestAnimationFrame(frame);
+      } else {
+        R.anim = 0;
+        b.textContent = R.last ? R.last.big : '💥 ×' + cp.toFixed(2);
+        b.className = 'crash-mult after';
+        paintCrash(s1, false, s0);
+      }
+    }
+    R.anim = requestAnimationFrame(frame);
+  }
+  function stopReveal() { var R = C.crash; if (R.anim) cancelAnimationFrame(R.anim); R.anim = 0; }
 
   async function startCrash() {
     var R = C.crash;
     var bet = readBet(); if (!bet) return;
     var auto = parseFloat(String(R.auto || '').replace(',', '.'));
     if (R.auto && !(auto >= 1.01)) { A.toast('Автозабор — от ×1.01'); return; }
+    stopReveal();
     C.busy = true; draw();
     try {
       var t0 = Date.now();
@@ -502,16 +552,20 @@
     stopCrashLoops();
     var bet = R.bet;
     var sec = Math.log(Math.max(1, Number(st.crash || st.mult || 1))) / K;
-    if (st.result === 'won') {
-      var d = st.payout - bet;
-      R.last = { big: '×' + Number(st.mult).toFixed(2), cls: 'win', sec: Math.log(Math.max(1, Number(st.mult))) / K,
-        text: 'Забрал на ×' + Number(st.mult).toFixed(2) + ' · ' + signed(d) + ' (взрыв был на ×' + Number(st.crash).toFixed(2) + ')' };
+    var won = st.result === 'won';
+    if (won) {
+      var d = st.payout - bet, cashed = Number(st.mult), cp = Number(st.crash);
+      // итог на карточке: взрыв раунда, а бейдж — на чём забрал
+      R.last = { big: '💥 ×' + cp.toFixed(2), cls: 'after', sec: Math.log(Math.max(1, cp)) / K, cashedSec: Math.log(Math.max(1, cashed)) / K,
+        badge: '✓ Забрал на ×' + cashed.toFixed(2),
+        text: 'Забрал на ×' + cashed.toFixed(2) + ' · ' + signed(d) + ' (взрыв был на ×' + cp.toFixed(2) + ')' };
     } else {
       R.last = { big: '💥 ×' + Number(st.crash).toFixed(2), cls: 'lose', sec: sec, text: 'Взрыв на ×' + Number(st.crash).toFixed(2) + ' · ' + signed(-bet) };
     }
     R.round = null;
     updBal(st.balance);
     draw();
+    if (won) revealAfterWin(Number(st.mult), Number(st.crash));
     loadHistory();
   }
 
@@ -545,7 +599,8 @@
     if (C.crash.round) runCrash();
   }
   function leave() {
-    stopCrashLoops();   // раунд краша продолжится в базе; при возврате продолжим
+    stopCrashLoops();
+    stopReveal();   // раунд краша продолжится в базе; при возврате продолжим
     root = null;
   }
   window.addEventListener('resize', function () { if (root && C.game === 'crash') { sizeCanvas(); paintCrash(C.crash.round ? liveSec() : (C.crash.last ? C.crash.last.sec : 0), C.crash.last && C.crash.last.cls === 'lose'); } });

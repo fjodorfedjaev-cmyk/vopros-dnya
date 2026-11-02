@@ -766,3 +766,8 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .dbl-pick.red:hover:not(:disabled) { background: var(--btn); filter: brightness(1.1); }
 .dbl-pick.green:hover:not(:disabled) { background: #1E8E4E; filter: brightness(1.1); }
 .dbl-pick.black:hover:not(:disabled) { background: #2B2B2B; filter: brightness(1.2); }
+
+/* Краш: после выигрыша — бейдж «забрал на ×…», множитель догоняет до взрыва */
+.crash-mult.rising { color: var(--ink); }
+.crash-mult.after { color: var(--muted); font-size: 36px; }
+.crash-badge { position: absolute; top: 10px; left: 10px; padding: 4px 10px; border-radius: 999px; background: rgba(242, 120, 44, 0.16); color: var(--accent); font: 600 13px var(--font-mono); pointer-events: none; }
