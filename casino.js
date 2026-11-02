@@ -68,7 +68,7 @@
     var hist = el('section', { class: 'sect casino-hist', id: 'casino-hist' });
     drawHistory(hist);
     root.replaceChildren(head, seg, game, hist,
-      el('p', { class: 'muted small casino-note', text: 'Игры честные: в среднем возвращается ровно столько, сколько поставлено. Монеты — только валюта сайта, купить или вывести их нельзя.' }));
+      el('p', { class: 'muted small casino-note', text: 'Монеты — только валюта сайта, купить или вывести их нельзя.' }));
   }
 
   // во время раунда нельзя переключать игру
@@ -181,8 +181,7 @@
       win,
       betRow(C.busy),
       el('div', { class: 'dbl-picks' }, [pick('red', 'Красное', '×2'), pick('green', 'Зелёное', '×15'), pick('black', 'Чёрное', '×2')]),
-      resultLine('dbl-res'),
-      el('p', { class: 'muted small', text: 'Выпало зелёное — ставки на красное и чёрное возвращаются.' })
+      resultLine('dbl-res')
     );
     // начальная позиция ленты: зелёная ячейка по центру
     // лента стоит там, где остановилась в прошлый раз (сначала — на зелёной)
