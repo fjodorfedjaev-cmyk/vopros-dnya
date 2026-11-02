@@ -235,7 +235,8 @@
   var GEM = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10l4 6-9 12L3 9z" fill="#F2782C"/><path d="M3 9h18M7 3l2 6 3 12M17 3l-2 6-3 12M9 9l3-6 3 6" fill="none" stroke="#FFB37A" stroke-width="1.1" stroke-linejoin="round"/><path d="M7 3h10l4 6-9 12L3 9z" fill="none" stroke="#C4500B" stroke-width="1.2" stroke-linejoin="round"/></svg>';
   function gem() { var g = el('span', { class: 'gem' }); g.innerHTML = GEM; return g; }
 
-  function minesMult(m, k) { var x = 1; for (var i = 0; i < k; i++) x *= (25 - i) / (25 - m - i); return x; }
+  // Как в базе: 14/15 от честного множителя (прибыль казино ≈6,7%); пока ничего не открыто — ×1.
+  function minesMult(m, k) { if (k <= 0) return 1; var x = 14 / 15; for (var i = 0; i < k; i++) x *= (25 - i) / (25 - m - i); return x; }
 
   function drawMines(box) {
     var M = C.mines;
