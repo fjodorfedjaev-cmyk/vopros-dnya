@@ -41,6 +41,9 @@
     gameState: null,         // start | play | over, пока открыта вкладка «Игра»
     gameMode: (function () { try { var m = localStorage.getItem('game-mode'); return m === 'farm' || m === 'zigzag' ? m : 'sector'; } catch (e) { return 'sector'; } })(), // sector | farm | zigzag — что открыто во вкладке «Игра»
     zz: null, zzBox: null,   // игра «Зигзаг», пока она на экране
+    zzBoard: { week: null, all: null }, // рейтинг «Зигзага»
+    zzBoardPeriod: 'week',
+    zzSession: null,         // партия «Зигзага» в базе (Promise с её id)
     horoOpen: {},            // какие категории гороскопа раскрыты (сначала все закрыты)
     members: [],             // все участники
     stats: [],               // серии и счётчики по участникам
@@ -1326,6 +1329,7 @@
       render();
       if (S.gameMode === 'farm') { if (window.Farm) window.Farm.enter(); }
       else if (S.gameMode === 'sector') loadBoard().then(function () { if (S.view === 'game') fillBoard(); });
+      else loadZzBoard().then(zzBoardLoaded);
       return;
     }
     if (view === 'casino') {
@@ -1895,11 +1899,12 @@
 
   // Во вкладке «Игра» три раздела: «Сектор», «Ферма» и «Зигзаг». Выбор запоминается на этом телефоне.
   function gameSwitch() {
-    return el('div', { class: 'segment day-switch game-switch', role: 'group', 'aria-label': 'Какая игра' }, [['sector', 'Сектор'], ['farm', 'Ферма'], ['zigzag', 'Зигзаг']].map(function (x) {
+    return el('div', { class: 'segment day-switch game-switch', role: 'group', 'aria-label': 'Какая игра' }, [['sector', 'Сектор'], ['zigzag', 'Зигзаг'], ['farm', 'Ферма', 'демо']].map(function (x) {
       return el('button', {
-        type: 'button', text: x[1], 'aria-pressed': String(S.gameMode === x[0]),
+        type: 'button', 'aria-pressed': String(S.gameMode === x[0]),
+        'aria-label': x[2] ? x[1] + ' (' + x[2] + '-версия)' : null,
         onclick: function () { setGameMode(x[0]); }
-      });
+      }, [x[1], x[2] ? el('span', { class: 'seg-badge', 'aria-hidden': 'true', text: x[2] }) : null]);
     }));
   }
 
@@ -1912,18 +1917,60 @@
     render();
     if (mode === 'farm') { if (window.Farm) window.Farm.enter(); }
     else if (mode === 'sector') loadBoard().then(function () { if (S.view === 'game' && S.gameMode === 'sector') fillBoard(); });
+    else if (mode === 'zigzag') loadZzBoard().then(zzBoardLoaded);
   }
 
   /* ----- «Зигзаг» ----- */
-  // Пока игра без золота: рекорд хранится только на этом телефоне.
+  // Партия заводится в базе при старте (zz_start), в конце база проверяет результат и начисляет монеты за кристаллы (zz_finish).
   function zzBestKey() { return 'zigzag-best:' + (S.userId || 'anon'); }
-  function zzBest() {
+  function zzLocalBest() {
     try { return parseInt(localStorage.getItem(zzBestKey()), 10) || 0; } catch (e) { return 0; }
   }
+  function zzServerBest() {
+    var rows = S.zzBoard.all || [];
+    for (var i = 0; i < rows.length; i++) if (rows[i].user_id === S.userId) return rows[i].best || 0;
+    return 0;
+  }
+  function zzBest() { return Math.max(zzLocalBest(), zzServerBest()); }
+
+  async function loadZzBoard() {
+    var out = await Promise.all(['week', 'all'].map(function (p) { return sb.rpc('zz_leaderboard', { p_period: p }); }));
+    if (!out[0].error) S.zzBoard.week = out[0].data || [];
+    if (!out[1].error) S.zzBoard.all = out[1].data || [];
+  }
+
+  function zzBoardLoaded() {
+    if (S.view !== 'game' || S.gameMode !== 'zigzag') return;
+    fillBoard(null, 'zz');
+    if (S.zz && S.zz.refreshBest) S.zz.refreshBest();
+  }
+
+  function startZzSession() {
+    // Если база не ответит, игра всё равно идёт — просто результат останется только на телефоне.
+    S.zzSession = sb.rpc('zz_start').then(function (r) {
+      if (r.error) return null;
+      return typeof r.data === 'string' ? r.data : (firstRow(r.data) || null);
+    }).catch(function () { return null; });
+  }
+
+  async function finishZzSession(res) {
+    try { if (res.score > zzLocalBest()) localStorage.setItem(zzBestKey(), String(res.score)); } catch (e) { /* без хранилища тоже работает */ }
+    var pending = S.zzSession;
+    S.zzSession = null;
+    var id = pending ? await pending : null;
+    if (!id) return { best: zzBest() };
+    var r = await sb.rpc('zz_finish', { p_session: id, p_score: res.score, p_tiles: res.tiles, p_crystals: res.crystals });
+    if (r.error) return { best: zzBest() };
+    var row = firstRow(r.data) || {};
+    await Promise.all([loadZzBoard(), loadPoints()]);
+    if (S.view === 'game' && S.gameMode === 'zigzag') fillBoard(null, 'zz');
+    return { best: Math.max(zzBest(), row.best_all || 0), valid: row.valid, coins: row.coins };
+  }
+
   function stopZigzag() {
     if (!S.zz) return;
     try { S.zz.destroy(); } catch (e) { /* уже остановлена */ }
-    S.zz = null; S.zzBox = null; S.gameState = null;
+    S.zz = null; S.zzBox = null; S.gameState = null; S.zzSession = null;
   }
   function viewZigzag() {
     if (!S.zzBox && window.ZigzagGame) {
@@ -1931,16 +1978,15 @@
       S.gameState = 'start';
       S.zz = window.ZigzagGame.mount(S.zzBox, {
         best: zzBest,
-        onOver: function (res) {
-          var best = Math.max(zzBest(), res.score);
-          try { localStorage.setItem(zzBestKey(), String(best)); } catch (e) { /* без хранилища тоже работает */ }
-          return Promise.resolve({ best: best });
-        },
+        onStart: startZzSession,
+        onOver: finishZzSession,
         onStateChange: function (st) { if (st !== 'gone') S.gameState = st; }
       });
     }
     var game = S.zzBox || el('p', { class: 'empty', text: 'Игра не загрузилась. Обнови страницу.' });
-    return [game, el('p', { class: 'muted small zz-note', text: 'Рекорд хранится на этом телефоне.' })];
+    var board = el('section', { class: 'sect', id: 'zz-board' });
+    fillBoard(board, 'zz');
+    return [game, board];
   }
 
   function viewGame() {
@@ -1970,17 +2016,25 @@
     return [gameSwitch(), game, board];
   }
 
-  function fillBoard(sect) {
-    sect = sect || document.getElementById('board');
+  // Рейтинг: kind 'zz' — «Зигзаг», иначе «Сектор». Таблица одинаковая, отличается только последняя колонка.
+  function boardOf(kind) {
+    return kind === 'zz'
+      ? { id: 'zz-board', data: S.zzBoard, period: S.zzBoardPeriod, set: function (p) { S.zzBoardPeriod = p; }, col: '💎', field: 'crystals' }
+      : { id: 'board', data: S.board, period: S.boardPeriod, set: function (p) { S.boardPeriod = p; }, col: 'Perfect', field: 'perfects' };
+  }
+
+  function fillBoard(sect, kind) {
+    var b = boardOf(kind);
+    sect = sect || document.getElementById(b.id);
     if (!sect) return;
-    var period = S.boardPeriod;
+    var period = b.period;
     var seg = el('div', { class: 'segment', role: 'group', 'aria-label': 'За какое время' }, [['week', 'Неделя'], ['all', 'Всё время']].map(function (p) {
       return el('button', {
         type: 'button', text: p[1], 'aria-pressed': String(period === p[0]),
-        onclick: function () { if (S.boardPeriod !== p[0]) { S.boardPeriod = p[0]; fillBoard(); } }
+        onclick: function () { if (b.period !== p[0]) { b.set(p[0]); fillBoard(null, kind); } }
       });
     }));
-    var rows = S.board[period];
+    var rows = b.data[period];
     var body;
     if (!rows) body = el('p', { class: 'muted', text: 'Загружаю…' });
     else if (!rows.length) body = el('p', { class: 'empty', text: period === 'week'
@@ -1993,7 +2047,7 @@
           el('th', { scope: 'col', class: 'col-rank', text: '#' }),
           el('th', { scope: 'col', text: 'Кто' }),
           el('th', { scope: 'col', text: 'Очки' }),
-          el('th', { scope: 'col', text: 'Perfect' })
+          el('th', { scope: 'col', text: b.col })
         ])]),
         el('tbody', null, rows.map(function (r) {
           var me = r.user_id === S.userId;
@@ -2006,7 +2060,7 @@
               el('span', { class: 'who-name' }, [el('span', { text: r.display_name })])
             ])]),
             el('td', { class: 'lb-score', text: String(r.best) }),
-            el('td', { text: String(r.perfects) })
+            el('td', { text: String(r[b.field]) })
           ]);
         }))
       ])]);

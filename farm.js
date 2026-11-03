@@ -217,7 +217,6 @@
 
     var kids = [head, actions, grid];
     if (F.error) kids.push(el('p', { class: 'farm-err', role: 'status', text: F.error }));
-    kids.push(el('p', { class: 'muted small farm-note', text: 'Урожай не портится и ждёт тебя на грядке. Сбор — только по нажатию.' }));
     if (F.sheet) kids.push(sheetView());
     root.replaceChildren.apply(root, kids);
     showFloats();

@@ -2,6 +2,7 @@
    Шарик сам катится по дорожке-зигзагу. Нажатие меняет направление: вверх-вправо ↔ вверх-влево.
    Не повернул вовремя или повернул раньше — шарик падает с дорожки, игра окончена.
    Очко — за каждый удачный поворот. Чем больше очков, тем быстрее шарик и тем короче прямые участки.
+   На дорожке лежат кристаллы: шарик собирает их сам. 5 кристаллов = 1 монета сайта (начисляет база).
    Модуль отдаёт window.ZigzagGame: настройки, логику без экрана (её удобно проверять) и mount() для экрана игры. */
 (function (root) {
   'use strict';
@@ -19,6 +20,12 @@
       { from: 10, min: 1, max: 4 },
       { from: 30, min: 1, max: 3 }
     ],
+    // кристаллы: с 5-й плитки, не ближе crystalGap плиток друг к другу, дальше на каждой плитке шанс crystalChance.
+    // В среднем один кристалл на 8 плиток. Те же числа проверяет база (zz_max_crystals).
+    crystalFrom: 4,
+    crystalGap: 5,
+    crystalChance: 0.25,
+    crystalsPerCoin: 5,   // 5 кристаллов = 1 монета (по итогам партии, с округлением вниз)
     ahead: 40,            // сколько плиток дорожки держать готовыми впереди шарика
     countdownMs: 600,     // один шаг обратного отсчёта после возврата на вкладку
     fallMs: 650           // сколько длится падение шарика
@@ -44,9 +51,15 @@
     rand = rand || Math.random;
     var tiles = [];
     var at = {};
-    var endX = -1, endY = 0, genDir = 'x', genSeg = 0;
+    var endX = -1, endY = 0, genDir = 'x', genSeg = 0, lastCrystal = -100;
 
-    function add(x, y, seg) { at[x + ',' + y] = tiles.length; tiles.push({ x: x, y: y, seg: seg, gone: 0 }); }
+    function add(x, y, seg) {
+      var i = tiles.length;
+      var crystal = i >= CONFIG.crystalFrom && i - lastCrystal >= CONFIG.crystalGap && rand() < CONFIG.crystalChance;
+      if (crystal) lastCrystal = i;
+      at[x + ',' + y] = i;
+      tiles.push({ x: x, y: y, seg: seg, gone: 0, crystal: crystal, got: 0 });
+    }
     function addSegment(dir, len, seg) {
       for (var i = 0; i < len; i++) {
         if (dir === 'x') endX += 1; else endY += 1;
@@ -61,6 +74,7 @@
       score: 0,           // удачные повороты
       tile: 0,            // номер плитки под шариком
       seg: 0,
+      crystals: 0,        // собранные кристаллы
       alive: true,
       turns: 0,           // все нажатия
       tileAt: function (x, y) { var k = at[x + ',' + y]; return k === undefined ? -1 : k; },
@@ -79,7 +93,11 @@
           if (run.dir === 'x') run.bx += dist / steps; else run.by += dist / steps;
           var k = run.tileAt(Math.round(run.bx), Math.round(run.by));
           if (k < 0) { run.alive = false; break; }
-          if (k > run.tile) run.tile = k;
+          if (k > run.tile) {
+            // проехал по плиткам — собрал кристаллы на них
+            for (var j = run.tile + 1; j <= k; j++) if (tiles[j].crystal && !tiles[j].got) { tiles[j].got = -1; run.crystals += 1; }
+            run.tile = k;
+          }
           var s = tiles[k].seg;
           if (s > run.seg) { run.score += s - run.seg; run.seg = s; }
         }
@@ -113,7 +131,8 @@
   /* ---------- экран игры ----------
      container — пустой элемент. opts:
      best()                — текущий личный рекорд (число);
-     onOver(result)        — result = { score, tiles }; может вернуть Promise<{ best }>;
+     onStart()             — вызывается в начале игры (сайт заводит партию в базе);
+     onOver(result)        — result = { score, tiles, crystals }; может вернуть Promise<{ best, valid, coins }>;
      onStateChange(state)  — 'start' | 'play' | 'over' | 'gone', чтобы сайт знал, что идёт игра.
      Возвращает { destroy } — останавливает анимацию и снимает обработчики. */
   function mount(container, opts) {
@@ -133,8 +152,10 @@
     field.setAttribute('aria-label', 'Игровое поле: нажми в любом месте экрана, чтобы шарик повернул');
     var canvas = h('canvas', 'zz-canvas');
     var scoreEl = h('div', 'sector-score zz-score', '0');
+    var gemsEl = h('div', 'zz-gems', '💎 0');
+    gemsEl.setAttribute('aria-label', 'Кристаллы');
     var hint = h('div', 'sector-hint zz-hint', '');
-    field.appendChild(canvas); field.appendChild(scoreEl); field.appendChild(hint);
+    field.appendChild(canvas); field.appendChild(scoreEl); field.appendChild(gemsEl); field.appendChild(hint);
     var panel = h('div', 'sector-panel');
     wrapEl.appendChild(field); wrapEl.appendChild(panel);
     container.appendChild(wrapEl);
@@ -154,7 +175,7 @@
     function resize() {
       var w = Math.min(field.clientWidth || 320, 420);
       W = Math.max(240, Math.floor(w));
-      H = Math.round(Math.min(W * 1.25, 480));
+      H = Math.round(Math.min(W * 0.92, 380)); // поле ниже, чтобы кнопка «Играть» помещалась на экран
       TW = W / 6.4; TH = TW / 2; D = TW * 0.42;
       dpr = Math.min(root.devicePixelRatio || 1, 3);
       canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
@@ -189,10 +210,26 @@
       ctx.beginPath(); ctx.moveTo(sx, sy + TH / 2); ctx.lineTo(sx + TW / 2, sy); ctx.lineTo(sx + TW / 2, sy + D); ctx.lineTo(sx, sy + TH / 2 + D); ctx.closePath(); ctx.fill();
       ctx.fillStyle = TOP; tilePath(sx, sy); ctx.fill();
       ctx.globalAlpha = 1;
+      if (t.crystal) drawCrystal(t, sx, sy, now, alpha);
+    }
+    // Кристалл парит над плиткой; собранный — взлетает и тает.
+    function drawCrystal(t, sx, sy, now, alpha) {
+      var k = 0;
+      if (t.got) { k = t.got > 0 ? (now - t.got) / 380 : 0; if (k >= 1) return; }
+      var w = TW * 0.17, hh = TW * 0.27;
+      var bob = reduceMotion || t.got ? 0 : Math.sin(now / 260 + t.x + t.y) * TH * 0.08;
+      var cx = sx, cy = sy - TH * 0.62 + bob - (reduceMotion ? 0 : k * TH * 1.2);
+      ctx.globalAlpha = alpha * (1 - k);
+      if (!t.got) { ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(sx, sy, w * 0.55, w * 0.25, 0, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = '#8BE9FF';
+      ctx.beginPath(); ctx.moveTo(cx, cy - hh / 2); ctx.lineTo(cx, cy + hh / 2); ctx.lineTo(cx - w / 2, cy); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#35B3E6';
+      ctx.beginPath(); ctx.moveTo(cx, cy - hh / 2); ctx.lineTo(cx + w / 2, cy); ctx.lineTo(cx, cy + hh / 2); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
     }
     function drawBall(ox, oy, now) {
       var p = proj(run.bx, run.by);
-      var r = TW * 0.17;
+      var r = TW * 0.12; // шарик поменьше — видно, где он падает
       var sx = p.x + ox, sy = p.y + oy, drop = 0, alpha = 1;
       if (phase === 'falling' || screen === 'over') {
         var k = Math.min(1, (now - fallAt) / CONFIG.fallMs);
@@ -213,7 +250,7 @@
     function draw(now) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
-      var ox = W / 2 - camX, oy = H * 0.74 - camY;
+      var ox = W / 2 - camX, oy = H * 0.72 - camY;
       var row = run.bx + run.by;
       var from = Math.max(0, run.tile - 10), to = Math.min(run.tiles.length - 1, run.tile + 34);
       var falling = phase === 'falling' || screen === 'over';
@@ -247,7 +284,7 @@
       if (phase !== 'falling' && screen !== 'over') { camX += (p.x - camX) * k; camY += (p.y - camY) * k; }
       draw(now);
       var animating = screen === 'play' && (phase === 'running' || phase === 'countdown' || phase === 'falling');
-      var fadingTiles = run.tiles.some(function (t) { return t.gone && now - t.gone < 700; });
+      var fadingTiles = run.tiles.some(function (t) { return (t.gone && now - t.gone < 700) || (t.got > 0 && now - t.got < 380); });
       if (animating || fadingTiles || (screen === 'over' && now - fallAt < CONFIG.fallMs)) loop();
     }
     function loop() { if (!raf && !destroyed) raf = requestAnimationFrame(frame); }
@@ -257,8 +294,13 @@
       if (t <= lastT) return;
       var sec = Math.min(0.1, (t - lastT) / 1000); // после зависания не телепортируемся
       lastT = t;
-      var before = run.score;
+      var before = run.score, gemsBefore = run.crystals;
       run.advance(sec);
+      if (run.crystals !== gemsBefore) {
+        for (var g = Math.max(0, run.tile - 6); g <= run.tile; g++) if (run.tiles[g].got < 0) run.tiles[g].got = t; // время сбора — для анимации
+        gemsEl.textContent = '💎 ' + run.crystals;
+        gemsEl.classList.remove('bump'); void gemsEl.offsetWidth; gemsEl.classList.add('bump');
+      }
       // плитки далеко позади осыпаются
       for (var i = Math.max(0, run.tile - 12); i < run.tile - 2; i++) if (!run.tiles[i].gone) run.tiles[i].gone = t;
       if (run.score !== before) {
@@ -273,11 +315,12 @@
       screen = 'play'; phase = 'running';
       lastT = performance.now();
       snapCamera();
-      scoreEl.textContent = '0'; hint.textContent = '';
+      scoreEl.textContent = '0'; gemsEl.textContent = '💎 0'; hint.textContent = '';
       wrapEl.classList.add('playing'); wrapEl.classList.remove('over');
       document.documentElement.classList.add('sector-on');
       renderPanel();
       if (opts.onStateChange) opts.onStateChange('play');
+      if (opts.onStart) { try { opts.onStart(); } catch (e) { /* игра идёт и без базы */ } }
       try { field.focus({ preventScroll: true }); } catch (e) { /* без фокуса тоже работает */ }
       loop();
     }
@@ -297,7 +340,7 @@
       fallAt = performance.now();
       wrapEl.classList.remove('playing');
       document.documentElement.classList.remove('sector-on');
-      var result = { score: run.score, tiles: run.tile };
+      var result = { score: run.score, tiles: run.tile, crystals: run.crystals };
       var prevBest = opts.best ? (opts.best() || 0) : 0;
       loop();
       setTimeout(function () {
@@ -329,8 +372,8 @@
     function renderPanel(result, prevBest, info) {
       panel.replaceChildren();
       if (screen === 'start') {
-        panel.appendChild(h('p', 'sector-lead', 'Нажимай, чтобы шарик поворачивал, и не упади с дорожки'));
-        panel.appendChild(h('p', 'sector-best', 'Личный рекорд: ' + (opts.best ? (opts.best() || 0) : 0)));
+        panel.appendChild(h('p', 'sector-lead', 'Жми — шарик повернёт. Не упади!'));
+        panel.appendChild(h('p', 'sector-best', 'Рекорд: ' + (opts.best ? (opts.best() || 0) : 0) + ' · ' + CONFIG.crystalsPerCoin + ' 💎 = 1 🪙'));
         var b = h('button', 'btn primary sector-play', 'Играть');
         b.type = 'button';
         b.addEventListener('click', function (ev) { ev.stopPropagation(); start(); });
@@ -343,9 +386,16 @@
         var row = h('div', 'sector-stats');
         function stat(n, l) { var s = h('div', 'sector-stat'); s.appendChild(h('span', 'n', String(n))); s.appendChild(h('span', 'l', l)); return s; }
         row.appendChild(stat(result.score, 'очки'));
-        row.appendChild(stat(result.tiles, 'плиток'));
+        row.appendChild(stat(result.crystals, 'кристаллы'));
         row.appendChild(stat(best, 'рекорд'));
         panel.appendChild(row);
+        if (info && info.valid === false) panel.appendChild(h('p', 'sector-warn', 'Этот результат не прошёл проверку и не попадёт в рейтинг.'));
+        // монеты за кристаллы начисляет база
+        if (info && info.valid !== false && typeof info.coins === 'number') {
+          panel.appendChild(h('p', 'sector-points' + (info.coins > 0 ? ' got' : ''), info.coins > 0
+            ? '+' + info.coins + ' 🪙 за эту игру'
+            : 'Монеты: 1 за каждые ' + CONFIG.crystalsPerCoin + ' 💎'));
+        }
         var again = h('button', 'btn primary sector-play', 'Играть ещё');
         again.type = 'button';
         again.addEventListener('click', function (ev) { ev.stopPropagation(); start(); });
@@ -400,7 +450,9 @@
         if (opts.onStateChange) opts.onStateChange('gone');
       },
       // для проверок
-      _state: function () { return { screen: screen, phase: phase, score: run.score, tile: run.tile, dir: run.dir, bx: run.bx, by: run.by, speed: speedFor(run.score), alive: run.alive }; },
+      // рекорд пришёл из базы — обновить подпись на стартовом экране
+      refreshBest: function () { if (!destroyed && screen === 'start') renderPanel(); },
+      _state: function () { return { screen: screen, phase: phase, score: run.score, tile: run.tile, crystals: run.crystals, dir: run.dir, bx: run.bx, by: run.by, speed: speedFor(run.score), alive: run.alive }; },
       _run: function () { return run; },
       _press: press
     };
