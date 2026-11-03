@@ -39,6 +39,7 @@
     points: null,            // мои баллы: { balance, today, game_today }
     boardPeriod: 'week',
     gameState: null,         // start | play | over, пока открыта вкладка «Игра»
+    gameMode: (function () { try { return localStorage.getItem('game-mode') === 'farm' ? 'farm' : 'sector'; } catch (e) { return 'sector'; } })(), // sector | farm — что открыто во вкладке «Игра»
     horoOpen: {},            // какие категории гороскопа раскрыты (сначала все закрыты)
     members: [],             // все участники
     stats: [],               // серии и счётчики по участникам
@@ -1255,6 +1256,7 @@
   function navTarget(key) { return key === 'today' ? (S.lastDay || 'today') : key; }
   function titleFor(view) {
     if (view === 'archive') return S.archiveKind === 'fill' ? 'Прошлые фразы' : 'Прошлые вопросы';
+    if (view === 'game' && S.gameMode === 'farm') return 'Ферма';
     return TITLES[view] || APP;
   }
 
@@ -1320,7 +1322,8 @@
     }
     if (view === 'game') {
       render();
-      loadBoard().then(function () { if (S.view === 'game') fillBoard(); });
+      if (S.gameMode === 'farm') { if (window.Farm) window.Farm.enter(); }
+      else loadBoard().then(function () { if (S.view === 'game') fillBoard(); });
       return;
     }
     if (view === 'casino') {
@@ -1335,6 +1338,7 @@
   function screenApp() {
     var body;
     if (S.view !== 'game') stopGame();
+    if ((S.view !== 'game' || S.gameMode !== 'farm') && window.Farm) window.Farm.leave();
     if (S.view !== 'casino' && window.Casino) window.Casino.leave();
     if (S.view === 'game') body = viewGame();
     else if (S.view === 'casino') body = window.Casino ? window.Casino.view() : [el('p', { class: 'empty', text: 'Казино не загрузилось. Обнови страницу.' })];
@@ -1371,7 +1375,7 @@
       active = false;
       if (S.stage !== 'app' || ev.touches.length !== 1 || window.innerWidth > 640) return;
       var t = ev.target;
-      if (t.closest && t.closest('input, textarea, .table-wrap, .picker, .menu, .celebrate, .bottom-nav, .emojis, .zodiacs, .swatches')) return;
+      if (t.closest && t.closest('input, textarea, .table-wrap, .picker, .menu, .celebrate, .bottom-nav, .emojis, .zodiacs, .swatches, .farm-back')) return;
       if (openPicker) return;
       if (S.gameState === 'play' || (t.closest && t.closest('.sector-field'))) return; // во время игры вкладки не листаются
       sx = ev.touches[0].clientX; sy = ev.touches[0].clientY; t0 = Date.now(); active = true;
@@ -1887,7 +1891,35 @@
     };
   }
 
+  // Во вкладке «Игра» два раздела: «Сектор» и «Ферма». Выбор запоминается на этом телефоне.
+  function gameSwitch() {
+    return el('div', { class: 'segment day-switch game-switch', role: 'group', 'aria-label': 'Сектор или ферма' }, [['sector', 'Сектор'], ['farm', 'Ферма']].map(function (x) {
+      return el('button', {
+        type: 'button', text: x[1], 'aria-pressed': String(S.gameMode === x[0]),
+        onclick: function () { setGameMode(x[0]); }
+      });
+    }));
+  }
+
+  function setGameMode(mode) {
+    if (S.gameMode === mode || S.gameState === 'play') return; // во время партии «Сектора» не переключаем
+    S.gameMode = mode;
+    try { localStorage.setItem('game-mode', mode); } catch (e) { /* без хранилища тоже работает */ }
+    if (mode === 'farm') {
+      stopGame();
+      render();
+      if (window.Farm) window.Farm.enter();
+    } else {
+      render();
+      loadBoard().then(function () { if (S.view === 'game' && S.gameMode === 'sector') fillBoard(); });
+    }
+  }
+
   function viewGame() {
+    if (S.gameMode === 'farm') {
+      stopGame();
+      return [gameSwitch()].concat(window.Farm ? window.Farm.view() : [el('p', { class: 'empty', text: 'Ферма не загрузилась. Обнови страницу.' })]);
+    }
     if (!S.gameBox && window.SectorGame) {
       S.gameBox = el('section', { class: 'sect game-sect', 'aria-label': 'Игра «Сектор»' });
       S.gameState = 'start';
@@ -1901,7 +1933,7 @@
     var game = S.gameBox || el('p', { class: 'empty', text: 'Игра не загрузилась. Обнови страницу.' });
     var board = el('section', { class: 'sect', id: 'board' });
     fillBoard(board);
-    return [game, board];
+    return [gameSwitch(), game, board];
   }
 
   function fillBoard(sect) {

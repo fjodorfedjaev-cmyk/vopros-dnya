@@ -394,6 +394,7 @@ details.day[open] > summary { border-bottom: 1px solid var(--line); }
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); transition: opacity 0.35s ease;
 }
 .toast.out { opacity: 0; }
+.toast { pointer-events: none; } /* подсказка не мешает нажимать то, что под ней */
 @media (max-width: 640px) { .toast { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); } }
 @media (prefers-reduced-motion: reduce) { .menu { animation: none; } }
 
@@ -771,3 +772,82 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .crash-mult.rising { color: var(--ink); }
 .crash-mult.after { color: var(--muted); font-size: 36px; }
 .crash-badge { position: absolute; top: 10px; left: 10px; padding: 4px 10px; border-radius: 999px; background: rgba(242, 120, 44, 0.16); color: var(--accent); font: 600 13px var(--font-mono); pointer-events: none; }
+
+/* ----- Ферма: поле 4×4, серебро ----- */
+html.sector-on .game-switch { pointer-events: none; opacity: 0.35; }
+.farm { display: flex; flex-direction: column; gap: 14px; }
+.farm.busy .farm-plot, .farm.busy .farm-actions .btn, .farm.busy .farm-sheet button { pointer-events: none; }
+.farm-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; }
+.farm-head-l, .farm-head-r { display: flex; flex-direction: column; gap: 2px; }
+.farm-head-r { align-items: flex-end; }
+.farm-bal { display: inline-flex; align-items: center; gap: 8px; font: 600 26px var(--font-mono); color: #DDE2E7; font-variant-numeric: tabular-nums; }
+.farm-cells { font: 600 18px var(--font-mono); font-variant-numeric: tabular-nums; }
+.farm-coin { display: inline-block; flex: none; width: 13px; height: 13px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #FFFFFF, #C9CED4 45%, #868D95); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25); }
+.farm-coin.lg { width: 20px; height: 20px; }
+.farm-amt { display: inline-flex; align-items: center; gap: 5px; font: 600 15px var(--font-mono); font-variant-numeric: tabular-nums; vertical-align: -2px; }
+.farm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.farm-actions .btn { padding: 8px 10px; font-size: 14px; line-height: 1.25; }
+.farm-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.farm-plot {
+  position: relative; aspect-ratio: 1; min-width: 0; padding: 6px 4px; border-radius: 14px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: var(--ink); border: 1px solid #3A2D23;
+  background: repeating-linear-gradient(0deg, #2E231B 0 8px, #281E17 8px 16px);
+}
+.farm-plot:active:not(.is-locked) { transform: scale(0.97); }
+.farm-plot.is-empty { border-style: dashed; border-color: #5A4738; }
+.farm-plot.is-locked { background: #191817; border-color: #262423; }
+.farm-plot.is-next { background: #1C1A19; border: 1px dashed var(--accent); }
+.farm-plot.is-ready { border: 2px solid var(--accent); box-shadow: 0 0 0 3px rgba(242, 120, 44, 0.14); }
+.farm-art { display: block; width: 62%; height: 62%; }
+.farm-art svg { display: block; }
+.farm-plot.is-ready .farm-art { animation: farmBob 1.8s ease-in-out infinite; }
+.farm-time { font: 500 12px/1.2 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.farm-time.ready { color: var(--accent); font-weight: 600; }
+.farm-lock { display: block; width: 30%; height: 30%; color: #45413E; }
+.farm-plot.is-next .farm-lock { color: var(--accent); width: 26%; height: 26%; }
+.farm-price { font-size: 12px; gap: 3px; }
+.farm-price .farm-coin { width: 9px; height: 9px; }
+.farm-plus { font: 400 28px/1 var(--font-body); color: #7A6656; }
+.farm-float {
+  position: absolute; left: 50%; top: 8%; transform: translateX(-50%); pointer-events: none;
+  font: 700 15px var(--font-mono); color: var(--accent); text-shadow: 0 1px 3px #000;
+  animation: farmFloat 1s ease-out forwards;
+}
+.farm-err { color: var(--err); font-size: 14px; }
+.farm-note { text-align: center; }
+.farm-msg { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+
+/* окно снизу: выбор семян, покупка клетки, растущее растение */
+.farm-back { position: fixed; inset: 0; z-index: 58; display: flex; align-items: flex-end; justify-content: center; background: rgba(0, 0, 0, 0.6); animation: farmFade 0.15s ease-out; }
+.farm-sheet {
+  width: 100%; max-width: 640px; max-height: 84vh; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px max(18px, env(safe-area-inset-bottom, 0px));
+  background: var(--surface); border: 1px solid var(--line); border-bottom: 0; border-radius: 20px 20px 0 0;
+  animation: farmUp 0.2s ease-out;
+}
+.farm-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.farm-sheet h2 { font: 600 19px/1.25 var(--font-display); }
+.farm-x { flex: none; width: 44px; height: 44px; margin-right: -8px; border: 0; border-radius: 10px; background: none; color: var(--muted); font-size: 28px; line-height: 1; }
+.farm-sheet .btn { width: 100%; }
+.farm-seed-head, .farm-seed { display: grid; grid-template-columns: 32px minmax(0, 1fr) 46px 54px 52px; gap: 6px; align-items: center; }
+.farm-seed-head { padding: 0 10px; font-size: 11px; line-height: 1.2; color: var(--muted); text-align: right; }
+.farm-seed { min-height: 56px; padding: 8px 10px; text-align: left; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; }
+.farm-seed:hover:not(:disabled) { border-color: var(--accent); }
+.farm-seed:disabled { opacity: 0.45; cursor: not-allowed; }
+.farm-seed .farm-art { width: 32px; height: 32px; }
+.farm-seed-main { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.farm-seed-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.farm-seed-num { font: 500 14px var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.farm-seed-num.gain { color: var(--accent); }
+.farm-info { display: flex; gap: 12px; align-items: center; }
+.farm-info .farm-art { flex: none; width: 56px; height: 56px; }
+.farm-info p { margin: 3px 0; }
+.farm-time-big { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+@keyframes farmBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes farmFloat { 0% { opacity: 0; transform: translate(-50%, 6px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -26px); } }
+@keyframes farmUp { from { transform: translateY(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+@keyframes farmFade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .farm-plot.is-ready .farm-art, .farm-float, .farm-back, .farm-sheet { animation: none !important; } .farm-plot:active { transform: none; } }
