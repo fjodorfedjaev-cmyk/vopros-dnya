@@ -851,3 +851,17 @@ html.sector-on .game-switch { pointer-events: none; opacity: 0.35; }
 @keyframes farmUp { from { transform: translateY(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
 @keyframes farmFade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .farm-plot.is-ready .farm-art, .farm-float, .farm-back, .farm-sheet { animation: none !important; } .farm-plot:active { transform: none; } }
+
+/* ===== игра «Зигзаг» ===== */
+.game-switch { grid-template-columns: repeat(3, 1fr); }
+.zz-field {
+  position: relative; width: 100%; max-width: 420px; display: flex; justify-content: center; overflow: hidden;
+  touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  outline: none; border-radius: 14px;
+}
+.sector.playing .zz-field { cursor: pointer; }
+.zz-field:focus-visible { box-shadow: 0 0 0 3px var(--soft); }
+.zz-canvas { display: block; }
+.zz-score { position: absolute; top: 12px; left: 0; right: 0; text-align: center; pointer-events: none; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.75); }
+.zz-hint { position: absolute; top: 62px; left: 0; right: 0; text-align: center; pointer-events: none; }
+.zz-note { text-align: center; }

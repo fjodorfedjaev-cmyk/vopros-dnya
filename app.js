@@ -39,7 +39,8 @@
     points: null,            // мои баллы: { balance, today, game_today }
     boardPeriod: 'week',
     gameState: null,         // start | play | over, пока открыта вкладка «Игра»
-    gameMode: (function () { try { return localStorage.getItem('game-mode') === 'farm' ? 'farm' : 'sector'; } catch (e) { return 'sector'; } })(), // sector | farm — что открыто во вкладке «Игра»
+    gameMode: (function () { try { var m = localStorage.getItem('game-mode'); return m === 'farm' || m === 'zigzag' ? m : 'sector'; } catch (e) { return 'sector'; } })(), // sector | farm | zigzag — что открыто во вкладке «Игра»
+    zz: null, zzBox: null,   // игра «Зигзаг», пока она на экране
     horoOpen: {},            // какие категории гороскопа раскрыты (сначала все закрыты)
     members: [],             // все участники
     stats: [],               // серии и счётчики по участникам
@@ -1257,6 +1258,7 @@
   function titleFor(view) {
     if (view === 'archive') return S.archiveKind === 'fill' ? 'Прошлые фразы' : 'Прошлые вопросы';
     if (view === 'game' && S.gameMode === 'farm') return 'Ферма';
+    if (view === 'game' && S.gameMode === 'zigzag') return 'Зигзаг';
     return TITLES[view] || APP;
   }
 
@@ -1323,7 +1325,7 @@
     if (view === 'game') {
       render();
       if (S.gameMode === 'farm') { if (window.Farm) window.Farm.enter(); }
-      else loadBoard().then(function () { if (S.view === 'game') fillBoard(); });
+      else if (S.gameMode === 'sector') loadBoard().then(function () { if (S.view === 'game') fillBoard(); });
       return;
     }
     if (view === 'casino') {
@@ -1337,7 +1339,7 @@
 
   function screenApp() {
     var body;
-    if (S.view !== 'game') stopGame();
+    if (S.view !== 'game') { stopGame(); stopZigzag(); }
     if ((S.view !== 'game' || S.gameMode !== 'farm') && window.Farm) window.Farm.leave();
     if (S.view !== 'casino' && window.Casino) window.Casino.leave();
     if (S.view === 'game') body = viewGame();
@@ -1377,7 +1379,7 @@
       var t = ev.target;
       if (t.closest && t.closest('input, textarea, .table-wrap, .picker, .menu, .celebrate, .bottom-nav, .emojis, .zodiacs, .swatches, .farm-back')) return;
       if (openPicker) return;
-      if (S.gameState === 'play' || (t.closest && t.closest('.sector-field'))) return; // во время игры вкладки не листаются
+      if (S.gameState === 'play' || (t.closest && t.closest('.sector-field, .zz-field'))) return; // во время игры вкладки не листаются
       sx = ev.touches[0].clientX; sy = ev.touches[0].clientY; t0 = Date.now(); active = true;
     }, { passive: true });
     document.addEventListener('touchend', function (ev) {
@@ -1891,9 +1893,9 @@
     };
   }
 
-  // Во вкладке «Игра» два раздела: «Сектор» и «Ферма». Выбор запоминается на этом телефоне.
+  // Во вкладке «Игра» три раздела: «Сектор», «Ферма» и «Зигзаг». Выбор запоминается на этом телефоне.
   function gameSwitch() {
-    return el('div', { class: 'segment day-switch game-switch', role: 'group', 'aria-label': 'Сектор или ферма' }, [['sector', 'Сектор'], ['farm', 'Ферма']].map(function (x) {
+    return el('div', { class: 'segment day-switch game-switch', role: 'group', 'aria-label': 'Какая игра' }, [['sector', 'Сектор'], ['farm', 'Ферма'], ['zigzag', 'Зигзаг']].map(function (x) {
       return el('button', {
         type: 'button', text: x[1], 'aria-pressed': String(S.gameMode === x[0]),
         onclick: function () { setGameMode(x[0]); }
@@ -1902,24 +1904,56 @@
   }
 
   function setGameMode(mode) {
-    if (S.gameMode === mode || S.gameState === 'play') return; // во время партии «Сектора» не переключаем
+    if (S.gameMode === mode || S.gameState === 'play') return; // во время партии игру не переключаем
     S.gameMode = mode;
     try { localStorage.setItem('game-mode', mode); } catch (e) { /* без хранилища тоже работает */ }
-    if (mode === 'farm') {
-      stopGame();
-      render();
-      if (window.Farm) window.Farm.enter();
-    } else {
-      render();
-      loadBoard().then(function () { if (S.view === 'game' && S.gameMode === 'sector') fillBoard(); });
+    if (mode !== 'sector') stopGame();
+    if (mode !== 'zigzag') stopZigzag();
+    render();
+    if (mode === 'farm') { if (window.Farm) window.Farm.enter(); }
+    else if (mode === 'sector') loadBoard().then(function () { if (S.view === 'game' && S.gameMode === 'sector') fillBoard(); });
+  }
+
+  /* ----- «Зигзаг» ----- */
+  // Пока игра без золота: рекорд хранится только на этом телефоне.
+  function zzBestKey() { return 'zigzag-best:' + (S.userId || 'anon'); }
+  function zzBest() {
+    try { return parseInt(localStorage.getItem(zzBestKey()), 10) || 0; } catch (e) { return 0; }
+  }
+  function stopZigzag() {
+    if (!S.zz) return;
+    try { S.zz.destroy(); } catch (e) { /* уже остановлена */ }
+    S.zz = null; S.zzBox = null; S.gameState = null;
+  }
+  function viewZigzag() {
+    if (!S.zzBox && window.ZigzagGame) {
+      S.zzBox = el('section', { class: 'sect game-sect', 'aria-label': 'Игра «Зигзаг»' });
+      S.gameState = 'start';
+      S.zz = window.ZigzagGame.mount(S.zzBox, {
+        best: zzBest,
+        onOver: function (res) {
+          var best = Math.max(zzBest(), res.score);
+          try { localStorage.setItem(zzBestKey(), String(best)); } catch (e) { /* без хранилища тоже работает */ }
+          return Promise.resolve({ best: best });
+        },
+        onStateChange: function (st) { if (st !== 'gone') S.gameState = st; }
+      });
     }
+    var game = S.zzBox || el('p', { class: 'empty', text: 'Игра не загрузилась. Обнови страницу.' });
+    return [game, el('p', { class: 'muted small zz-note', text: 'Рекорд хранится на этом телефоне.' })];
   }
 
   function viewGame() {
     if (S.gameMode === 'farm') {
-      stopGame();
+      if (S.game) stopGame();
+      stopZigzag();
       return [gameSwitch()].concat(window.Farm ? window.Farm.view() : [el('p', { class: 'empty', text: 'Ферма не загрузилась. Обнови страницу.' })]);
     }
+    if (S.gameMode === 'zigzag') {
+      if (S.game) stopGame();
+      return [gameSwitch()].concat(viewZigzag());
+    }
+    stopZigzag();
     if (!S.gameBox && window.SectorGame) {
       S.gameBox = el('section', { class: 'sect game-sect', 'aria-label': 'Игра «Сектор»' });
       S.gameState = 'start';
