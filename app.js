@@ -1921,7 +1921,7 @@
   }
 
   /* ----- «Зигзаг» ----- */
-  // Партия заводится в базе при старте (zz_start), в конце база проверяет результат и начисляет монеты за кристаллы (zz_finish).
+  // Партия заводится в базе при старте (zz_start), в конце база проверяет результат и зачисляет собранные монеты (zz_finish).
   function zzBestKey() { return 'zigzag-best:' + (S.userId || 'anon'); }
   function zzLocalBest() {
     try { return parseInt(localStorage.getItem(zzBestKey()), 10) || 0; } catch (e) { return 0; }
@@ -1959,7 +1959,7 @@
     S.zzSession = null;
     var id = pending ? await pending : null;
     if (!id) return { best: zzBest() };
-    var r = await sb.rpc('zz_finish', { p_session: id, p_score: res.score, p_tiles: res.tiles, p_crystals: res.crystals });
+    var r = await sb.rpc('zz_finish', { p_session: id, p_score: res.score, p_tiles: res.tiles, p_coins: res.coins });
     if (r.error) return { best: zzBest() };
     var row = firstRow(r.data) || {};
     await Promise.all([loadZzBoard(), loadPoints()]);
@@ -2019,7 +2019,7 @@
   // Рейтинг: kind 'zz' — «Зигзаг», иначе «Сектор». Таблица одинаковая, отличается только последняя колонка.
   function boardOf(kind) {
     return kind === 'zz'
-      ? { id: 'zz-board', data: S.zzBoard, period: S.zzBoardPeriod, set: function (p) { S.zzBoardPeriod = p; }, col: '💎', field: 'crystals' }
+      ? { id: 'zz-board', data: S.zzBoard, period: S.zzBoardPeriod, set: function (p) { S.zzBoardPeriod = p; }, col: '🪙', field: 'coins' }
       : { id: 'board', data: S.board, period: S.boardPeriod, set: function (p) { S.boardPeriod = p; }, col: 'Perfect', field: 'perfects' };
   }
 

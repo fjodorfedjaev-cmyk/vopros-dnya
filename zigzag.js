@@ -2,7 +2,7 @@
    Шарик сам катится по дорожке-зигзагу. Нажатие меняет направление: вверх-вправо ↔ вверх-влево.
    Не повернул вовремя или повернул раньше — шарик падает с дорожки, игра окончена.
    Очко — за каждый удачный поворот. Чем больше очков, тем быстрее шарик и тем короче прямые участки.
-   На дорожке лежат кристаллы: шарик собирает их сам. 5 кристаллов = 1 монета сайта (начисляет база).
+   На дорожке лежат монеты: шарик собирает их сам, каждая — 1 монета сайта (начисляет база после партии).
    Модуль отдаёт window.ZigzagGame: настройки, логику без экрана (её удобно проверять) и mount() для экрана игры. */
 (function (root) {
   'use strict';
@@ -20,12 +20,13 @@
       { from: 10, min: 1, max: 4 },
       { from: 30, min: 1, max: 3 }
     ],
-    // кристаллы: с 5-й плитки, не ближе crystalGap плиток друг к другу, дальше на каждой плитке шанс crystalChance.
-    // В среднем один кристалл на 8 плиток. Те же числа проверяет база (zz_max_crystals).
-    crystalFrom: 4,
-    crystalGap: 5,
-    crystalChance: 0.25,
-    crystalsPerCoin: 5,   // 5 кристаллов = 1 монета (по итогам партии, с округлением вниз)
+    // Монеты на дорожке: первая не раньше плитки №8 (9-я по счёту), дальше не ближе coinGap плиток друг к другу,
+    // после этого на каждой плитке шанс coinChance. В среднем одна монета на ~33 плитки —
+    // по партиям друзей это в 1,5 раза больше, чем было с кристаллами (5 💎 = 1 🪙).
+    // Те же числа проверяет база (zz_max_coins).
+    coinFrom: 8,
+    coinGap: 25,
+    coinChance: 0.1,
     ahead: 40,            // сколько плиток дорожки держать готовыми впереди шарика
     countdownMs: 600,     // один шаг обратного отсчёта после возврата на вкладку
     fallMs: 650           // сколько длится падение шарика
@@ -51,14 +52,14 @@
     rand = rand || Math.random;
     var tiles = [];
     var at = {};
-    var endX = -1, endY = 0, genDir = 'x', genSeg = 0, lastCrystal = -100;
+    var endX = -1, endY = 0, genDir = 'x', genSeg = 0, lastCoin = -1000;
 
     function add(x, y, seg) {
       var i = tiles.length;
-      var crystal = i >= CONFIG.crystalFrom && i - lastCrystal >= CONFIG.crystalGap && rand() < CONFIG.crystalChance;
-      if (crystal) lastCrystal = i;
+      var coin = i >= CONFIG.coinFrom && i - lastCoin >= CONFIG.coinGap && rand() < CONFIG.coinChance;
+      if (coin) lastCoin = i;
       at[x + ',' + y] = i;
-      tiles.push({ x: x, y: y, seg: seg, gone: 0, crystal: crystal, got: 0 });
+      tiles.push({ x: x, y: y, seg: seg, gone: 0, coin: coin, got: 0 });
     }
     function addSegment(dir, len, seg) {
       for (var i = 0; i < len; i++) {
@@ -74,7 +75,7 @@
       score: 0,           // удачные повороты
       tile: 0,            // номер плитки под шариком
       seg: 0,
-      crystals: 0,        // собранные кристаллы
+      coins: 0,           // собранные монеты
       alive: true,
       turns: 0,           // все нажатия
       tileAt: function (x, y) { var k = at[x + ',' + y]; return k === undefined ? -1 : k; },
@@ -94,8 +95,8 @@
           var k = run.tileAt(Math.round(run.bx), Math.round(run.by));
           if (k < 0) { run.alive = false; break; }
           if (k > run.tile) {
-            // проехал по плиткам — собрал кристаллы на них
-            for (var j = run.tile + 1; j <= k; j++) if (tiles[j].crystal && !tiles[j].got) { tiles[j].got = -1; run.crystals += 1; }
+            // проехал по плиткам — собрал монеты на них
+            for (var j = run.tile + 1; j <= k; j++) if (tiles[j].coin && !tiles[j].got) { tiles[j].got = -1; run.coins += 1; }
             run.tile = k;
           }
           var s = tiles[k].seg;
@@ -132,7 +133,7 @@
      container — пустой элемент. opts:
      best()                — текущий личный рекорд (число);
      onStart()             — вызывается в начале игры (сайт заводит партию в базе);
-     onOver(result)        — result = { score, tiles, crystals }; может вернуть Promise<{ best, valid, coins }>;
+     onOver(result)        — result = { score, tiles, coins }; может вернуть Promise<{ best, valid, coins }>;
      onStateChange(state)  — 'start' | 'play' | 'over' | 'gone', чтобы сайт знал, что идёт игра.
      Возвращает { destroy } — останавливает анимацию и снимает обработчики. */
   function mount(container, opts) {
@@ -152,8 +153,8 @@
     field.setAttribute('aria-label', 'Игровое поле: нажми в любом месте экрана, чтобы шарик повернул');
     var canvas = h('canvas', 'zz-canvas');
     var scoreEl = h('div', 'sector-score zz-score', '0');
-    var gemsEl = h('div', 'zz-gems', '💎 0');
-    gemsEl.setAttribute('aria-label', 'Кристаллы');
+    var gemsEl = h('div', 'zz-gems', '🪙 0');
+    gemsEl.setAttribute('aria-label', 'Монеты за партию');
     var hint = h('div', 'sector-hint zz-hint', '');
     field.appendChild(canvas); field.appendChild(scoreEl); field.appendChild(gemsEl); field.appendChild(hint);
     var panel = h('div', 'sector-panel');
@@ -210,21 +211,24 @@
       ctx.beginPath(); ctx.moveTo(sx, sy + TH / 2); ctx.lineTo(sx + TW / 2, sy); ctx.lineTo(sx + TW / 2, sy + D); ctx.lineTo(sx, sy + TH / 2 + D); ctx.closePath(); ctx.fill();
       ctx.fillStyle = TOP; tilePath(sx, sy); ctx.fill();
       ctx.globalAlpha = 1;
-      if (t.crystal) drawCrystal(t, sx, sy, now, alpha);
+      if (t.coin) drawCoin(t, sx, sy, now, alpha);
     }
-    // Кристалл парит над плиткой; собранный — взлетает и тает.
-    function drawCrystal(t, sx, sy, now, alpha) {
+    // Монета стоит ребром над плиткой и медленно вращается; собранная — взлетает и тает.
+    function drawCoin(t, sx, sy, now, alpha) {
       var k = 0;
       if (t.got) { k = t.got > 0 ? (now - t.got) / 380 : 0; if (k >= 1) return; }
-      var w = TW * 0.17, hh = TW * 0.27;
+      var r = TW * 0.17;
+      var turn = reduceMotion ? 1 : Math.max(0.4, Math.abs(Math.cos(now / 420 + t.x + t.y))); // «вращение» — сжимаем по ширине
       var bob = reduceMotion || t.got ? 0 : Math.sin(now / 260 + t.x + t.y) * TH * 0.08;
-      var cx = sx, cy = sy - TH * 0.62 + bob - (reduceMotion ? 0 : k * TH * 1.2);
+      var cx = sx, cy = sy - TH * 0.7 + bob - (reduceMotion ? 0 : k * TH * 1.2);
       ctx.globalAlpha = alpha * (1 - k);
-      if (!t.got) { ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(sx, sy, w * 0.55, w * 0.25, 0, 0, Math.PI * 2); ctx.fill(); }
-      ctx.fillStyle = '#8BE9FF';
-      ctx.beginPath(); ctx.moveTo(cx, cy - hh / 2); ctx.lineTo(cx, cy + hh / 2); ctx.lineTo(cx - w / 2, cy); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#35B3E6';
-      ctx.beginPath(); ctx.moveTo(cx, cy - hh / 2); ctx.lineTo(cx + w / 2, cy); ctx.lineTo(cx, cy + hh / 2); ctx.closePath(); ctx.fill();
+      if (!t.got) { ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(sx, sy, r * 0.8, r * 0.35, 0, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = '#B8860B'; // ребро
+      ctx.beginPath(); ctx.ellipse(cx + r * 0.12 * turn, cy, r * turn, r, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#FFCB3D'; // лицевая сторона
+      ctx.beginPath(); ctx.ellipse(cx, cy, r * turn, r, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#E0A100'; ctx.lineWidth = Math.max(1, r * 0.16);
+      ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.62 * turn, r * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 1;
     }
     function drawBall(ox, oy, now) {
@@ -294,11 +298,11 @@
       if (t <= lastT) return;
       var sec = Math.min(0.1, (t - lastT) / 1000); // после зависания не телепортируемся
       lastT = t;
-      var before = run.score, gemsBefore = run.crystals;
+      var before = run.score, gemsBefore = run.coins;
       run.advance(sec);
-      if (run.crystals !== gemsBefore) {
+      if (run.coins !== gemsBefore) {
         for (var g = Math.max(0, run.tile - 6); g <= run.tile; g++) if (run.tiles[g].got < 0) run.tiles[g].got = t; // время сбора — для анимации
-        gemsEl.textContent = '💎 ' + run.crystals;
+        gemsEl.textContent = '🪙 ' + run.coins;
         gemsEl.classList.remove('bump'); void gemsEl.offsetWidth; gemsEl.classList.add('bump');
       }
       // плитки далеко позади осыпаются
@@ -315,7 +319,7 @@
       screen = 'play'; phase = 'running';
       lastT = performance.now();
       snapCamera();
-      scoreEl.textContent = '0'; gemsEl.textContent = '💎 0'; hint.textContent = '';
+      scoreEl.textContent = '0'; gemsEl.textContent = '🪙 0'; hint.textContent = '';
       wrapEl.classList.add('playing'); wrapEl.classList.remove('over');
       document.documentElement.classList.add('sector-on');
       renderPanel();
@@ -340,7 +344,7 @@
       fallAt = performance.now();
       wrapEl.classList.remove('playing');
       document.documentElement.classList.remove('sector-on');
-      var result = { score: run.score, tiles: run.tile, crystals: run.crystals };
+      var result = { score: run.score, tiles: run.tile, coins: run.coins };
       var prevBest = opts.best ? (opts.best() || 0) : 0;
       loop();
       setTimeout(function () {
@@ -373,7 +377,7 @@
       panel.replaceChildren();
       if (screen === 'start') {
         panel.appendChild(h('p', 'sector-lead', 'Жми — шарик повернёт. Не упади!'));
-        panel.appendChild(h('p', 'sector-best', 'Рекорд: ' + (opts.best ? (opts.best() || 0) : 0) + ' · ' + CONFIG.crystalsPerCoin + ' 💎 = 1 🪙'));
+        panel.appendChild(h('p', 'sector-best', 'Рекорд: ' + (opts.best ? (opts.best() || 0) : 0) + ' · собирай 🪙 на дорожке'));
         var b = h('button', 'btn primary sector-play', 'Играть');
         b.type = 'button';
         b.addEventListener('click', function (ev) { ev.stopPropagation(); start(); });
@@ -386,15 +390,15 @@
         var row = h('div', 'sector-stats');
         function stat(n, l) { var s = h('div', 'sector-stat'); s.appendChild(h('span', 'n', String(n))); s.appendChild(h('span', 'l', l)); return s; }
         row.appendChild(stat(result.score, 'очки'));
-        row.appendChild(stat(result.crystals, 'кристаллы'));
+        row.appendChild(stat(result.coins, 'монеты'));
         row.appendChild(stat(best, 'рекорд'));
         panel.appendChild(row);
         if (info && info.valid === false) panel.appendChild(h('p', 'sector-warn', 'Этот результат не прошёл проверку и не попадёт в рейтинг.'));
-        // монеты за кристаллы начисляет база
+        // собранные монеты зачисляет база
         if (info && info.valid !== false && typeof info.coins === 'number') {
           panel.appendChild(h('p', 'sector-points' + (info.coins > 0 ? ' got' : ''), info.coins > 0
-            ? '+' + info.coins + ' 🪙 за эту игру'
-            : 'Монеты: 1 за каждые ' + CONFIG.crystalsPerCoin + ' 💎'));
+            ? '+' + info.coins + ' 🪙 зачислено на баланс'
+            : 'Монеты лежат на дорожке — заезжай на них'));
         }
         var again = h('button', 'btn primary sector-play', 'Играть ещё');
         again.type = 'button';
@@ -452,7 +456,7 @@
       // для проверок
       // рекорд пришёл из базы — обновить подпись на стартовом экране
       refreshBest: function () { if (!destroyed && screen === 'start') renderPanel(); },
-      _state: function () { return { screen: screen, phase: phase, score: run.score, tile: run.tile, crystals: run.crystals, dir: run.dir, bx: run.bx, by: run.by, speed: speedFor(run.score), alive: run.alive }; },
+      _state: function () { return { screen: screen, phase: phase, score: run.score, tile: run.tile, coins: run.coins, dir: run.dir, bx: run.bx, by: run.by, speed: speedFor(run.score), alive: run.alive }; },
       _run: function () { return run; },
       _press: press
     };

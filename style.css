@@ -880,10 +880,10 @@ html.sector-on .game-switch { pointer-events: none; opacity: 0.35; }
 }
 .segment button[aria-pressed="true"] .seg-badge { background: rgba(255, 255, 255, 0.22); color: #fff; }
 
-/* «Зигзаг»: кристаллы и рейтинг */
+/* «Зигзаг»: счётчик монет за партию и рейтинг */
 .zz-gems {
   position: absolute; top: 14px; right: 12px; pointer-events: none; padding: 3px 10px; border-radius: 999px;
-  background: rgba(18, 18, 18, 0.6); font: 600 15px var(--font-mono); color: #8BE9FF; font-variant-numeric: tabular-nums;
+  background: rgba(18, 18, 18, 0.6); font: 600 15px var(--font-mono); color: #FFCB3D; font-variant-numeric: tabular-nums;
 }
 .zz-gems.bump { animation: bumpSoft 0.22s ease-out; }
 html.sector-on #zz-board { pointer-events: none; opacity: 0.35; transition: opacity 0.2s; }
