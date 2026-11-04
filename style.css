@@ -713,7 +713,13 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .casino-note { margin: 0; text-align: center; }
 .casino-hist .empty { margin: 0; }
 .casino-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.casino-row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 14px; background: var(--surface); border-radius: 12px; font-size: 14px; }
+.casino-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 14px; background: var(--surface); border-radius: 12px; font-size: 14px; }
+.casino-row-l { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.casino-row-t { font: 400 12px var(--font-mono); color: var(--muted); opacity: 0.75; }
+.casino-row-d.refund { color: var(--muted); font-weight: 500; }
+.casino-row.fresh { animation: rowFresh 1.6s ease-out; }
+@keyframes rowFresh { 0% { background: rgba(242, 120, 44, 0.32); } 100% { background: var(--surface); } }
+@media (prefers-reduced-motion: reduce) { .casino-row.fresh { animation: none; box-shadow: inset 3px 0 0 var(--accent); } }
 .casino-row-d { font: 600 14px var(--font-mono); white-space: nowrap; }
 .casino-row-d.win { color: var(--accent); }
 .casino-row-d.lose { color: var(--err); }
@@ -736,7 +742,7 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .dbl-dot { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font: 600 12px var(--font-mono); color: #fff; }
 
 /* Сапёр */
-.mines-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.mines-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; width: 100%; max-width: 262px; margin: 0 auto; }
 .mine-cell { aspect-ratio: 1; min-height: 0; border-radius: 10px; border: 1px solid var(--line); background: var(--tile); font-size: 24px; display: flex; align-items: center; justify-content: center; padding: 0; transition: transform 0.12s, background 0.2s; }
 .mine-cell:not(:disabled):active { transform: scale(0.94); }
 .mine-cell:disabled { opacity: 1; cursor: default; }
@@ -746,8 +752,17 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .mine-cell.bomb { background: rgba(196, 80, 11, 0.30); border-color: rgba(196, 80, 11, 0.6); }
 .mine-cell.boom { background: var(--btn); border-color: var(--accent); }
 .mines-info { display: flex; justify-content: space-between; font: 600 16px var(--font-mono); }
-.mines-setup { display: flex; flex-direction: column; gap: 8px; }
-.mines-setup input[type=range] { width: 100%; accent-color: var(--accent); }
+.mines-setup { display: flex; flex-direction: column; gap: 6px; }
+/* мины: «Мины [−][ 3 ][+] [Начать]» в одну строку */
+.mines-row { display: flex; align-items: center; gap: 8px; }
+.mines-row .lbl { flex: none; }
+.mines-step { display: flex; align-items: center; gap: 4px; flex: none; }
+.mines-stepbtn { min-width: 38px; padding: 6px 0; font: 600 18px/1 var(--font-mono); }
+.mines-in { width: 50px; flex: none; text-align: center; padding: 10px 2px; -moz-appearance: textfield; appearance: textfield; }
+.mines-in::-webkit-outer-spin-button, .mines-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.mines-in.bad { border-color: var(--err); color: var(--err); }
+.mines-go { flex: 1; min-width: 0; padding-left: 8px; padding-right: 8px; }
+.mines-hint { min-height: 18px; }
 .mines-n { font: 600 15px var(--font-mono); }
 .mines-cash { width: 100%; }
 
@@ -771,7 +786,7 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 /* Краш: после выигрыша — бейдж «забрал на ×…», множитель догоняет до взрыва */
 .crash-mult.rising { color: var(--ink); }
 .crash-mult.after { color: var(--muted); font-size: 36px; }
-.crash-badge { position: absolute; top: 10px; left: 10px; padding: 4px 10px; border-radius: 999px; background: rgba(242, 120, 44, 0.16); color: var(--accent); font: 600 13px var(--font-mono); pointer-events: none; }
+
 
 /* ----- Ферма: поле 4×4, серебро ----- */
 html.sector-on .game-switch { pointer-events: none; opacity: 0.35; }

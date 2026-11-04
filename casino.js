@@ -127,11 +127,16 @@
   function signed(delta) { delta = c2(delta); return (delta > 0 ? '+' : delta < 0 ? '−' : '±') + fmt(Math.abs(delta)) + ' 🪙'; }
 
   /* ---------- история ---------- */
-  async function loadHistory() {
+  // fresh = true после сыгранной партии: новая строка сверху ненадолго подсвечивается
+  async function loadHistory(fresh) {
     var g = C.game;
     try { C.history[g] = await rpc('casino_history', { p_game: g, p_limit: 12 }) || []; } catch (e) { C.history[g] = C.history[g] || []; }
     var h = document.getElementById('casino-hist');
-    if (h && C.game === g) drawHistory(h);
+    if (h && C.game === g) { C.fresh = fresh ? g : null; drawHistory(h); C.fresh = null; }
+  }
+  function hhmm(ts) {
+    var d = new Date(ts);
+    return isNaN(d) ? '' : d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   }
   function drawHistory(sect) {
     var list = C.history[C.game];
@@ -149,14 +154,18 @@
         return el('span', { class: 'crash-chip' + (cp >= 2 ? ' hi' : ''), text: '×' + cp.toFixed(2) });
       })));
     }
-    sect.appendChild(el('div', { class: 'casino-rows' }, list.slice(0, 8).map(function (r) {
+    sect.appendChild(el('div', { class: 'casino-rows' }, list.slice(0, 8).map(function (r, i) {
       var d = Number(r.payout || 0) - Number(r.bet);
+      var refund = r.state === 'refund';
       var what = C.game === 'double' ? colorName(r.info && r.info.pick)
         : C.game === 'mines' ? (r.info.mines + ' ' + A.plural(r.info.mines, 'мина', 'мины', 'мин') + ', открыто ' + (r.info.opened || []).length)
           : (r.info && r.info.cashed ? 'забрал на ×' + Number(r.info.cashed).toFixed(2) : 'взрыв ×' + Number(r.info.crash).toFixed(2));
-      return el('div', { class: 'casino-row' }, [
-        el('span', { class: 'muted', text: what }),
-        el('span', { class: 'casino-row-d ' + (d > 0 ? 'win' : d < 0 ? 'lose' : ''), text: signed(d) })
+      return el('div', { class: 'casino-row' + (i === 0 && C.fresh === C.game ? ' fresh' : '') }, [
+        el('span', { class: 'casino-row-l' }, [
+          el('span', { class: 'muted', text: what }),
+          el('span', { class: 'casino-row-t', text: hhmm(r.finished_at) + ' · ставка ' + fmt(r.bet) + ' 🪙' })
+        ]),
+        el('span', { class: 'casino-row-d ' + (refund ? 'refund' : d > 0 ? 'win' : d < 0 ? 'lose' : ''), text: refund ? 'возврат' : signed(d) })
       ]);
     })));
   }
@@ -229,7 +238,7 @@
       var d = res.payout - bet;
       var name = res.color === 'red' ? 'красное' : res.color === 'black' ? 'чёрное' : 'зелёное';
       setResult('dbl-res', 'Выпало ' + name + ' ' + res.slot + ' · ' + (d === 0 ? 'ставка вернулась' : signed(d)), d > 0 ? 'win' : d < 0 ? 'lose' : '');
-      loadHistory();
+      loadHistory(true);
     }, ms + 80);
   }
 
@@ -239,6 +248,9 @@
   function gem() { var g = el('span', { class: 'gem' }); g.innerHTML = GEM; return g; }
 
   // Как в базе: 14/15 от честного множителя (прибыль казино ≈6,7%); пока ничего не открыто — ×1.
+  var MINES_MIN = 2, MINES_MAX = 24; // как в базе (casino_mines_start)
+  // Целое число мин из поля ввода или 0, если вписано что-то не то.
+  function readMines(v) { var n = Number(String(v).trim()); return n === Math.floor(n) && n >= MINES_MIN && n <= MINES_MAX ? n : 0; }
   function minesMult(m, k) { if (k <= 0) return 1; var x = 14 / 15; for (var i = 0; i < k; i++) x *= (25 - i) / (25 - m - i); return x; }
 
   function drawMines(box) {
@@ -274,29 +286,50 @@
         text: 'Забрать ' + fmt(M.payout || C.bet) + ' 🪙', onclick: cashMines
       })]);
     } else {
-      var minesIn = el('input', { type: 'range', min: 2, max: 24, step: 1, value: String(M.count), id: 'mines-n', 'aria-label': 'Сколько мин' });
-      var minesLbl = el('span', { class: 'mines-n', text: M.count + ' ' + A.plural(M.count, 'мина', 'мины', 'мин') });
-      var hint = el('span', { class: 'muted small', text: 'первая клетка ×' + minesMult(M.count, 1).toFixed(2) });
-      minesIn.addEventListener('input', function () {
-        M.count = parseInt(minesIn.value, 10); save('casino-mines', M.count);
-        minesLbl.textContent = M.count + ' ' + A.plural(M.count, 'мина', 'мины', 'мин');
-        hint.textContent = 'первая клетка ×' + minesMult(M.count, 1).toFixed(2);
+      // Число мин: можно вписать (от 2 до 24) или менять кнопками − и +. Всё в одной строке с «Начать».
+      var minesIn = el('input', {
+        type: 'number', inputmode: 'numeric', min: MINES_MIN, max: MINES_MAX, step: 1, value: String(M.count), id: 'mines-n',
+        class: 'casino-bet-in mines-in', 'aria-label': 'Сколько мин, от ' + MINES_MIN + ' до ' + MINES_MAX, disabled: C.busy ? true : null
       });
+      var hint = el('span', { class: 'muted small mines-hint', id: 'mines-hint' });
+      function showHint() {
+        var v = readMines(minesIn.value);
+        minesIn.classList.toggle('bad', !v);
+        hint.textContent = v ? 'первая клетка ×' + minesMult(v, 1).toFixed(2)
+                             : 'мин можно от ' + MINES_MIN + ' до ' + MINES_MAX;
+      }
+      function setCount(v) {
+        v = Math.min(MINES_MAX, Math.max(MINES_MIN, v));
+        M.count = v; save('casino-mines', v); minesIn.value = String(v); showHint();
+      }
+      minesIn.addEventListener('input', function () { var v = readMines(minesIn.value); if (v) { M.count = v; save('casino-mines', v); } showHint(); });
+      // неверное число не исправляем молча (это ставка денег): поле краснеет, «Начать» не запустит игру
+      minesIn.addEventListener('change', function () { var v = readMines(minesIn.value); if (v) setCount(v); else showHint(); });
+      function step(label, d, name) {
+        return el('button', { type: 'button', class: 'btn mines-stepbtn', text: label, 'aria-label': name, disabled: C.busy ? true : null,
+          onclick: function () { setCount((readMines(minesIn.value) || M.count) + d); } });
+      }
+      showHint();
       info = el('div', { class: 'mines-setup' }, [
-        el('div', { class: 'row between' }, [el('label', { class: 'lbl', for: 'mines-n', text: 'Мины' }), minesLbl]),
-        minesIn, hint
+        el('div', { class: 'mines-row' }, [
+          el('label', { class: 'lbl', for: 'mines-n', text: 'Мины' }),
+          el('div', { class: 'mines-step' }, [step('−', -1, 'Меньше мин'), minesIn, step('+', 1, 'Больше мин')]),
+          el('button', { type: 'button', class: 'btn primary mines-go', text: M.over ? 'Ещё раз' : 'Начать', disabled: C.busy ? true : null, onclick: startMines })
+        ]),
+        hint
       ]);
-      actions = el('div', { class: 'row actions' }, [el('button', {
-        type: 'button', class: 'btn primary', text: M.over ? 'Играть ещё' : 'Начать', disabled: C.busy ? true : null, onclick: startMines
-      })]);
     }
-    box.replaceChildren(grid, playing ? info : betRow(C.busy), playing ? actions : info, playing ? el('span') : actions, resultLine('mines-res'));
+    box.replaceChildren(grid, playing ? info : betRow(C.busy), playing ? actions : info, resultLine('mines-res'));
     if (M.over && M.over.text) { var mt = M.over.text, mc = M.over.cls; setTimeout(function () { setResult('mines-res', mt, mc); }, 0); }
   }
 
   async function startMines() {
-    var bet = readBet(); if (!bet) return;
     var M = C.mines;
+    var inp = document.getElementById('mines-n');
+    var n = inp ? readMines(inp.value) : M.count;
+    if (!n) { setResult('mines-res', 'Мин можно от ' + MINES_MIN + ' до ' + MINES_MAX + '.', 'lose'); return; }
+    M.count = n; save('casino-mines', n);
+    var bet = readBet(); if (!bet) return;
     C.busy = true; draw();
     try {
       var r = one(await rpc('casino_mines_start', { p_bet: bet, p_mines: M.count }));
@@ -325,7 +358,7 @@
           ? { mines: r.mines, boom: cell, text: '💥 Мина! ' + signed(-bet), cls: 'lose' }
           : { mines: r.mines, text: 'Все клетки открыты! ×' + Number(r.mult).toFixed(2) + ' · ' + signed(r.payout - bet), cls: 'win' };
         updBal(r.balance);
-        loadHistory();
+        loadHistory(true);
       }
     } catch (e) {
       setResult('mines-res', errText(e), 'lose');
@@ -344,7 +377,7 @@
       M.round = null;
       M.over = { mines: r.mines, text: 'Забрал ×' + Number(r.mult).toFixed(2) + ' · ' + signed(r.payout - bet), cls: r.payout > bet ? 'win' : '' };
       updBal(r.balance);
-      loadHistory();
+      loadHistory(true);
     } catch (e) { setResult('mines-res', errText(e), 'lose'); }
     C.busy = false; draw();
   }
@@ -358,9 +391,7 @@
     var running = !!R.round;
     var canvas = el('canvas', { class: 'crash-canvas', id: 'crash-canvas', 'aria-hidden': 'true' });
     var big = el('div', { class: 'crash-mult' + (R.last && R.last.cls ? ' ' + R.last.cls : ''), id: 'crash-mult', text: running ? '×1.00' : (R.last ? R.last.big : '×1.00') });
-    var badge = el('div', { class: 'crash-badge', id: 'crash-badge', text: (!running && R.last && R.last.badge) || '' });
-    badge.hidden = running || !(R.last && R.last.badge);
-    var stage = el('div', { class: 'crash-stage' }, [canvas, big, badge]);
+    var stage = el('div', { class: 'crash-stage' }, [canvas, big]);
     var autoIn = el('input', {
       type: 'number', inputmode: 'decimal', min: 1.01, step: 0.01, id: 'crash-auto', class: 'casino-bet-in',
       placeholder: 'нет', value: R.auto || '', 'aria-label': 'Автозабор, множитель', disabled: running || C.busy ? true : null
@@ -435,27 +466,28 @@
     }
   }
 
-  // После выигрыша: сначала множитель, на котором забрал, затем быстро «догоняем» до взрыва этого раунда.
-  function revealAfterWin(cashed, cp) {
+  // После выигрыша линия не останавливается: на месте забора остаётся точка,
+  // а линия от того места, где была на экране, быстро «догоняет» до взрыва этого раунда.
+  function revealAfterWin(cashed, cp, fromSec) {
     var R = C.crash;
     stopReveal();
     var big = document.getElementById('crash-mult');
     var s0 = Math.log(cashed) / K, s1 = Math.log(cp) / K;
     if (!big || reduce || cp <= cashed) return;
-    big.textContent = '×' + cashed.toFixed(2);
-    big.className = 'crash-mult win';
-    paintCrash(s0, false, s0);
-    var dur = Math.max(700, Math.min(1600, 600 + (s1 - s0) * 90));
-    var hold = 650; // даём увидеть свой множитель
+    var sa = Math.min(s1, Math.max(s0, fromSec || s0)); // откуда продолжаем: не назад и не дальше взрыва
+    if (sa >= s1) return;
+    big.textContent = '×' + crashMult(sa).toFixed(2);
+    big.className = 'crash-mult rising';
+    paintCrash(sa, false, s0);
+    var dur = Math.max(700, Math.min(1600, 600 + (s1 - sa) * 90));
     var t0 = 0;
     function frame(now) {
       if (C.crash.round || !document.getElementById('crash-mult')) { R.anim = 0; return; }
       if (!t0) t0 = now;
-      var p = Math.min(1, Math.max(0, (now - t0 - hold) / dur));
+      var p = Math.min(1, Math.max(0, (now - t0) / dur));
       var e = 1 - Math.pow(1 - p, 3);
-      var sec = s0 + (s1 - s0) * e;
+      var sec = sa + (s1 - sa) * e;
       var b = document.getElementById('crash-mult');
-      if (p <= 0) { paintCrash(s0, false, s0); R.anim = requestAnimationFrame(frame); return; }
       if (p < 1) {
         b.textContent = '×' + Math.min(cp, crashMult(sec)).toFixed(2);
         b.className = 'crash-mult rising';
@@ -463,7 +495,7 @@
         R.anim = requestAnimationFrame(frame);
       } else {
         R.anim = 0;
-        b.textContent = R.last ? R.last.big : '💥 ×' + cp.toFixed(2);
+        b.textContent = R.last ? R.last.big : '×' + cp.toFixed(2);
         b.className = 'crash-mult after';
         paintCrash(s1, false, s0);
       }
@@ -549,24 +581,24 @@
   function finishCrash(st) {
     var R = C.crash;
     if (!R.round) return;
+    var shownSec = liveSec(); // докуда линия дошла на экране — оттуда и продолжим
     stopCrashLoops();
     var bet = R.bet;
     var sec = Math.log(Math.max(1, Number(st.crash || st.mult || 1))) / K;
     var won = st.result === 'won';
     if (won) {
       var d = st.payout - bet, cashed = Number(st.mult), cp = Number(st.crash);
-      // итог на карточке: взрыв раунда, а бейдж — на чём забрал
-      R.last = { big: '💥 ×' + cp.toFixed(2), cls: 'after', sec: Math.log(Math.max(1, cp)) / K, cashedSec: Math.log(Math.max(1, cashed)) / K,
-        badge: '✓ Забрал на ×' + cashed.toFixed(2),
+      // итог на карточке: где взорвалось; где забрал — точка на линии и строка под кнопкой
+      R.last = { big: '×' + cp.toFixed(2), cls: 'after', sec: Math.log(Math.max(1, cp)) / K, cashedSec: Math.log(Math.max(1, cashed)) / K,
         text: 'Забрал на ×' + cashed.toFixed(2) + ' · ' + signed(d) + ' (взрыв был на ×' + cp.toFixed(2) + ')' };
     } else {
-      R.last = { big: '💥 ×' + Number(st.crash).toFixed(2), cls: 'lose', sec: sec, text: 'Взрыв на ×' + Number(st.crash).toFixed(2) + ' · ' + signed(-bet) };
+      R.last = { big: '×' + Number(st.crash).toFixed(2), cls: 'lose', sec: sec, text: 'Взрыв на ×' + Number(st.crash).toFixed(2) + ' · ' + signed(-bet) };
     }
     R.round = null;
     updBal(st.balance);
     draw();
-    if (won) revealAfterWin(Number(st.mult), Number(st.crash));
-    loadHistory();
+    if (won) revealAfterWin(Number(st.mult), Number(st.crash), shownSec);
+    loadHistory(true);
   }
 
   /* ---------- продолжить незаконченный раунд ---------- */
