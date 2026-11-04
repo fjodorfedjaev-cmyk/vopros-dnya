@@ -911,3 +911,27 @@ html.sector-on #zz-board { pointer-events: none; opacity: 0.35; transition: opac
 .me-card-l { font-size: 13px; color: var(--muted); }
 .me-card-n { font: 600 26px/1.15 var(--font-mono); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .me-card-n.coins { font-size: 22px; color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
+
+/* ===== Профиль: компактные настройки ===== */
+.name-row { display: flex; align-items: center; gap: 12px; }
+.name-row input { flex: 1; min-width: 0; }
+.set-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.set-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  min-height: 74px; padding: 8px 4px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.set-btn[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(242, 120, 44, 0.25); }
+.set-vis { height: 32px; display: flex; align-items: center; justify-content: center; font-size: 24px; line-height: 1; }
+.set-vis .avatar { width: 32px; height: 32px; font-size: 15px; }
+.set-vis .avatar.emoji { font-size: 20px; }
+.set-rainbow {
+  width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: conic-gradient(#D6457A, #D9622B, #B8860B, #3C8D2F, #12806F, #2F6FDE, #8A4FD6, #D6457A);
+}
+.set-rainbow i { width: 14px; height: 14px; border-radius: 50%; background: var(--c); border: 2px solid var(--surface); }
+.set-l { max-width: 100%; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.set-panel { padding: 10px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); }
+.set-panel[hidden] { display: none; }
+.set-panel .emojis { max-width: none; }
+/* в профиле пустая строка для сообщений не занимает место */
+form.card .msg:empty, .push-card .msg:empty { display: none; }

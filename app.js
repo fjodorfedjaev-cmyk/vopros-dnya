@@ -847,6 +847,7 @@
         el('h2', { class: 'horo-empty-title', text: 'Укажи свой знак зодиака' }),
         el('p', { class: 'muted', text: 'Гороскоп откроется, как только ты выберешь знак в профиле. Это займёт пару секунд.' }),
         el('button', { type: 'button', class: 'btn primary', text: 'Выбрать знак', onclick: function () {
+          S.profileOpen = 'zodiac'; // в профиле сразу раскроется выбор знака
           go('profile');
           setTimeout(function () { var p = document.getElementById('zodiac-field'); if (p) p.scrollIntoView({ block: 'center' }); }, 50);
         } })
@@ -1296,6 +1297,7 @@
 
   async function go(view) {
     closePicker();
+    if (view !== 'profile') S.profileOpen = null; // ушёл из профиля — выбор аватарки/цвета/знака закрывается
     S.view = view;
     if (view === 'today' || view === 'fill') {
       S.kind = view === 'fill' ? 'fill' : 'question';
@@ -2133,10 +2135,34 @@
     var emoji = S.profile.avatar || null;
     var zodiac = S.profile.zodiac || null;
     var initial = (Array.from(String(S.profile.display_name || '?'))[0] || '?').toUpperCase();
-    var preview = el('span', { class: 'preview' });
-    function drawPreview() { preview.replaceChildren(avatar(S.profile.display_name, color, false, emoji)); }
-    drawPreview();
     var name = el('input', { type: 'text', id: 'pname', maxlength: 40, autocapitalize: 'words', autocomplete: 'nickname', required: true });
+
+    // Аватарка, цвет и знак зодиака — три кнопки в ряд. По нажатию под ними раскрывается выбор
+    // (открыт только один); после выбора он закрывается сам. Изменения сохраняются кнопкой «Сохранить».
+    // Какой выбор открыт, хранится в S.profileOpen: так он не закрывается, когда профиль перерисовывается
+    // (например, догрузились данные). Из «Гороскопа» можно прийти сразу к выбору знака.
+    var panel = el('div', { class: 'set-panel', id: 'set-panel' });
+    function setBtn(key, id) {
+      return el('button', { type: 'button', class: 'set-btn', id: id || null, 'aria-controls': 'set-panel', onclick: function () { S.profileOpen = S.profileOpen === key ? null : key; paint(); } });
+    }
+    var bAvatar = setBtn('avatar'), bColor = setBtn('color'), bZodiac = setBtn('zodiac', 'zodiac-field');
+    var setRow = el('div', { class: 'set-row' }, [bAvatar, bColor, bZodiac]);
+    function picked() { S.profileOpen = null; paint(); }
+    function paint() {
+      var z = zodiacOf(zodiac);
+      var dot = el('i'); dot.style.setProperty('--c', color);
+      bAvatar.replaceChildren(el('span', { class: 'set-vis' }, [avatar(S.profile.display_name, color, false, emoji)]), el('span', { class: 'set-l', text: 'Аватарка' }));
+      bColor.replaceChildren(el('span', { class: 'set-vis' }, [el('span', { class: 'set-rainbow', 'aria-hidden': 'true' }, [dot])]), el('span', { class: 'set-l', text: 'Цвет' }));
+      bZodiac.replaceChildren(el('span', { class: 'set-vis zod-g', 'aria-hidden': 'true', text: z ? glyph(z) : '?' }), el('span', { class: 'set-l', text: z ? z[2] : 'Знак' }));
+      var opened = S.profileOpen;
+      [['avatar', bAvatar], ['color', bColor], ['zodiac', bZodiac]].forEach(function (x) { x[1].setAttribute('aria-expanded', String(opened === x[0])); });
+      if (!opened) { panel.hidden = true; panel.replaceChildren(); return; }
+      panel.hidden = false;
+      if (opened === 'avatar') panel.replaceChildren(emojiPicker(emoji, initial, function (e) { emoji = e; picked(); }));
+      else if (opened === 'color') panel.replaceChildren(swatchPicker(color, function (c) { color = c; picked(); }));
+      else panel.replaceChildren(zodiacPicker(zodiac, function (zz) { zodiac = zz; picked(); }));
+    }
+    paint();
     name.value = S.profile.display_name;
     var msg = el('p', { class: 'msg', role: 'status' });
     var btn = el('button', { type: 'submit', class: 'btn primary', text: 'Сохранить' });
@@ -2159,14 +2185,9 @@
         }
       }
     }, [
-      el('div', { class: 'field' }, [el('label', { for: 'pname', text: 'Имя' }), name]),
-      el('div', { class: 'field' }, [
-        el('span', { class: 'lbl', text: 'Аватарка' }),
-        el('div', { class: 'row' }, [preview, el('span', { class: 'muted small', text: 'Эмодзи или первая буква имени на выбранном цвете' })]),
-        emojiPicker(emoji, initial, function (e) { emoji = e; drawPreview(); })
-      ]),
-      el('div', { class: 'field' }, [el('span', { class: 'lbl', text: 'Цвет' }), swatchPicker(color, function (c) { color = c; drawPreview(); })]),
-      el('div', { class: 'field', id: 'zodiac-field' }, [el('span', { class: 'lbl', text: 'Знак зодиака' }), zodiacPicker(zodiac, function (zz) { zodiac = zz; })]),
+      el('div', { class: 'name-row' }, [el('label', { class: 'lbl', for: 'pname', text: 'Имя' }), name]),
+      setRow,
+      panel,
       el('div', { class: 'row actions' }, [btn]),
       msg
     ]);
@@ -2177,7 +2198,12 @@
       ])
     ]);
     var inst = installCard();
-    return viewStats().concat([pushCard()]).concat(inst ? [inst] : []).concat([el('h2', { class: 'sect-title', text: 'Настройки профиля' }), form, account]);
+    var stats = viewStats(); // [серия и монеты, участники]
+    // Порядок: серия и монеты → настройки профиля → уведомления → остальное
+    return [stats[0], el('h2', { class: 'sect-title', text: 'Настройки профиля' }), form, pushCard()]
+      .concat(inst ? [inst] : [])
+      .concat(stats.slice(1))
+      .concat([account]);
   }
 
   /* ---------- выход и запуск ---------- */
