@@ -408,7 +408,7 @@
       running ? el('span') : betRow(C.busy),
       running ? el('span') : el('div', { class: 'casino-betrow' }, [
         el('label', { class: 'lbl', for: 'crash-auto', text: 'Автозабор на ×' }),
-        el('div', { class: 'casino-betline' }, [autoIn, el('span', { class: 'muted small', text: 'необязательно' })])
+        el('div', { class: 'casino-betline' }, [autoIn])
       ]),
       el('div', { class: 'row actions' }, [btn]),
       resultLine('crash-res')
@@ -586,16 +586,15 @@
     if (!R.round) return;
     var shownSec = liveSec(); // докуда линия дошла на экране — оттуда и продолжим
     stopCrashLoops();
-    var bet = R.bet;
     var sec = Math.log(Math.max(1, Number(st.crash || st.mult || 1))) / K;
     var won = st.result === 'won';
     if (won) {
-      var d = st.payout - bet, cashed = Number(st.mult), cp = Number(st.crash);
-      // итог на карточке: где взорвалось; где забрал — точка на линии и строка под кнопкой
-      R.last = { big: '×' + cp.toFixed(2), cls: 'after', sec: Math.log(Math.max(1, cp)) / K, cashedSec: Math.log(Math.max(1, cashed)) / K,
-        text: 'Забрал на ×' + cashed.toFixed(2) + ' · ' + signed(d) + ' (взрыв был на ×' + cp.toFixed(2) + ')' };
+      var cashed = Number(st.mult), cp = Number(st.crash);
+      // на карточке — где взорвалось, точка на линии — где забрал.
+      // Под кнопкой после раунда ничего не пишем: итог виден по линии, балансу и истории.
+      R.last = { big: '×' + cp.toFixed(2), cls: 'after', sec: Math.log(Math.max(1, cp)) / K, cashedSec: Math.log(Math.max(1, cashed)) / K };
     } else {
-      R.last = { big: '×' + Number(st.crash).toFixed(2), cls: 'lose', sec: sec, text: 'Взрыв на ×' + Number(st.crash).toFixed(2) + ' · ' + signed(-bet) };
+      R.last = { big: '×' + Number(st.crash).toFixed(2), cls: 'lose', sec: sec };
     }
     R.round = null;
     updBal(st.balance);
