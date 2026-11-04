@@ -1239,7 +1239,7 @@
     return '#' + [f(5), f(3), f(1)].map(function (x) { return ('0' + Math.round(x * 255).toString(16)).slice(-2); }).join('').toUpperCase();
   }
   // Квадрат «насыщенность × яркость» и полоска оттенка. onChange(hex) — пока двигаешь, onDone(hex) — «Готово».
-  function colorMixer(current, onChange, onDone, onBack) {
+  function colorMixer(current, onChange, onDone) {
     var hsv = hexToHsv(current);
     var area = el('div', { class: 'mix-area', role: 'slider', 'aria-label': 'Насыщенность и яркость', tabindex: '0' });
     var thumb = el('span', { class: 'mix-thumb' });
@@ -1274,8 +1274,7 @@
     show(false);
     return el('div', { class: 'mix' }, [
       area, hue,
-      el('div', { class: 'mix-row' }, [dot, code, el('button', { type: 'button', class: 'btn primary mix-ok', text: 'Готово', onclick: function () { onDone(hex()); } })]),
-      el('button', { type: 'button', class: 'link quiet mix-back', text: '← Готовые цвета', onclick: onBack })
+      el('div', { class: 'mix-row' }, [dot, code, el('button', { type: 'button', class: 'btn primary mix-ok', text: 'Готово', onclick: function () { onDone(hex()); } })])
     ]);
   }
 
@@ -2206,12 +2205,19 @@
   // Окошко выбора в профиле. Открывая, добавляем шаг в историю браузера —
   // тогда кнопка «Назад» на телефоне закрывает окошко, а не уводит со страницы.
   var setPopHist = false;
+  // Своя палитра закрыта без «Готово» — вернуть цвет, который был до неё.
+  function cancelMix() {
+    if (S.profileOpen === 'mix' && S.profileCancelMix) S.profileCancelMix();
+    S.profileCancelMix = null;
+  }
   function openSetPop(key) {
+    cancelMix();
     S.profileOpen = key;
     if (!setPopHist) { try { history.pushState({ setPop: 1 }, ''); setPopHist = true; } catch (e) { /* без истории тоже работает */ } }
     if (S.profilePaint) S.profilePaint();
   }
   function closeSetPop() {
+    cancelMix();
     S.profileOpen = null;
     if (S.profilePaint) S.profilePaint();
     if (setPopHist) { setPopHist = false; try { history.back(); } catch (e) { /* ничего */ } }
@@ -2219,6 +2225,7 @@
   window.addEventListener('popstate', function () {
     if (!setPopHist) return;
     setPopHist = false;
+    cancelMix();
     S.profileOpen = null;
     if (S.profilePaint) S.profilePaint();
   });
@@ -2259,16 +2266,15 @@
       var title = opened === 'avatar' ? 'Аватарка' : opened === 'color' ? 'Цвет' : opened === 'mix' ? 'Свой цвет' : 'Знак зодиака';
       var body;
       if (opened === 'avatar') body = emojiPicker(emoji, initial, function (e) { emoji = e; picked(); });
-      else if (opened === 'color') body = el('div', { class: 'stack tight' }, [
-        swatchPicker(color, function (c) { color = c; picked(); }, function () { S.profileOpen = 'mix'; paint(); }),
-        el('p', { class: 'muted small', text: 'Радужный круг — любой оттенок' })
-      ]);
+      else if (opened === 'color') body = swatchPicker(color, function (c) { color = c; picked(); }, function () { S.profileOpen = 'mix'; paint(); });
       else if (opened === 'mix') {
+        // Своя палитра. Сохраняет оттенок только «Готово»; закрыл иначе (крестик, мимо, «Назад») — оттенок отменяется.
         var before = color;
+        S.profileCancelMix = function () { color = before; };
         body = colorMixer(color, function (c) {
           color = c;
           var dot = bColor.querySelector('.set-rainbow i'); if (dot) dot.style.setProperty('--c', c); // видно сразу, пока двигаешь
-        }, function (c) { color = c; picked(); }, function () { color = before; S.profileOpen = 'color'; paint(); });
+        }, function (c) { S.profileCancelMix = null; color = c; picked(); });
       }
       else body = zodiacPicker(zodiac, function (zz) { zodiac = zz; picked(); });
       panel.replaceChildren(

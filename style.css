@@ -977,6 +977,5 @@ html.sector-on #zz-board { pointer-events: none; opacity: 0.35; transition: opac
 .mix-dot { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--line); }
 .mix-code { flex: 1; font: 600 15px var(--font-mono); color: var(--ink); }
 .mix-ok { min-width: 110px; }
-.mix-back { align-self: flex-start; font-size: 14px; }
 /* в профиле пустая строка для сообщений не занимает место */
 form.card .msg:empty, .push-card .msg:empty { display: none; }
