@@ -988,3 +988,18 @@ form.card .msg:empty, .push-card .msg:empty { display: none; }
   .board thead th.col-coins, .board td.col-coins { width: 64px; }
   .board td.col-coins { font-size: 13px; }
 }
+
+/* уведомления: компактная карточка — заголовок и состояние в одну строку, кнопки ниже */
+.push-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.push-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.push-state.long { font: 400 14px/1.45 var(--font-body); }
+.push-btns { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+.push-btns .btn { min-height: 40px; padding: 8px 12px; }
+.push-card .msg { margin: 0; }
+/* на широком экране всё в одну строку: «Уведомления  Включены ✓   [Проверить] [Выключить]» */
+@media (min-width: 560px) {
+  .push-card.short { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+  .push-card.short .push-head { flex: 1 1 auto; justify-content: flex-start; }
+  .push-card.short .push-btns { grid-auto-columns: auto; }
+  .push-card.short .msg { flex-basis: 100%; }
+}

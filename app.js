@@ -2544,7 +2544,7 @@
   }
 
   function pushCard() {
-    var card = el('div', { class: 'card stack tight push-card', id: 'push-card' });
+    var card = el('div', { class: 'card push-card', id: 'push-card' });
     fillPushCard(card);
     return card;
   }
@@ -2568,27 +2568,32 @@
     else if (st === 'ios-install') info = 'На iPhone уведомления работают только в установленном приложении. Открой сайт в Safari → «⋯» → «Поделиться» → «На экран «Домой»» → «Добавить». Потом открой приложение с экрана «Домой» и включи уведомления здесь.';
     else if (st === 'denied') info = 'Уведомления запрещены в настройках браузера. Разреши их для этого сайта (значок слева от адреса → «Уведомления»), потом обнови страницу.';
     else if (st === 'on') {
-      info = 'Включены на этом устройстве ✓';
+      info = 'Включены ✓';
       buttons = [
         act('Проверить', false, async function () {
           var r = await sb.rpc('push_test');
           if (r.error) throw r.error;
-          toast(r.data ? 'Отправил — сейчас придёт 🔔' : 'Подожди несколько секунд и попробуй ещё раз');
+          toast(r.data ? 'Отправил — сейчас придёт' : 'Подожди несколько секунд и попробуй ещё раз');
         }),
         act('Выключить', false, async function () { await disablePush(); toast('Уведомления выключены'); })
       ];
     } else {
-      info = 'Выключены.';
+      info = 'Выключены';
       buttons = [act('Включить', true, async function () {
         var ok = await enablePush();
-        toast(ok ? 'Уведомления включены 🔔' : 'Без разрешения браузера уведомления не придут');
+        toast(ok ? 'Уведомления включены' : 'Без разрешения браузера уведомления не придут');
       })];
     }
+    // Короткое состояние («Включены ✓», «Выключены») стоит в одной строке с заголовком,
+    // длинное объяснение (iPhone, запрет в браузере) — отдельной строкой под ним.
+    var short = st === 'on' || st === 'off' || st === 'loading';
+    var state = el('p', { class: 'push-state' + (st === 'on' ? ' on' : '') + (short ? '' : ' long'), text: info });
+    card.classList.toggle('short', short);
     // replaceChildren вывел бы null как текст «null», поэтому пустые места убираем
     card.replaceChildren.apply(card, [
-      el('p', { class: 'install-title', text: '🔔 Уведомления' }),
-      el('p', { class: 'push-state' + (st === 'on' ? ' on' : ''), text: info }),
-      buttons.length ? el('div', { class: 'row actions' }, buttons) : null,
+      el('div', { class: 'push-head' }, [el('p', { class: 'install-title', text: 'Уведомления' }), short ? state : null].filter(Boolean)),
+      short ? null : state,
+      buttons.length ? el('div', { class: 'push-btns' }, buttons) : null,
       msg
     ].filter(Boolean));
   }
@@ -2627,7 +2632,7 @@
           type: 'button', class: 'btn primary', text: 'Включить',
           onclick: async function () {
             close(false);
-            try { var ok = await enablePush(); toast(ok ? 'Уведомления включены 🔔' : 'Без разрешения браузера уведомления не придут'); }
+            try { var ok = await enablePush(); toast(ok ? 'Уведомления включены' : 'Без разрешения браузера уведомления не придут'); }
             catch (e) { toast('Не получилось включить. Попробуй в Профиле.'); }
           }
         })
