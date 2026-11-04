@@ -29,7 +29,7 @@ begin
       and not exists (select 1 from public.points_ledger where ref = 'zigzag:' || sid::text)
     then E'ok   3 слишком быстро — не засчитано, монет нет\n' else E'FAIL 3\n' end;
 
-  -- 4. монет больше, чем помещается на 40 плитках (максимум 3: плитки №8, №24, №40)
+  -- 4. монет больше, чем помещается на 40 плитках (максимум 3: плитки №6, №18, №30)
   sid := public.zz_start();
   update public.zigzag_sessions set started_at = now() - interval '60 seconds' where id = sid;
   select * into r from public.zz_finish(sid, 10, 40, 4);
@@ -41,17 +41,17 @@ begin
   select * into r from public.zz_finish(sid, 50, 40, 1);
   res := res || case when not r.valid then E'ok   5 очков больше, чем плиток — не засчитано\n' else E'FAIL 5\n' end;
 
-  -- 6. 80 плиток, 5 монет (ровно максимум); новый рекорд 25
+  -- 6. 80 плиток, 7 монет (ровно максимум); новый рекорд 25
   sid := public.zz_start();
   update public.zigzag_sessions set started_at = now() - interval '60 seconds' where id = sid;
-  select * into r from public.zz_finish(sid, 25, 80, 5);
-  res := res || case when r.valid and r.coins = 5 and r.best_all = 25 and r.prev_best = 10
-    then E'ok   6 5 монет на 80 плитках засчитаны, рекорд 10 → 25\n' else E'FAIL 6 ' || row_to_json(r)::text || E'\n' end;
+  select * into r from public.zz_finish(sid, 25, 80, 7);
+  res := res || case when r.valid and r.coins = 7 and r.best_all = 25 and r.prev_best = 10
+    then E'ok   6 7 монет на 80 плитках засчитаны, рекорд 10 → 25\n' else E'FAIL 6 ' || row_to_json(r)::text || E'\n' end;
 
   -- 7. рейтинг недели
   select * into r from public.zz_leaderboard('week') where user_id = u1;
-  res := res || case when r.best = 25 and r.coins = 5 and r.rank >= 1
-    then E'ok   7 в рейтинге недели: лучший счёт 25, 5 монет\n' else E'FAIL 7\n' end;
+  res := res || case when r.best = 25 and r.coins = 7 and r.rank >= 1
+    then E'ok   7 в рейтинге недели: лучший счёт 25, 7 монет\n' else E'FAIL 7\n' end;
 
   -- 8. чужая партия
   sid2 := public.zz_start();
