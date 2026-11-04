@@ -1871,13 +1871,6 @@
     } else {
       sect.appendChild(el('p', { class: 'empty', text: 'Пока ответил только ты. Позови друзей 👋' }));
     }
-    var answered = {};
-    S.who.forEach(function (w) { answered[w.user_id] = true; });
-    var pending = S.members.filter(function (m) { return !answered[m.id]; });
-    if (pending.length) {
-      sect.appendChild(el('p', { class: 'lbl', text: 'Ждём ещё' }));
-      sect.appendChild(el('div', { class: 'chips' }, pending.map(function (m) { return chip(m.display_name, m.color, true, m.avatar); })));
-    }
   }
 
   /* ----- игра «Сектор» ----- */

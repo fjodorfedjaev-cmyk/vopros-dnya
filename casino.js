@@ -434,6 +434,50 @@
   }
   function liveSec() { var R = C.crash; return (Date.now() + R.offset - R.startMs) / 1000; }
 
+  // Сетка «Краша»: линии множителей (×1.5, ×2, ×5…) и линии времени.
+  // Масштаб растёт вместе с иксом, поэтому линии плывут вниз и влево, а слишком частые
+  // плавно растворяются и сменяются более редкими — так видно, как быстро растёт множитель.
+  // Цвет едва заметный, чтобы сетка не отвлекала от линии и большого числа.
+  // шаги вложены друг в друга (каждый делится на предыдущий), чтобы линии не путались
+  var Y_STEPS = [0.25, 0.5, 1, 2, 10, 20, 100, 200, 1000, 2000, 10000];
+  var T_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  function fadeIn(px, from, to) { return Math.max(0, Math.min(1, (px - from) / (to - from))); }
+  function drawGrid(ctx, w, h, pad, maxT, maxM, X, Y, mono) {
+    var plotW = w - pad * 2, plotH = h - pad * 2, seen = {}, i, k, s, px, a;
+    ctx.lineWidth = 1;
+    ctx.font = '500 10px ' + mono;
+    ctx.textBaseline = 'bottom';
+    // вертикальные — время (без подписей)
+    for (i = T_STEPS.length - 1; i >= 0; i--) {
+      s = T_STEPS[i]; px = s * plotW / maxT; a = fadeIn(px, 18, 44);
+      if (a <= 0) break; // дальше шаги ещё мельче — линии слишком густые
+      for (k = 1; k * s < maxT; k++) {
+        if (seen['t' + k * s]) continue; seen['t' + k * s] = 1;
+        var x = Math.round(X(k * s)) + 0.5;
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.045 * a).toFixed(3) + ')';
+        ctx.beginPath(); ctx.moveTo(x, pad); ctx.lineTo(x, h - pad); ctx.stroke();
+      }
+    }
+    // горизонтальные — множитель, у заметных линий слева маленькая подпись «×2»
+    for (i = Y_STEPS.length - 1; i >= 0; i--) {
+      s = Y_STEPS[i]; px = s * plotH / (maxM - 1); a = fadeIn(px, 14, 40);
+      if (a <= 0) break;
+      var la = fadeIn(px, 22, 38);
+      for (k = Math.floor(1 / s) + 1; k * s < maxM; k++) { // круглые значения: ×1.25, ×1.5, ×2, ×4, ×10, ×20…
+        var m = Math.round(k * s * 100) / 100;
+        if (seen['m' + m]) continue; seen['m' + m] = 1;
+        var y = Math.round(Y(m)) + 0.5;
+        if (y < pad + 2) continue;
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.07 * a).toFixed(3) + ')';
+        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+        if (la > 0 && y > pad + 12) {
+          ctx.fillStyle = 'rgba(160,150,142,' + (0.7 * la).toFixed(3) + ')';
+          ctx.fillText('×' + m, pad + 4, y - 2);
+        }
+      }
+    }
+  }
+
   function paintCrash(sec, crashed, cashedSec) {
     var c = document.getElementById('crash-canvas');
     if (!c) return;
@@ -449,6 +493,7 @@
     var pad = 10;
     function X(t) { return pad + (t / maxT) * (w - pad * 2); }
     function Y(m) { return h - pad - ((m - 1) / (maxM - 1)) * (h - pad * 2); }
+    drawGrid(ctx, w, h, pad, maxT, maxM, X, Y, css.getPropertyValue('--font-mono').trim() || 'monospace');
     ctx.strokeStyle = line; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad, h - pad); ctx.lineTo(w - pad, h - pad); ctx.stroke();
     if (sec <= 0) return;
