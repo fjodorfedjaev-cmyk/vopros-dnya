@@ -9,8 +9,9 @@
   var root = document.getElementById('app');
   var sb = null;
 
-  var PALETTE = ['#12806F', '#2F6FDE', '#8A4FD6', '#D6457A', '#D9622B', '#B8860B', '#3C8D2F', '#5B6770'];
-  var PALETTE_NAMES = ['бирюзовый', 'синий', 'фиолетовый', 'розовый', 'оранжевый', 'золотистый', 'зелёный', 'серый'];
+  // Новые цвета — только в конец: по номеру сайт берёт серый (PALETTE[7]) для неизвестного участника.
+  var PALETTE = ['#12806F', '#2F6FDE', '#8A4FD6', '#D6457A', '#D9622B', '#B8860B', '#3C8D2F', '#5B6770', '#C93535', '#1F9AC2', '#8A5A3B'];
+  var PALETTE_NAMES = ['бирюзовый', 'синий', 'фиолетовый', 'розовый', 'оранжевый', 'золотистый', 'зелёный', 'серый', 'красный', 'голубой', 'коричневый'];
   var CAT = { deep: 'Глубокий', funny: 'Смешной', spicy: 'Провокационный' };
   // Реакции: код в базе, эмодзи на экране, подпись для экранного диктора.
   var REACTIONS = [
@@ -23,7 +24,13 @@
   // Основные обновления приходят мгновенно через Realtime; опрос раз в минуту — запасной вариант.
   var POLL_MS = 60000;
   // Эмодзи для аватарки. null — без эмодзи, тогда показывается первая буква имени.
-  var EMOJIS = ['😎', '🤠', '🥸', '🤓', '😈', '👻', '💀', '🤖', '👽', '🐱', '🐶', '🦊', '🐼', '🐸', '🐵', '🦁', '🐙', '🦄', '🍕', '🔥', '⚡', '🌚', '🎧', '🏀'];
+  // Первые 24 — прежние (их уже выбрали друзья), дальше — смешные и кринжовые.
+  var EMOJIS = ['😎', '🤠', '🥸', '🤓', '😈', '👻', '💀', '🤖', '👽', '🐱', '🐶', '🦊', '🐼', '🐸', '🐵', '🦁', '🐙', '🦄', '🍕', '🔥', '⚡', '🌚', '🎧', '🏀',
+    '🤡', '😭', '🫠', '🥴', '😬', '🤪', '🙃', '😵‍💫', '🫡', '🤭', '😏', '🥹', '🤯', '😳', '🥵', '🥶',
+    '🤑', '😜', '🤤', '🫣', '🫢', '😶‍🌫️', '🤮', '🤥', '🧐', '😤', '🤨', '😮‍💨', '🙄', '😩', '🥲', '😇',
+    '🤗', '🫥', '😐', '🗿', '🤌', '🫵', '👀', '💅', '🤙', '🧠', '👹', '👺', '💩', '🧌', '👾', '🦆',
+    '🐒', '🙈', '🙉', '🙊', '🐷', '🐔', '🦩', '🐊', '🦖', '🦍', '🐀', '🐌', '🦥', '🐧', '🐹', '🦦',
+    '🦭', '🐟', '🦀', '🦐', '🥒', '🧀', '🌭', '🥑', '🧃', '🧻', '🪩', '💯'];
 
   var S = {
     stage: 'loading',        // loading | auth | join | app | fatal
@@ -1198,8 +1205,7 @@
     return shell([form]);
   }
 
-  // onAny(color, done) — если передан, в конце есть радужный круг «Любой цвет» (палитра телефона).
-  // Пока двигаешь палитру, приходит done = false; когда выбрал окончательно — done = true.
+  // onAny() — если передан, в конце есть радужный круг «Любой цвет»: по нажатию открывается своя палитра сайта.
   function swatchPicker(current, onPick, onAny) {
     var box = el('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Цвет' });
     function mark(k) { Array.prototype.forEach.call(box.children, function (x, j) { x.setAttribute('aria-checked', String(j === k)); }); }
@@ -1214,15 +1220,63 @@
     });
     if (onAny) {
       var custom = PALETTE.map(function (c) { return c.toLowerCase(); }).indexOf(current.toLowerCase()) < 0;
-      // Невидимое поле type=color лежит поверх круга: нажатие сразу открывает палитру телефона.
-      var input = el('input', { type: 'color', class: 'any-in', value: safeColor(current).toLowerCase(), 'aria-label': 'Любой цвет' });
-      var any = el('span', { class: 'swatch any' + (custom ? ' set' : ''), role: 'radio', 'aria-checked': String(custom), title: 'Любой цвет' }, [input]);
+      var any = el('button', { type: 'button', class: 'swatch any' + (custom ? ' set' : ''), role: 'radio', 'aria-checked': String(custom), 'aria-label': 'Любой цвет', onclick: function () { onAny(); } });
       if (custom) any.style.setProperty('--c', current);
-      input.addEventListener('input', function () { any.style.setProperty('--c', input.value); any.classList.add('set'); mark(PALETTE.length); onAny(input.value, false); });
-      input.addEventListener('change', function () { onAny(input.value, true); });
       box.appendChild(any);
     }
     return box;
+  }
+
+  /* ----- своя палитра: любой оттенок, в стиле сайта ----- */
+  function hexToHsv(hex) {
+    var c = safeColor(hex), r = parseInt(c.slice(1, 3), 16) / 255, g = parseInt(c.slice(3, 5), 16) / 255, b = parseInt(c.slice(5, 7), 16) / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, h = 0;
+    if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max };
+  }
+  function hsvToHex(h, s, v) {
+    function f(n) { var k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); }
+    return '#' + [f(5), f(3), f(1)].map(function (x) { return ('0' + Math.round(x * 255).toString(16)).slice(-2); }).join('').toUpperCase();
+  }
+  // Квадрат «насыщенность × яркость» и полоска оттенка. onChange(hex) — пока двигаешь, onDone(hex) — «Готово».
+  function colorMixer(current, onChange, onDone, onBack) {
+    var hsv = hexToHsv(current);
+    var area = el('div', { class: 'mix-area', role: 'slider', 'aria-label': 'Насыщенность и яркость', tabindex: '0' });
+    var thumb = el('span', { class: 'mix-thumb' });
+    area.appendChild(thumb);
+    var hue = el('input', { type: 'range', class: 'mix-hue', min: 0, max: 359, step: 1, value: String(Math.round(hsv.h)), 'aria-label': 'Оттенок' });
+    var dot = el('span', { class: 'mix-dot' });
+    var code = el('span', { class: 'mix-code' });
+    function hex() { return hsvToHex(hsv.h, hsv.s, hsv.v); }
+    function show(fire) {
+      area.style.setProperty('--h', String(hsv.h));
+      thumb.style.left = (hsv.s * 100) + '%';
+      thumb.style.top = ((1 - hsv.v) * 100) + '%';
+      var c = hex();
+      thumb.style.background = c; dot.style.background = c; code.textContent = c;
+      if (fire) onChange(c);
+    }
+    function pick(ev) {
+      var r = area.getBoundingClientRect();
+      hsv.s = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+      hsv.v = 1 - Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+      show(true);
+    }
+    area.addEventListener('pointerdown', function (ev) { ev.preventDefault(); try { area.setPointerCapture(ev.pointerId); } catch (e) { /* ничего */ } pick(ev); });
+    area.addEventListener('pointermove', function (ev) { if (ev.buttons || ev.pointerType === 'touch') { if (area.hasPointerCapture && area.hasPointerCapture(ev.pointerId)) pick(ev); } });
+    area.addEventListener('keydown', function (ev) {
+      var d = { ArrowLeft: [-0.05, 0], ArrowRight: [0.05, 0], ArrowUp: [0, 0.05], ArrowDown: [0, -0.05] }[ev.key];
+      if (!d) return;
+      ev.preventDefault();
+      hsv.s = Math.min(1, Math.max(0, hsv.s + d[0])); hsv.v = Math.min(1, Math.max(0, hsv.v + d[1])); show(true);
+    });
+    hue.addEventListener('input', function () { hsv.h = Number(hue.value); show(true); });
+    show(false);
+    return el('div', { class: 'mix' }, [
+      area, hue,
+      el('div', { class: 'mix-row' }, [dot, code, el('button', { type: 'button', class: 'btn primary mix-ok', text: 'Готово', onclick: function () { onDone(hex()); } })]),
+      el('button', { type: 'button', class: 'link quiet mix-back', text: '← Готовые цвета', onclick: onBack })
+    ]);
   }
 
   function screenJoin() {
@@ -2132,7 +2186,9 @@
 
   function emojiPicker(current, initial, onPick) {
     var box = el('div', { class: 'emojis', role: 'radiogroup', 'aria-label': 'Аватарка' });
-    [null].concat(EMOJIS).forEach(function (e, i) {
+    // если у человека смайлик, которого нет в списке, он всё равно виден и отмечен — первым
+    var list = current && EMOJIS.indexOf(current) < 0 ? [current].concat(EMOJIS) : EMOJIS;
+    [null].concat(list).forEach(function (e, i) {
       box.appendChild(el('button', {
         type: 'button', class: 'emoji-opt' + (e ? '' : ' letter'), role: 'radio',
         'aria-checked': String((current || null) === e),
@@ -2183,7 +2239,7 @@
     var back = el('div', { class: 'set-back', onclick: function () { closeSetPop(); } }); // нажатие мимо окошка закрывает его
     function setBtn(key, id) {
       return el('button', { type: 'button', class: 'set-btn', id: id || null, 'aria-controls': 'set-panel', 'aria-haspopup': 'dialog',
-        onclick: function () { if (S.profileOpen === key) closeSetPop(); else openSetPop(key); } });
+        onclick: function () { if (S.profileOpen === key || (key === 'color' && S.profileOpen === 'mix')) closeSetPop(); else openSetPop(key); } });
     }
     var bAvatar = setBtn('avatar'), bColor = setBtn('color'), bZodiac = setBtn('zodiac', 'zodiac-field');
     var setRow = el('div', { class: 'set-row' }, [bAvatar, bColor, bZodiac]);
@@ -2197,20 +2253,23 @@
       bColor.replaceChildren(el('span', { class: 'set-vis' }, [el('span', { class: 'set-rainbow', 'aria-hidden': 'true' }, [dot])]), el('span', { class: 'set-l', text: 'Цвет' }));
       bZodiac.replaceChildren(el('span', { class: 'set-vis zod-g', 'aria-hidden': 'true', text: z ? glyph(z) : '?' }), el('span', { class: 'set-l', text: z ? z[2] : 'Знак' }));
       var opened = S.profileOpen;
-      [['avatar', bAvatar], ['color', bColor], ['zodiac', bZodiac]].forEach(function (x) { x[1].setAttribute('aria-expanded', String(opened === x[0])); });
+      [['avatar', bAvatar], ['color', bColor], ['zodiac', bZodiac]].forEach(function (x) { x[1].setAttribute('aria-expanded', String(opened === x[0] || (opened === 'mix' && x[0] === 'color'))); });
       if (!opened) { panel.hidden = true; back.hidden = true; panel.replaceChildren(); return; }
       panel.hidden = false; back.hidden = false;
-      var title = opened === 'avatar' ? 'Аватарка' : opened === 'color' ? 'Цвет' : 'Знак зодиака';
+      var title = opened === 'avatar' ? 'Аватарка' : opened === 'color' ? 'Цвет' : opened === 'mix' ? 'Свой цвет' : 'Знак зодиака';
       var body;
       if (opened === 'avatar') body = emojiPicker(emoji, initial, function (e) { emoji = e; picked(); });
       else if (opened === 'color') body = el('div', { class: 'stack tight' }, [
-        swatchPicker(color, function (c) { color = c; picked(); }, function (c, done) {
-          color = c;
-          var dot = bColor.querySelector('.set-rainbow i'); if (dot) dot.style.setProperty('--c', c); // видно сразу, пока крутишь палитру
-          if (done) picked();
-        }),
+        swatchPicker(color, function (c) { color = c; picked(); }, function () { S.profileOpen = 'mix'; paint(); }),
         el('p', { class: 'muted small', text: 'Радужный круг — любой оттенок' })
       ]);
+      else if (opened === 'mix') {
+        var before = color;
+        body = colorMixer(color, function (c) {
+          color = c;
+          var dot = bColor.querySelector('.set-rainbow i'); if (dot) dot.style.setProperty('--c', c); // видно сразу, пока двигаешь
+        }, function (c) { color = c; picked(); }, function () { color = before; S.profileOpen = 'color'; paint(); });
+      }
       else body = zodiacPicker(zodiac, function (zz) { zodiac = zz; picked(); });
       panel.replaceChildren(
         el('div', { class: 'set-pop-h' }, [el('span', { text: title }), el('button', { type: 'button', class: 'set-x', 'aria-label': 'Закрыть', text: '×', onclick: function () { closeSetPop(); } })]),
