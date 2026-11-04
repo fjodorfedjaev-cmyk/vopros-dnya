@@ -55,7 +55,7 @@
   function h(tag, cls, text) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
-    if (text !== undefined) n.textContent = text;
+    if (text !== undefined) { if (window.Coin) window.Coin.fill(n, text); else n.textContent = text; } // 🪙 → наша монета
     return n;
   }
 

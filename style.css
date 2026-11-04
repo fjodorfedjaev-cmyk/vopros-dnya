@@ -898,7 +898,7 @@ html.sector-on .game-switch { pointer-events: none; opacity: 0.35; }
 /* «Зигзаг»: счётчик монет за партию и рейтинг */
 .zz-gems {
   position: absolute; top: 14px; right: 12px; pointer-events: none; padding: 3px 10px; border-radius: 999px;
-  background: rgba(18, 18, 18, 0.6); font: 600 15px var(--font-mono); color: #FFCB3D; font-variant-numeric: tabular-nums;
+  background: rgba(18, 18, 18, 0.6); font: 600 15px var(--font-mono); color: var(--accent); font-variant-numeric: tabular-nums;
 }
 .zz-gems.bump { animation: bumpSoft 0.22s ease-out; }
 html.sector-on #zz-board { pointer-events: none; opacity: 0.35; transition: opacity 0.2s; }
@@ -1003,3 +1003,11 @@ form.card .msg:empty, .push-card .msg:empty { display: none; }
   .push-card.short .push-btns { grid-auto-columns: auto; }
   .push-card.short .msg { flex-basis: 100%; }
 }
+
+/* монета сайта (картинка задаётся в coin.js) — вместо смайлика 🪙, одинаковая на всех телефонах */
+.coin {
+  display: inline-block; width: 1.05em; height: 1.05em; vertical-align: -0.16em; flex: none;
+  background: var(--coin-img) center / contain no-repeat;
+}
+/* на оранжевой кнопке монете нужна лёгкая тень, иначе сливается с фоном */
+.btn.primary .coin { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.5)); }

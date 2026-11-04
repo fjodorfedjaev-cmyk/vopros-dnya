@@ -100,16 +100,24 @@
         var v = props[k];
         if (v === null || v === undefined || v === false) return;
         if (k === 'class') n.className = v;
-        else if (k === 'text') n.textContent = v;
+        else if (k === 'text') setText(n, v);
         else if (k.slice(0, 2) === 'on') n.addEventListener(k.slice(2), v);
         else n.setAttribute(k, v === true ? '' : v);
       });
     }
     (kids || []).forEach(function (c) {
       if (c === null || c === undefined || c === false) return;
-      n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      if (typeof c !== 'string') { n.appendChild(c); return; }
+      if (!window.Coin || !Coin.has(c)) { n.appendChild(document.createTextNode(c)); return; }
+      var tmp = Coin.fill(document.createElement('span'), c);
+      while (tmp.firstChild) n.appendChild(tmp.firstChild);
     });
     return n;
+  }
+  // Текст в элемент; смайлик 🪙 превращается в нашу монету (coin.js).
+  function setText(n, t) {
+    if (window.Coin && Coin.has(t)) Coin.fill(n, t);
+    else n.textContent = t;
   }
 
   function safeColor(c) {
@@ -162,7 +170,7 @@
 
   function showMsg(node, kind, text, raw) {
     node.className = 'msg' + (kind ? ' ' + kind : '');
-    node.textContent = text || '';
+    setText(node, text || '');
     if (raw && kind === 'err' && raw !== text) node.appendChild(el('small', { text: raw }));
   }
   function showError(node, e) {
@@ -1045,7 +1053,7 @@
     var c = document.getElementById('points-chip');
     if (!c) return;
     c.hidden = !S.points;
-    c.textContent = '🪙 ' + fmtHead(balance());
+    setText(c, '🪙 ' + fmtHead(balance()));
     c.setAttribute('title', 'Монеты: ' + fmt(balance()));
   }
   function pointsWord(n) { return plural(n, 'монета', 'монеты', 'монет'); }

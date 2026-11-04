@@ -125,9 +125,11 @@
   function h(tag, cls, text) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
-    if (text !== undefined) n.textContent = text;
+    if (text !== undefined) setText(n, text);
     return n;
   }
+  // текст с 🪙 → текст с нашей монетой (coin.js)
+  function setText(n, t) { if (window.Coin) window.Coin.fill(n, t); else n.textContent = t; }
 
   /* ---------- экран игры ----------
      container — пустой элемент. opts:
@@ -223,12 +225,18 @@
       var cx = sx, cy = sy - TH * 0.7 + bob - (reduceMotion ? 0 : k * TH * 1.2);
       ctx.globalAlpha = alpha * (1 - k);
       if (!t.got) { ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(sx, sy, r * 0.8, r * 0.35, 0, 0, Math.PI * 2); ctx.fill(); }
-      ctx.fillStyle = '#B8860B'; // ребро
+      ctx.fillStyle = '#93390A'; // ребро (толщина монеты при повороте)
       ctx.beginPath(); ctx.ellipse(cx + r * 0.12 * turn, cy, r * turn, r, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#FFCB3D'; // лицевая сторона
-      ctx.beginPath(); ctx.ellipse(cx, cy, r * turn, r, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#E0A100'; ctx.lineWidth = Math.max(1, r * 0.16);
-      ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.62 * turn, r * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
+      var img = window.Coin && window.Coin.img;
+      if (img && img.complete && img.naturalWidth) {
+        // та же монета, что и везде на сайте (coin.js), сжатая по ширине — «вращается»
+        ctx.drawImage(img, cx - r * turn, cy - r, 2 * r * turn, 2 * r);
+      } else {
+        ctx.fillStyle = '#F2782C'; // запасной вариант, пока картинка не загрузилась
+        ctx.beginPath(); ctx.ellipse(cx, cy, r * turn, r, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#A8420B'; ctx.lineWidth = Math.max(1, r * 0.16);
+        ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.62 * turn, r * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
+      }
       ctx.globalAlpha = 1;
     }
     function drawBall(ox, oy, now) {
@@ -302,7 +310,7 @@
       run.advance(sec);
       if (run.coins !== gemsBefore) {
         for (var g = Math.max(0, run.tile - 6); g <= run.tile; g++) if (run.tiles[g].got < 0) run.tiles[g].got = t; // время сбора — для анимации
-        gemsEl.textContent = '🪙 ' + run.coins;
+        setText(gemsEl, '🪙 ' + run.coins);
         gemsEl.classList.remove('bump'); void gemsEl.offsetWidth; gemsEl.classList.add('bump');
       }
       // плитки далеко позади осыпаются
@@ -319,7 +327,7 @@
       screen = 'play'; phase = 'running';
       lastT = performance.now();
       snapCamera();
-      scoreEl.textContent = '0'; gemsEl.textContent = '🪙 0'; hint.textContent = '';
+      scoreEl.textContent = '0'; setText(gemsEl, '🪙 0'); hint.textContent = '';
       wrapEl.classList.add('playing'); wrapEl.classList.remove('over');
       document.documentElement.classList.add('sector-on');
       renderPanel();

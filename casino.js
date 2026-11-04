@@ -22,6 +22,8 @@
   function load(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
   function save(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) { /* ничего */ } }
   function el() { return A.el.apply(null, arguments); }
+  // текст с 🪙 → текст с нашей монетой
+  function setText(n, t) { if (window.Coin) window.Coin.fill(n, t); else n.textContent = t; }
   function fmt(n) { return A.fmt(n); }
   function bal() { return A.balance(); }
   function one(d) { return Array.isArray(d) ? d[0] : d; }
@@ -79,7 +81,7 @@
   function updBal(v) {
     if (v !== undefined && v !== null && isFinite(Number(v))) A.setBalance(c2(v));
     var b = document.getElementById('casino-bal');
-    if (b) b.textContent = '🪙 ' + fmt(bal());
+    if (b) setText(b, '🪙 ' + fmt(bal()));
   }
 
   // Поле ставки с быстрыми кнопками.
@@ -121,7 +123,7 @@
   function setResult(id, text, cls) {
     var r = document.getElementById(id);
     if (!r) return;
-    r.textContent = text;
+    setText(r, text);
     r.className = 'casino-res' + (cls ? ' ' + cls : '');
   }
   function signed(delta) { delta = c2(delta); return (delta > 0 ? '+' : delta < 0 ? '−' : '±') + fmt(Math.abs(delta)) + ' 🪙'; }
@@ -541,7 +543,7 @@
       var m = document.getElementById('crash-mult');
       if (m) m.textContent = '×' + crashMult(s).toFixed(2);
       var b = document.getElementById('crash-btn');
-      if (b && !C.busy) b.textContent = 'Забрать ' + fmt(floor2(R.bet * crashMult(s))) + ' 🪙';
+      if (b && !C.busy) setText(b, 'Забрать ' + fmt(floor2(R.bet * crashMult(s))) + ' 🪙');
       paintCrash(s, false);
       R.raf = requestAnimationFrame(frame);
     }
