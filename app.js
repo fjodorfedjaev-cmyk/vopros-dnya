@@ -108,10 +108,17 @@
     return /^#[0-9A-Fa-f]{6}$/.test(c || '') ? c : PALETTE[0];
   }
 
+  // Светлый ли цвет (тогда белая буква на нём не читается). Яркость по формуле для экранов (sRGB).
+  function isLight(hex) {
+    var c = safeColor(hex), r = parseInt(c.slice(1, 3), 16), g = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.62;
+  }
+
   function avatar(name, color, small, emoji) {
     var first = Array.from(String(name || '?'))[0] || '?';
     var a = el('span', { class: 'avatar' + (small ? ' sm' : '') + (emoji ? ' emoji' : ''), 'aria-hidden': 'true', text: emoji || first.toUpperCase() });
     a.style.setProperty('--c', safeColor(color));
+    if (!emoji && isLight(color)) a.style.color = '#1A1A1A'; // на светлом цвете буква тёмная
     return a;
   }
 
@@ -1191,20 +1198,30 @@
     return shell([form]);
   }
 
-  function swatchPicker(current, onPick) {
+  // onAny(color, done) — если передан, в конце есть радужный круг «Любой цвет» (палитра телефона).
+  // Пока двигаешь палитру, приходит done = false; когда выбрал окончательно — done = true.
+  function swatchPicker(current, onPick, onAny) {
     var box = el('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Цвет' });
+    function mark(k) { Array.prototype.forEach.call(box.children, function (x, j) { x.setAttribute('aria-checked', String(j === k)); }); }
     PALETTE.forEach(function (c, i) {
       var b = el('button', {
         type: 'button', class: 'swatch', role: 'radio', 'aria-label': PALETTE_NAMES[i],
         'aria-checked': String(c.toLowerCase() === current.toLowerCase()),
-        onclick: function () {
-          onPick(c);
-          Array.prototype.forEach.call(box.children, function (x, j) { x.setAttribute('aria-checked', String(j === i)); });
-        }
+        onclick: function () { onPick(c); mark(i); }
       });
       b.style.setProperty('--c', c);
       box.appendChild(b);
     });
+    if (onAny) {
+      var custom = PALETTE.map(function (c) { return c.toLowerCase(); }).indexOf(current.toLowerCase()) < 0;
+      // Невидимое поле type=color лежит поверх круга: нажатие сразу открывает палитру телефона.
+      var input = el('input', { type: 'color', class: 'any-in', value: safeColor(current).toLowerCase(), 'aria-label': 'Любой цвет' });
+      var any = el('span', { class: 'swatch any' + (custom ? ' set' : ''), role: 'radio', 'aria-checked': String(custom), title: 'Любой цвет' }, [input]);
+      if (custom) any.style.setProperty('--c', current);
+      input.addEventListener('input', function () { any.style.setProperty('--c', input.value); any.classList.add('set'); mark(PALETTE.length); onAny(input.value, false); });
+      input.addEventListener('change', function () { onAny(input.value, true); });
+      box.appendChild(any);
+    }
     return box;
   }
 
@@ -1297,7 +1314,7 @@
 
   async function go(view) {
     closePicker();
-    if (view !== 'profile') S.profileOpen = null; // ушёл из профиля — выбор аватарки/цвета/знака закрывается
+    if (view !== 'profile' && S.profileOpen) closeSetPop(); // ушёл из профиля — окошко выбора закрывается
     S.view = view;
     if (view === 'today' || view === 'fill') {
       S.kind = view === 'fill' ? 'fill' : 'question';
@@ -1378,7 +1395,7 @@
       active = false;
       if (S.stage !== 'app' || ev.touches.length !== 1 || window.innerWidth > 640) return;
       var t = ev.target;
-      if (t.closest && t.closest('input, textarea, .table-wrap, .picker, .menu, .celebrate, .bottom-nav, .emojis, .zodiacs, .swatches, .farm-back')) return;
+      if (t.closest && t.closest('input, textarea, .table-wrap, .picker, .menu, .celebrate, .bottom-nav, .emojis, .zodiacs, .swatches, .farm-back, .set-pop')) return;
       if (openPicker) return;
       if (S.gameState === 'play' || (t.closest && t.closest('.sector-field, .zz-field'))) return; // во время игры вкладки не листаются
       sx = ev.touches[0].clientX; sy = ev.touches[0].clientY; t0 = Date.now(); active = true;
@@ -2130,6 +2147,26 @@
     return box;
   }
 
+  // Окошко выбора в профиле. Открывая, добавляем шаг в историю браузера —
+  // тогда кнопка «Назад» на телефоне закрывает окошко, а не уводит со страницы.
+  var setPopHist = false;
+  function openSetPop(key) {
+    S.profileOpen = key;
+    if (!setPopHist) { try { history.pushState({ setPop: 1 }, ''); setPopHist = true; } catch (e) { /* без истории тоже работает */ } }
+    if (S.profilePaint) S.profilePaint();
+  }
+  function closeSetPop() {
+    S.profileOpen = null;
+    if (S.profilePaint) S.profilePaint();
+    if (setPopHist) { setPopHist = false; try { history.back(); } catch (e) { /* ничего */ } }
+  }
+  window.addEventListener('popstate', function () {
+    if (!setPopHist) return;
+    setPopHist = false;
+    S.profileOpen = null;
+    if (S.profilePaint) S.profilePaint();
+  });
+
   function viewProfile() {
     var color = safeColor(S.profile.color);
     var emoji = S.profile.avatar || null;
@@ -2141,13 +2178,18 @@
     // (открыт только один); после выбора он закрывается сам. Изменения сохраняются кнопкой «Сохранить».
     // Какой выбор открыт, хранится в S.profileOpen: так он не закрывается, когда профиль перерисовывается
     // (например, догрузились данные). Из «Гороскопа» можно прийти сразу к выбору знака.
-    var panel = el('div', { class: 'set-panel', id: 'set-panel' });
+    // Выбор открывается в маленьком окошке поверх профиля — ничего ниже не сдвигается.
+    var panel = el('div', { class: 'set-pop', id: 'set-panel', role: 'dialog' });
+    var back = el('div', { class: 'set-back', onclick: function () { closeSetPop(); } }); // нажатие мимо окошка закрывает его
     function setBtn(key, id) {
-      return el('button', { type: 'button', class: 'set-btn', id: id || null, 'aria-controls': 'set-panel', onclick: function () { S.profileOpen = S.profileOpen === key ? null : key; paint(); } });
+      return el('button', { type: 'button', class: 'set-btn', id: id || null, 'aria-controls': 'set-panel', 'aria-haspopup': 'dialog',
+        onclick: function () { if (S.profileOpen === key) closeSetPop(); else openSetPop(key); } });
     }
     var bAvatar = setBtn('avatar'), bColor = setBtn('color'), bZodiac = setBtn('zodiac', 'zodiac-field');
     var setRow = el('div', { class: 'set-row' }, [bAvatar, bColor, bZodiac]);
-    function picked() { S.profileOpen = null; paint(); }
+    var setWrap = el('div', { class: 'set-wrap' }, [setRow, back, panel]);
+    function picked() { closeSetPop(); }
+    S.profilePaint = function () { paint(); };
     function paint() {
       var z = zodiacOf(zodiac);
       var dot = el('i'); dot.style.setProperty('--c', color);
@@ -2156,13 +2198,34 @@
       bZodiac.replaceChildren(el('span', { class: 'set-vis zod-g', 'aria-hidden': 'true', text: z ? glyph(z) : '?' }), el('span', { class: 'set-l', text: z ? z[2] : 'Знак' }));
       var opened = S.profileOpen;
       [['avatar', bAvatar], ['color', bColor], ['zodiac', bZodiac]].forEach(function (x) { x[1].setAttribute('aria-expanded', String(opened === x[0])); });
-      if (!opened) { panel.hidden = true; panel.replaceChildren(); return; }
-      panel.hidden = false;
-      if (opened === 'avatar') panel.replaceChildren(emojiPicker(emoji, initial, function (e) { emoji = e; picked(); }));
-      else if (opened === 'color') panel.replaceChildren(swatchPicker(color, function (c) { color = c; picked(); }));
-      else panel.replaceChildren(zodiacPicker(zodiac, function (zz) { zodiac = zz; picked(); }));
+      if (!opened) { panel.hidden = true; back.hidden = true; panel.replaceChildren(); return; }
+      panel.hidden = false; back.hidden = false;
+      var title = opened === 'avatar' ? 'Аватарка' : opened === 'color' ? 'Цвет' : 'Знак зодиака';
+      var body;
+      if (opened === 'avatar') body = emojiPicker(emoji, initial, function (e) { emoji = e; picked(); });
+      else if (opened === 'color') body = el('div', { class: 'stack tight' }, [
+        swatchPicker(color, function (c) { color = c; picked(); }, function (c, done) {
+          color = c;
+          var dot = bColor.querySelector('.set-rainbow i'); if (dot) dot.style.setProperty('--c', c); // видно сразу, пока крутишь палитру
+          if (done) picked();
+        }),
+        el('p', { class: 'muted small', text: 'Радужный круг — любой оттенок' })
+      ]);
+      else body = zodiacPicker(zodiac, function (zz) { zodiac = zz; picked(); });
+      panel.replaceChildren(
+        el('div', { class: 'set-pop-h' }, [el('span', { text: title }), el('button', { type: 'button', class: 'set-x', 'aria-label': 'Закрыть', text: '×', onclick: function () { closeSetPop(); } })]),
+        body
+      );
+      // окошко целиком на экране: если уходит под нижнее меню — чуть прокручиваем страницу
+      requestAnimationFrame(function () {
+        var r = panel.getBoundingClientRect(), nav = document.querySelector('.bottom-nav');
+        var limit = (nav ? nav.getBoundingClientRect().top : window.innerHeight) - 8;
+        if (r.bottom > limit) window.scrollBy({ top: r.bottom - limit, behavior: 'smooth' });
+      });
     }
     paint();
+    // пришли из «Гороскопа» сразу к выбору знака — «Назад» на телефоне тоже должна закрыть окошко
+    if (S.profileOpen && !setPopHist) { try { history.pushState({ setPop: 1 }, ''); setPopHist = true; } catch (e) { /* ничего */ } }
     name.value = S.profile.display_name;
     var msg = el('p', { class: 'msg', role: 'status' });
     var btn = el('button', { type: 'submit', class: 'btn primary', text: 'Сохранить' });
@@ -2186,8 +2249,7 @@
       }
     }, [
       el('div', { class: 'name-row' }, [el('label', { class: 'lbl', for: 'pname', text: 'Имя' }), name]),
-      setRow,
-      panel,
+      setWrap,
       el('div', { class: 'row actions' }, [btn]),
       msg
     ]);
@@ -2598,7 +2660,7 @@
     document.addEventListener('focusout', flushStale);
     // Окно реакций закрывается кликом мимо него или клавишей Esc.
     document.addEventListener('click', function () { closePicker(); });
-    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closePicker(); });
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { closePicker(); if (S.profileOpen) closeSetPop(); } });
     boot();
   }
 
