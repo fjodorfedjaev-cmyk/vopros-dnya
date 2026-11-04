@@ -904,3 +904,10 @@ html.sector-on .game-switch { pointer-events: none; opacity: 0.35; }
 html.sector-on #zz-board { pointer-events: none; opacity: 0.35; transition: opacity 0.2s; }
 #zz-board { transition: opacity 0.2s; }
 @media (prefers-reduced-motion: reduce) { .zz-gems.bump { animation: none !important; } }
+
+/* ===== Профиль: серия дней и монеты — две маленькие карточки рядом ===== */
+.me-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.me-card { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: 76px; padding: 12px 16px; }
+.me-card-l { font-size: 13px; color: var(--muted); }
+.me-card-n { font: 600 26px/1.15 var(--font-mono); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.me-card-n.coins { font-size: 22px; color: var(--accent); overflow: hidden; text-overflow: ellipsis; }

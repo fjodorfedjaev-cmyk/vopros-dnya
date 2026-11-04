@@ -972,11 +972,6 @@
     return r.data || [];
   }
 
-  async function loadGroup() {
-    var r = await sb.rpc('group_stats');
-    S.group = r.error ? null : firstRow(r.data) || null;
-  }
-
   function myStats() {
     for (var i = 0; i < S.stats.length; i++) if (S.stats[i].user_id === S.userId) return S.stats[i];
     return null;
@@ -1322,7 +1317,7 @@
     }
     if (view === 'profile') {
       render();
-      await Promise.all([loadGroup(), loadStats()]);
+      await loadStats();
       if (S.view !== view) return;
     }
     if (view === 'game') {
@@ -1545,61 +1540,22 @@
 
   /* ----- статистика ----- */
 
-  function tile(n, one, few, many) {
-    return el('div', { class: 'tile' }, [
-      el('span', { class: 'tile-n', text: String(n) }),
-      el('span', { class: 'tile-l', text: plural(n, one, few, many) })
-    ]);
-  }
+  // Монеты до сотых: 1 234,50
+  function fmt2(n) { return Number(n || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
   function viewStats() {
     var st = myStats();
     var n = st ? st.current_streak : 0;
-    var note;
-    if (st && st.answered_today) note = 'Сегодня ответ уже засчитан. Завтра серия вырастет, если снова ответишь на вопрос или впишешь слово.';
-    else if (n) note = 'Ответь на вопрос или впиши слово, чтобы серия не прервалась.';
-    else note = 'Ответь на вопрос дня или впиши слово, чтобы начать серию.';
-
-    var out = [el('section', { class: 'card streak-card' }, [
-      el('div', { class: 'streak-big', 'aria-hidden': 'true' }, [el('span', { text: '🔥' }), el('span', { class: 'streak-num', text: String(n) })]),
-      el('div', { class: 'streak-text' }, [
-        el('p', { class: 'streak-title', text: n ? n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд' : 'Серии пока нет' }),
-        el('p', { class: 'muted', text: note }),
-        st ? el('p', { class: 'count', text: 'рекорд: ' + st.best_streak + ' · ответов: ' + st.total_answers + ' · реакций получено: ' + st.reactions_received }) : null
+    // Две маленькие карточки рядом: серия дней и монеты. Без описаний.
+    var out = [el('div', { class: 'me-cards' }, [
+      el('section', { class: 'card me-card', 'aria-label': 'Серия дней: ' + n }, [
+        el('span', { class: 'me-card-l', text: 'Серия дней' }),
+        el('span', { class: 'me-card-n' }, [el('span', { 'aria-hidden': 'true', text: '🔥 ' }), String(n)])
+      ]),
+      el('section', { class: 'card me-card', 'aria-label': 'Монеты: ' + fmt2(S.points ? S.points.balance : 0) }, [
+        el('span', { class: 'me-card-n coins' }, [el('span', { 'aria-hidden': 'true', text: '🪙 ' }), S.points ? fmt2(S.points.balance) : '…'])
       ])
     ])];
-
-    if (S.points) {
-      var pt = S.points;
-      out.push(el('section', { class: 'sect' }, [
-        el('h2', { text: 'Монеты' }),
-        el('div', { class: 'card stack tight' }, [
-          el('div', { class: 'points-card' }, [
-            el('span', { class: 'points-big', text: '🪙 ' + fmt(pt.balance) }),
-            el('span', { class: 'muted', text: pt.today ? 'заработано сегодня +' + fmt(pt.today) : 'сегодня пока 0' })
-          ]),
-          el('ul', { class: 'points-rules' }, [
-            el('li', null, [el('b', { text: '+30' }), document.createTextNode(' за ответ на вопрос дня')]),
-            el('li', null, [el('b', { text: '+30' }), document.createTextNode(' за слово дня')]),
-            el('li', null, [el('b', { text: '+40 / +100 / +300 / +1000' }), document.createTextNode(' за серию 3 / 7 / 30 / 100 дней')]),
-            el('li', null, [el('b', { text: '1 монета' }), document.createTextNode(' за каждые 10 очков в «Секторе», без ограничений')]),
-            el('li', null, [el('b', { text: '🪙 на дорожке' }), document.createTextNode(' в «Зигзаге» — каждая собранная монета твоя')])
-          ])
-        ])
-      ]));
-    }
-
-    if (S.group) {
-      out.push(el('section', { class: 'sect' }, [
-        el('h2', { text: 'Вся компания' }),
-        el('div', { class: 'tiles' }, [
-          tile(S.group.days_played, 'день игры', 'дня игры', 'дней игры'),
-          tile(S.group.total_answers, 'ответ', 'ответа', 'ответов'),
-          tile(S.group.total_reactions, 'реакция', 'реакции', 'реакций'),
-          tile(S.group.total_comments, 'комментарий', 'комментария', 'комментариев')
-        ])
-      ]));
-    }
 
     var rows = S.stats.map(function (s) {
       var me = s.user_id === S.userId;
@@ -2473,13 +2429,13 @@
         toast(ok ? 'Уведомления включены 🔔' : 'Без разрешения браузера уведомления не придут');
       })];
     }
-    card.replaceChildren(
+    // replaceChildren вывел бы null как текст «null», поэтому пустые места убираем
+    card.replaceChildren.apply(card, [
       el('p', { class: 'install-title', text: '🔔 Уведомления' }),
-      el('p', { class: 'muted push-what', text: 'Напоминание раз в 3 дня, если вопрос дня ещё без твоего ответа, и уведомление, когда кто-то комментирует твой ответ или слово.' }),
       el('p', { class: 'push-state' + (st === 'on' ? ' on' : ''), text: info }),
       buttons.length ? el('div', { class: 'row actions' }, buttons) : null,
       msg
-    );
+    ].filter(Boolean));
   }
 
   // Один раз предложить включить уведомления (если не показывали подсказку об установке в этот раз).
