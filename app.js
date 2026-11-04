@@ -54,6 +54,7 @@
     horoOpen: {},            // какие категории гороскопа раскрыты (сначала все закрыты)
     members: [],             // все участники
     stats: [],               // серии и счётчики по участникам
+    coins: {},               // монеты каждого участника: user_id → баланс
     group: null,             // общая статистика компании
     openComments: {},        // у каких ответов раскрыты комментарии
     commentDrafts: {},       // недописанные комментарии
@@ -1008,9 +1009,11 @@
   }
 
   async function loadStats() {
-    var res = await Promise.all([sb.rpc('member_stats'), sb.rpc('my_points')]);
+    var res = await Promise.all([sb.rpc('member_stats'), sb.rpc('my_points'), sb.rpc('member_coins')]);
     if (!res[0].error) S.stats = res[0].data || [];
     applyPoints(res[1]);
+    // монеты каждого участника: user_id → баланс (для таблицы «Участники»)
+    if (!res[2].error) { S.coins = {}; (res[2].data || []).forEach(function (r) { S.coins[r.user_id] = Number(r.coins); }); }
   }
 
   /* ----- монеты (валюта сайта) ----- */
@@ -1636,15 +1639,15 @@
           el('span', { class: 'who' }, [
             avatar(s.display_name, s.color, true, s.avatar),
             el('span', { class: 'who-name' }, [
-              el('span', { text: s.display_name + (me ? ' (ты)' : '') }),
-              el('span', { class: 'who-sub', text: s.answered_today ? 'ответил сегодня' : 'ещё не ответил сегодня' })
+              el('span', { text: s.display_name + (me ? ' (ты)' : '') })
             ])
           ])
         ]),
         el('td', { text: s.current_streak ? '🔥 ' + s.current_streak : '—' }),
         el('td', { class: 'col-best', text: String(s.best_streak) }),
         el('td', { text: String(s.total_answers) }),
-        el('td', { text: String(s.reactions_received) })
+        el('td', { text: String(s.reactions_received) }),
+        el('td', { class: 'col-coins', text: S.coins && S.coins[s.user_id] !== undefined ? fmt(Math.floor(S.coins[s.user_id])) : '…' })
       ]);
     });
     out.push(el('section', { class: 'sect' }, [
@@ -1653,10 +1656,11 @@
         el('table', { class: 'board' }, [
           el('thead', null, [el('tr', null, [
             el('th', { scope: 'col', text: 'Кто' }),
-            el('th', { scope: 'col', text: 'Серия дней' }),
+            el('th', { scope: 'col', text: 'Серия' }),
             el('th', { scope: 'col', class: 'col-best', text: 'Рекорд' }),
             el('th', { scope: 'col', text: 'Ответы' }),
-            el('th', { scope: 'col', text: 'Реакции' })
+            el('th', { scope: 'col', text: 'Реакции' }),
+            el('th', { scope: 'col', class: 'col-coins', text: 'Монеты' })
           ])]),
           el('tbody', null, rows)
         ])
@@ -2341,7 +2345,7 @@
     S.session = null; S.userId = null; S.profile = null;
     stopGame(); S.board = { week: null, all: null };
     S.kd = { question: blankGame(), fill: blankGame() }; S.kind = 'question'; S.archiveKind = 'question';
-    S.members = []; S.stats = []; S.group = null;
+    S.members = []; S.stats = []; S.group = null; S.coins = {};
     S.view = 'today'; S.stage = 'auth'; S.authMode = 'login';
     render();
   }

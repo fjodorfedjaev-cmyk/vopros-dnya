@@ -979,3 +979,12 @@ html.sector-on #zz-board { pointer-events: none; opacity: 0.35; transition: opac
 .mix-ok { min-width: 110px; }
 /* в профиле пустая строка для сообщений не занимает место */
 form.card .msg:empty, .push-card .msg:empty { display: none; }
+
+/* Участники: колонка монет */
+.board .col-coins { color: var(--accent); font-family: var(--font-mono); }
+.board thead .col-coins { color: var(--muted); }
+.board thead th.col-coins, .board td.col-coins { width: 76px; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 480px) {
+  .board thead th.col-coins, .board td.col-coins { width: 64px; }
+  .board td.col-coins { font-size: 13px; }
+}
