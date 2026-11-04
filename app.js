@@ -1581,7 +1581,7 @@
           el('ul', { class: 'points-rules' }, [
             el('li', null, [el('b', { text: '+30' }), document.createTextNode(' за ответ на вопрос дня')]),
             el('li', null, [el('b', { text: '+30' }), document.createTextNode(' за слово дня')]),
-            el('li', null, [el('b', { text: '+20 / +50 / +150 / +500' }), document.createTextNode(' за серию 3 / 7 / 30 / 100 дней')]),
+            el('li', null, [el('b', { text: '+40 / +100 / +300 / +1000' }), document.createTextNode(' за серию 3 / 7 / 30 / 100 дней')]),
             el('li', null, [el('b', { text: '1 монета' }), document.createTextNode(' за каждые 10 очков в «Секторе», без ограничений')]),
             el('li', null, [el('b', { text: '🪙 на дорожке' }), document.createTextNode(' в «Зигзаге» — каждая собранная монета твоя')])
           ])

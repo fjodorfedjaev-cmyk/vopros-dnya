@@ -140,6 +140,8 @@
   }
   function drawHistory(sect) {
     var list = C.history[C.game];
+    // «Сапёр»: если ставку забрали сразу, не открыв ни одной клетки, — это не игра, в истории её не показываем
+    if (list && C.game === 'mines') list = list.filter(function (r) { return r.state !== 'refund'; });
     sect.replaceChildren(el('h2', { text: 'Последние игры' }));
     if (!list) { sect.appendChild(el('p', { class: 'muted', text: 'Загружаю…' })); return; }
     if (!list.length) { sect.appendChild(el('p', { class: 'empty', text: 'Пока ни одной игры.' })); return; }
@@ -374,10 +376,11 @@
     try {
       var r = one(await rpc('casino_mines_cashout', { p_round: M.round }));
       var bet = M.bet;
+      var back = Number(r.payout) === Number(bet); // забрал сразу — ставка вернулась, ничего не пишем
       M.round = null;
-      M.over = { mines: r.mines, text: 'Забрал ×' + Number(r.mult).toFixed(2) + ' · ' + signed(r.payout - bet), cls: r.payout > bet ? 'win' : '' };
+      M.over = { mines: r.mines, text: back ? '' : 'Забрал ×' + Number(r.mult).toFixed(2) + ' · ' + signed(r.payout - bet), cls: r.payout > bet ? 'win' : '' };
       updBal(r.balance);
-      loadHistory(true);
+      loadHistory(!back);
     } catch (e) { setResult('mines-res', errText(e), 'lose'); }
     C.busy = false; draw();
   }
