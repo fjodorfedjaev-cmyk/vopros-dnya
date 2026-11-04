@@ -1646,7 +1646,6 @@
         el('td', { text: s.current_streak ? '🔥 ' + s.current_streak : '—' }),
         el('td', { class: 'col-best', text: String(s.best_streak) }),
         el('td', { text: String(s.total_answers) }),
-        el('td', { text: String(s.reactions_received) }),
         el('td', { class: 'col-coins', text: S.coins && S.coins[s.user_id] !== undefined ? fmt(Math.floor(S.coins[s.user_id])) : '…' })
       ]);
     });
@@ -1659,7 +1658,6 @@
             el('th', { scope: 'col', text: 'Серия' }),
             el('th', { scope: 'col', class: 'col-best', text: 'Рекорд' }),
             el('th', { scope: 'col', text: 'Ответы' }),
-            el('th', { scope: 'col', text: 'Реакции' }),
             el('th', { scope: 'col', class: 'col-coins', text: 'Монеты' })
           ])]),
           el('tbody', null, rows)
