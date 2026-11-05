@@ -217,7 +217,6 @@
     if (C.busy) return;
     var bet = readBet(); if (!bet) return;
     C.busy = true; draw();
-    setResult('dbl-res', 'Крутится…', '');
     var strip = document.getElementById('dbl-strip');
     var res;
     try {
@@ -238,10 +237,7 @@
       C.busy = false;
       C.dblPos = { rep: 6, idx: idx, jitter: jitter };
       updBal(res.balance);
-      draw();
-      var d = res.payout - bet;
-      var name = res.color === 'red' ? 'красное' : res.color === 'black' ? 'чёрное' : 'зелёное';
-      setResult('dbl-res', 'Выпало ' + name + ' ' + res.slot + ' · ' + (d === 0 ? 'ставка вернулась' : signed(d)), d > 0 ? 'win' : d < 0 ? 'lose' : '');
+      draw(); // итог под кнопками не пишем — он виден в «Последних играх»
       loadHistory(true);
     }, ms + 80);
   }
@@ -324,7 +320,6 @@
       ]);
     }
     box.replaceChildren(grid, playing ? info : betRow(C.busy), playing ? actions : info, resultLine('mines-res'));
-    if (M.over && M.over.text) { var mt = M.over.text, mc = M.over.cls; setTimeout(function () { setResult('mines-res', mt, mc); }, 0); }
   }
 
   async function startMines() {
@@ -356,11 +351,9 @@
       if (r.result === 'safe') {
         M.payout = r.payout;
       } else {
-        var bet = M.bet;
         M.round = null;
-        M.over = r.result === 'mine'
-          ? { mines: r.mines, boom: cell, text: '💥 Мина! ' + signed(-bet), cls: 'lose' }
-          : { mines: r.mines, text: 'Все клетки открыты! ×' + Number(r.mult).toFixed(2) + ' · ' + signed(r.payout - bet), cls: 'win' };
+        // итог под кнопкой не пишем — поле показывает мины, а сумма видна в «Последних играх»
+        M.over = r.result === 'mine' ? { mines: r.mines, boom: cell } : { mines: r.mines };
         updBal(r.balance);
         loadHistory(true);
       }
@@ -380,7 +373,7 @@
       var bet = M.bet;
       var back = Number(r.payout) === Number(bet); // забрал сразу — ставка вернулась, ничего не пишем
       M.round = null;
-      M.over = { mines: r.mines, text: back ? '' : 'Забрал ×' + Number(r.mult).toFixed(2) + ' · ' + signed(r.payout - bet), cls: r.payout > bet ? 'win' : '' };
+      M.over = { mines: r.mines };
       updBal(r.balance);
       loadHistory(!back);
     } catch (e) { setResult('mines-res', errText(e), 'lose'); }
