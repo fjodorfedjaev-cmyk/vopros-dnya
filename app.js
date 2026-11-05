@@ -1523,7 +1523,7 @@
     fillAnswer(a);
     var f = el('section', { class: 'sect', id: 'friends' });
     fillFriends(f);
-    // В «Слове» карточка с фразой живёт внутри answer-sect: после ответа она же показывает твой вариант.
+    // Карточка с вопросом (фразой) живёт внутри answer-sect: после ответа в ней же снизу показан твой ответ.
     var past = el('div', { class: 'past-link' }, [el('button', {
       type: 'button', class: 'link quiet',
       text: S.kind === 'fill' ? 'Прошлые фразы →' : 'Прошлые вопросы →',
@@ -1535,19 +1535,18 @@
         onclick: function () { if (S.view !== x[0]) switchTab(x[0], x[0] === 'fill' ? 'left' : 'right'); }
       });
     }));
-    return S.kind === 'fill' ? [seg, a, f, past] : [seg, questionCard(S.today), a, f, past];
+    return [seg, a, f, past];
   }
 
   function fillAnswer(sect) {
     var mine = myAnswer();
     sect.replaceChildren();
     if (mine && !S.editing) {
-      if (S.kind !== 'fill') sect.appendChild(el('h2', { text: 'Твой ответ' }));
       sect.appendChild(myAnswerCard(mine, sect));
       return;
     }
     var isFill = S.kind === 'fill';
-    if (isFill) sect.appendChild(questionCard(S.today));
+    sect.appendChild(questionCard(S.today));
     var max = isFill ? 60 : 1000;
     var ta = isFill
       ? el('input', { type: 'text', id: 'answer', maxlength: 60, autocomplete: 'off', 'aria-label': 'Твоё слово или фраза', placeholder: 'Твоё слово или фраза' })
@@ -1801,7 +1800,9 @@
           actionsRow(receivedReactions(mine.id, S.reactions), mcb),
           mcb
         ])
-      : el('div', { class: 'card ans mine tappable' }, [
+      : el('div', { class: 'card qcard ans mine tappable q-top' }, [
+          el('div', { class: 'qhead' }, [el('span', { class: 'date', text: dayLabel(S.today.day) })]),
+          el('p', { class: 'qtext q-accent', text: S.today.text }),
           body,
           anchor,
           actionsRow(receivedReactions(mine.id, S.reactions), mcb),

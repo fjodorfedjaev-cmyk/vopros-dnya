@@ -497,7 +497,8 @@ mark.fill-ans {
   background: rgba(242, 120, 44, 0.16); color: var(--accent); font-weight: 600;
   padding: 0 6px; border-radius: 6px; box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
-mark.fill-ans.empty { background: transparent; color: var(--muted); font-weight: 400; letter-spacing: 1px; padding: 0 2px; border-bottom: 2px dashed var(--muted); border-radius: 0; }
+mark.fill-ans.empty { background: transparent; color: transparent; font-weight: 400; letter-spacing: 1px; padding: 0 2px; border: 0; border-bottom: 2px dashed var(--muted); border-radius: 0; text-align: left; }
+/* пустой пропуск: только точки снизу (подчёркивания прозрачные — держат ширину; рамку от общего .empty убираем) */
 .qtext mark.fill-ans { font-weight: 600; }
 .day-q mark.fill-ans.empty { border-bottom-width: 1.5px; }
 #answer[type="text"] { min-height: 48px; font-size: 16px; }
@@ -569,6 +570,9 @@ html, body { overflow-x: hidden; }
 .ans.mine, .card.ans.mine { border-color: #2A2827; }
 /* «Слово»: твой вариант в верхней карточке */
 .fill-top .qtext { margin: 0; }
+/* Вопрос дня: мой ответ вписан в карточку вопроса снизу, отделён тонкой линией */
+.q-top .qtext { margin: 0; }
+.q-top > .ans-body { border-top: 1px solid var(--line); padding-top: 12px; }
 .saved-line { font-size: 13px; color: var(--muted); }
 /* мягкая подсветка карточки после сохранения */
 .glow { animation: glow 1.2s ease-out; }
@@ -775,7 +779,9 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .crash-mult.win { color: var(--accent); }
 .crash-mult.lose { color: var(--err); }
 .crash-btn { width: 100%; min-height: 52px; font-size: 17px; }
-.crash-btn.cash { background: var(--btn); border-color: var(--btn); }
+.crash-btn.cash { background: var(--btn); border-color: var(--btn); display: flex; align-items: center; justify-content: center; gap: 0.35em; }
+/* число в «Забрать»: цифры одной ширины, по центру своей коробки — слово и монета не прыгают */
+.crash-num { display: inline-block; text-align: center; font-variant-numeric: tabular-nums; }
 .crash-hist { display: flex; flex-wrap: wrap; gap: 6px; }
 .crash-chip { padding: 4px 9px; border-radius: 999px; font: 600 12px var(--font-mono); background: var(--soft); color: var(--muted); }
 .crash-chip.hi { color: var(--accent); }

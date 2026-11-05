@@ -8,7 +8,7 @@
   var root = null;             // корневой элемент вкладки (живёт между перерисовками)
   var C = {
     game: load('casino-game', 'double'),
-    bet: c2(parseFloat(load('casino-bet', '10'))) || 10,
+    bets: {}, // своя ставка у каждой игры: { double: 10, mines: 2, crash: 5 }
     busy: false,
     history: {},               // game → последние раунды
     mines: { count: Math.min(24, Math.max(2, parseInt(load('casino-mines', '3'), 10) || 3)), round: null, opened: [], mult: 1, payout: 0, over: null },
@@ -25,6 +25,14 @@
   // текст с 🪙 → текст с нашей монетой
   function setText(n, t) { if (window.Coin) window.Coin.fill(n, t); else n.textContent = t; }
   function fmt(n) { return A.fmt(n); }
+  // Ставка текущей игры. Хранится отдельно для Дабла, Сапёра и Краша (casino-bet-double и т. д.).
+  // Если своей ещё нет — берём старую общую ставку (casino-bet), чтобы у всех ничего не сбросилось.
+  function getBet() {
+    var g = C.game;
+    if (!(C.bets[g] > 0)) C.bets[g] = c2(parseFloat(load('casino-bet-' + g, load('casino-bet', '10')))) || 10;
+    return C.bets[g];
+  }
+  function setBet(v) { C.bets[C.game] = v; save('casino-bet-' + C.game, v); }
   function bal() { return A.balance(); }
   function one(d) { return Array.isArray(d) ? d[0] : d; }
 
@@ -88,16 +96,16 @@
   function betRow(disabled) {
     var input = el('input', {
       type: 'number', inputmode: 'decimal', min: 0.01, step: 0.01, id: 'casino-bet', class: 'casino-bet-in',
-      'aria-label': 'Ставка', value: String(C.bet), disabled: disabled ? true : null
+      'aria-label': 'Ставка', value: String(getBet()), disabled: disabled ? true : null
     });
     input.addEventListener('input', function () {
       var v = c2(parseFloat(String(input.value).replace(',', '.')));
-      if (v > 0) { C.bet = v; save('casino-bet', v); }
+      if (v > 0) setBet(v);
     });
     function quick(label, fn) {
       return el('button', {
         type: 'button', class: 'btn casino-q', text: label, disabled: disabled ? true : null,
-        onclick: function () { C.bet = Math.max(0.01, floor2(fn(C.bet))); input.value = String(C.bet); save('casino-bet', C.bet); }
+        onclick: function () { var v = Math.max(0.01, floor2(fn(getBet()))); setBet(v); input.value = String(v); }
       });
     }
     return el('div', { class: 'casino-betrow' }, [
@@ -112,11 +120,11 @@
   }
   function readBet() {
     var i = document.getElementById('casino-bet');
-    var raw = i ? parseFloat(String(i.value).replace(',', '.')) : C.bet;
+    var raw = i ? parseFloat(String(i.value).replace(',', '.')) : getBet();
     var v = c2(raw);
     if (!(v >= 0.01)) { A.toast('Ставка — от 0,01 монеты'); return 0; }
     if (v > bal() + 1e-9) { A.toast('Не хватает монет: у тебя ' + fmt(bal())); return 0; }
-    C.bet = v; save('casino-bet', v);
+    setBet(v);
     return v;
   }
   function resultLine(id) { return el('p', { class: 'casino-res', id: id, role: 'status' }); }
@@ -283,7 +291,7 @@
       ]);
       actions = el('div', { class: 'row actions' }, [el('button', {
         type: 'button', class: 'btn primary mines-cash', disabled: C.busy ? true : null,
-        text: 'Забрать ' + fmt(M.payout || C.bet) + ' 🪙', onclick: cashMines
+        text: 'Забрать ' + fmt(M.payout || M.bet) + ' 🪙', onclick: cashMines
       })]);
     } else {
       // Число мин: можно вписать (от 2 до 24) или менять кнопками − и +. Всё в одной строке с «Начать».
@@ -396,7 +404,7 @@
     });
     autoIn.addEventListener('input', function () { R.auto = autoIn.value; save('casino-auto', autoIn.value); });
     var btn = running
-      ? el('button', { type: 'button', class: 'btn primary crash-btn cash', id: 'crash-btn', text: 'Забрать', onclick: cashCrash })
+      ? cashBtnParts(el('button', { type: 'button', class: 'btn primary crash-btn cash', id: 'crash-btn', onclick: cashCrash }))
       : el('button', { type: 'button', class: 'btn primary crash-btn', id: 'crash-btn', text: 'Поставить', disabled: C.busy ? true : null, onclick: startCrash });
     box.replaceChildren(
       stage,
@@ -580,8 +588,7 @@
       var s = liveSec();
       var m = document.getElementById('crash-mult');
       if (m) m.textContent = '×' + crashMult(s).toFixed(2);
-      var b = document.getElementById('crash-btn');
-      if (b && !C.busy) setText(b, 'Забрать ' + fmt(floor2(R.bet * crashMult(s))) + ' 🪙');
+      if (!C.busy) setCashNum(floor2(R.bet * crashMult(s)));
       paintCrash(s, false);
       R.raf = requestAnimationFrame(frame);
     }
@@ -605,6 +612,30 @@
     R.raf = 0; R.timer = 0;
   }
 
+  // Кнопка «Забрать [число] 🪙»: слово и монета стоят на месте, меняется только число.
+  // Число всегда с двумя знаками после запятой и в «коробке» постоянной ширины (цифры одной ширины),
+  // поэтому кнопка не дёргается на каждом кадре. Коробка заранее на одну цифру шире и растёт только вверх.
+  function cashBtnParts(b) {
+    b.replaceChildren(
+      el('span', { text: 'Забрать' }),
+      el('span', { class: 'crash-num', id: 'crash-num' }),
+      el('span', { class: 'crash-coin', text: '🪙' })
+    );
+    var R = C.crash;
+    R.numCh = 0;
+    setCashNum(floor2((R.bet || 0) * (R.round ? crashMult(liveSec()) : 1)), b.querySelector('.crash-num'));
+    return b;
+  }
+  function setCashNum(v, node) {
+    var n = node || document.getElementById('crash-num');
+    if (!n) return;
+    var t = Number(v).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    var R = C.crash;
+    var need = R.numCh ? t.length : t.length + 1;
+    if (need > (R.numCh || 0)) { R.numCh = need; n.style.minWidth = need + 'ch'; }
+    n.textContent = t;
+  }
+
   async function cashCrash() {
     var R = C.crash;
     if (!R.round || C.busy) return;
@@ -617,7 +648,7 @@
     } catch (e) {
       C.busy = false;
       setResult('crash-res', errText(e), 'lose');
-      if (b) { b.disabled = false; }
+      if (b) { b.disabled = false; cashBtnParts(b); }
     }
   }
 
