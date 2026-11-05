@@ -1497,7 +1497,6 @@
       var mine = myAnswer();
       return el('section', { class: 'card qcard', 'aria-label': 'Фраза дня' }, [
         el('div', { class: 'qhead' }, [
-          el('span', { class: 'tag cat-fill', text: 'Впиши слово' }),
           el('span', { class: 'date', text: dayLabel(q.day) })
         ]),
         fillSentence(q.text, mine && !S.editing ? mine.body : (S.draft || ''), 'qtext', 'fill-blank')
@@ -1853,8 +1852,6 @@
       if (S.who.length) {
         kids.push(el('p', { class: 'lbl', text: 'Уже ответили · ' + S.who.length + ' из ' + total }));
         kids.push(el('div', { class: 'chips' }, S.who.map(function (w) { return chip(w.display_name, w.color, false, w.avatar); })));
-      } else {
-        kids.push(el('p', { text: 'Пока никто не ответил. Будь первым 🙌' }));
       }
       sect.appendChild(el('div', { class: 'locked' }, kids));
       return;
