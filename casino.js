@@ -274,10 +274,10 @@
         var b = el('button', {
           type: 'button', class: cls, 'aria-label': 'Клетка ' + (cell + 1),
           disabled: (!playing || opened || C.busy) ? true : null,
-          text: isMine && !opened ? '💣' : '',
           onclick: function () { openCell(cell); }
         });
         if (opened) b.appendChild(gem());
+        else if (isMine && window.Icons) b.appendChild(Icons.el('mine')); // своя мина вместо 💣
         grid.appendChild(b);
       })(i);
     }

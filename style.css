@@ -14,6 +14,8 @@
   --funny: #FFB347;
   --spicy: #FF6A3D;
   --err: #FF7A6B;
+  --special: #9B7BFF;     /* фиолетовый: особые поля в играх (разворот в Секторе, трамплин в Зигзаге) */
+  --special-hi: #CDBEFF;  /* светлый фиолетовый: PERFECT-зона особого сектора */
   --font-display: 'Literata', Georgia, 'Times New Roman', serif;
   --font-body: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
@@ -1019,3 +1021,52 @@ form.card .msg:empty, .push-card .msg:empty { display: none; }
 }
 /* на оранжевой кнопке монете нужна лёгкая тень, иначе сливается с фоном */
 .btn.primary .coin { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.5)); }
+
+/* ===== свои значки вместо смайликов (картинки в icons.js) ===== */
+.ic { display: inline-flex; width: 1em; height: 1em; vertical-align: -0.14em; flex: none; }
+.ic svg { width: 100%; height: 100%; display: block; }
+.ic-line { stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ic.flame { width: 1.2em; height: 1.2em; vertical-align: -0.24em; margin: 0 -0.06em; }
+.mi-ico { display: inline-flex; align-items: center; justify-content: center; }
+.mi-ico .ic { width: 18px; height: 18px; }
+.zod-g .ic { width: 24px; height: 24px; }
+.set-vis.zod-g .ic { width: 26px; height: 26px; }
+.horo-glyph .ic { width: 22px; height: 22px; }
+.horo-glyph .ic-line { stroke-width: 2; }
+.ic.cel-emoji { width: 60px; height: 60px; margin: 0 auto; }
+.celebrate.big .ic.cel-emoji { width: 76px; height: 76px; }
+.mine-cell .ic-mine { width: 66%; height: 66%; }
+/* на оранжевой клетке взрыва мина тёмная, иначе шипы сливаются с фоном */
+.mine-cell.boom .ic-mine path, .mine-cell.boom .ic-mine circle { stroke: #1A1716; }
+/* медали рейтинга: кружок с номером места */
+.medal { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font: 600 12px/1 var(--font-mono); }
+.medal.m1 { background: radial-gradient(circle at 35% 30%, #FFE7AE, #F2B33D 58%, #B9800F); color: #3D2604; }
+.medal.m2 { background: radial-gradient(circle at 35% 30%, #F6F4F1, #BDB6B0 58%, #8A837E); color: #2B2724; }
+.medal.m3 { background: radial-gradient(circle at 35% 30%, #F7BE93, #D9783A 58%, #9C4A16); color: #351604; }
+
+/* ===== переключатель «Вопрос / Слово / Выбор» и «Выбор дня» ===== */
+.segment.three { grid-template-columns: repeat(3, 1fr); }
+.poll-card { gap: 14px; }
+.poll-card .qtext { margin: 0; }
+.poll-opts { display: flex; flex-direction: column; gap: 8px; }
+.po {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 10px; width: 100%;
+  min-height: 50px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--soft); color: var(--ink); font: 500 16px/1.3 var(--font-body); text-align: left; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
+}
+.po:not(:disabled):active { transform: scale(0.985); }
+.po:hover:not(:disabled) { border-color: #4A3F37; }
+.po:disabled { cursor: default; opacity: 1; }
+.po-text { position: relative; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* после выбора: полоска с долей голосов, справа аватарки и проценты */
+.po-bar { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(242, 120, 44, 0.12); border-radius: 0; transition: width 0.5s ease; }
+.po.mine { border-color: var(--accent); }
+.po.mine .po-bar { background: rgba(242, 120, 44, 0.26); }
+.po-side { position: relative; display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.po-pct { font: 500 14px var(--font-mono); color: var(--muted); min-width: 3.2ch; text-align: right; }
+.po.mine .po-pct { color: var(--accent); }
+.poll-opts.reveal .po-bar { animation: po-grow 0.6s ease both; }
+@keyframes po-grow { from { transform: scaleX(0); transform-origin: left; } to { transform: scaleX(1); transform-origin: left; } }
+.poll-foot { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .po-bar { transition: none; } .poll-opts.reveal .po-bar { animation: none; } }

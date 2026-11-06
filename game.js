@@ -1,5 +1,7 @@
 /* «Сектор» — аркада на реакцию и точность.
    Стрелка вращается по часовой стрелке; нажми, когда она внутри выделенного сектора.
+   Иногда сектор фиолетовый — это разворот: попал в него, и стрелка крутится в другую сторону.
+   Через 2–4 попадания снова будет фиолетовый сектор, и стрелка вернётся по часовой.
    Углы считаются в градусах по часовой стрелке от 12 часов.
    Модуль отдаёт window.SectorGame: настройки, чистые функции (их удобно проверять) и mount() для экрана игры. */
 (function (root) {
@@ -19,6 +21,10 @@
     gapAhead: 90,         // новый сектор начинается не ближе 90° впереди стрелки
     gapBehind: 40,        // и заканчивается не ближе 40° позади неё
     transitionMs: 300,    // пауза между раундами
+    // Развороты (фиолетовые сектора). Числа — сколько обычных попаданий до следующего разворота.
+    firstReverse: [4, 7], // первый разворот — 5-й…8-й сектор игры
+    backAfter: [2, 4],    // возврат по часовой — через 2–4 попадания после разворота
+    nextReverse: [5, 9],  // следующий разворот — через 5–9 попаданий после возврата
     countdownMs: 600      // один шаг обратного отсчёта после возврата на вкладку
   };
 
@@ -38,10 +44,14 @@
   }
 
   // Центр нового сектора: впереди стрелки с запасом на реакцию. r — случайное число от 0 до 1.
-  function placeSector(arrow, width, r) {
+  // dir — куда крутится стрелка: 1 — по часовой, -1 — против. «Впереди» считается по направлению движения,
+  // поэтому запас на реакцию и проверка базы (game_min_ms) одинаковые в обе стороны.
+  function placeSector(arrow, width, r, dir) {
     var span = Math.max(0, 360 - CONFIG.gapAhead - CONFIG.gapBehind - width);
-    return wrap(arrow + CONFIG.gapAhead + width / 2 + r * span);
+    return wrap(arrow + (dir === -1 ? -1 : 1) * (CONFIG.gapAhead + width / 2 + r * span));
   }
+  // Случайное целое от a до b включительно. r — случайное число от 0 до 1.
+  function between(range, r) { return range[0] + Math.min(range[1] - range[0], Math.floor(r * (range[1] - range[0] + 1))); }
 
   // Минимально возможное время игры с таким числом попаданий (так же считает база).
   function minTimeMs(hits) {
@@ -74,7 +84,8 @@
       css = {
         line: v('--line', '#333131'), ink: v('--ink', '#E8E6E3'), muted: v('--muted', '#A0968E'),
         accent: v('--accent', '#F2782C'), btn: v('--btn', '#C4500B'), surface: v('--surface', '#1E1E1E'),
-        tile: v('--tile', '#262422'), err: v('--err', '#FF7A6B')
+        tile: v('--tile', '#262422'), err: v('--err', '#FF7A6B'),
+        special: v('--special', '#9B7BFF'), specialHi: v('--special-hi', '#CDBEFF')
       };
     }
     readColors();
@@ -102,6 +113,9 @@
     var screen = 'start';   // start | play | over
     var phase = 'idle';     // running | transition | paused | countdown | dead
     var a0 = 0, t0 = 0, speed = CONFIG.startSpeed;
+    var dir = 1;            // 1 — по часовой, -1 — против (после фиолетового сектора)
+    var special = false;    // текущий сектор — разворот (фиолетовый)
+    var untilSpecial = 0;   // сколько обычных секторов осталось до следующего разворота
     var center = 120, width = CONFIG.startWidth;
     var hits = 0, perfects = 0, score = 0;
     var transitionEnd = 0, sectorFadeFrom = 0;
@@ -109,7 +123,7 @@
     var pulseAt = -1, missAt = -1;
     var raf = 0, destroyed = false;
 
-    function angleAt(t) { return wrap(a0 + speed * Math.max(0, t - t0) / 1000); }
+    function angleAt(t) { return wrap(a0 + dir * speed * Math.max(0, t - t0) / 1000); }
     function rebase(t) { a0 = angleAt(t); t0 = t; }
 
     function resize() {
@@ -151,10 +165,10 @@
         ctx.globalAlpha = alpha;
         ctx.lineCap = 'butt';
         ctx.lineWidth = 24;
-        ctx.strokeStyle = dead ? css.err : css.btn;
+        ctx.strokeStyle = dead ? css.err : special ? css.special : css.btn;
         ctx.beginPath(); ctx.arc(c, c, R, rad(center - width / 2), rad(center + width / 2)); ctx.stroke();
         var pw = perfectWidth(width);
-        ctx.strokeStyle = dead ? css.err : '#FFB37A';
+        ctx.strokeStyle = dead ? css.err : special ? css.specialHi : '#FFB37A';
         ctx.beginPath(); ctx.arc(c, c, R, rad(center - pw / 2), rad(center + pw / 2)); ctx.stroke();
         ctx.globalAlpha = 1;
       }
@@ -211,7 +225,9 @@
       speed = speedFor(0); width = widthFor(0);
       var now = performance.now();
       a0 = 0; t0 = now;
-      center = placeSector(0, width, Math.random());
+      dir = 1; special = false;
+      untilSpecial = between(CONFIG.firstReverse, Math.random());
+      center = placeSector(0, width, Math.random(), 1);
       setScore(0); hint.textContent = ''; pop.textContent = ''; pop.className = 'sector-pop';
       wrapEl.classList.add('playing'); wrapEl.classList.remove('over');
       document.documentElement.classList.add('sector-on');
@@ -226,7 +242,8 @@
       rebase(now);
       speed = speedFor(hits);
       width = widthFor(hits);
-      center = placeSector(angleAt(now), width, Math.random());
+      special = untilSpecial <= 0;
+      center = placeSector(angleAt(now), width, Math.random(), dir);
       phase = 'running';
     }
 
@@ -245,6 +262,12 @@
       var res = judge(angleAt(t), center, width);
       if (res === 'miss') { lose(t); return; }
       hits += 1;
+      if (special) {
+        // разворот: стрелка сразу крутится в другую сторону
+        rebase(t);
+        dir = -dir;
+        untilSpecial = between(dir === -1 ? CONFIG.backAfter : CONFIG.nextReverse, Math.random());
+      } else untilSpecial -= 1;
       if (res === 'perfect') { perfects += 1; score += 2; pulseAt = now; showPop('PERFECT +2', 'perfect'); }
       else { score += 1; }
       setScore(score);
@@ -390,14 +413,14 @@
         if (opts.onStateChange) opts.onStateChange('gone');
       },
       // для проверок
-      _state: function () { return { screen: screen, phase: phase, hits: hits, perfects: perfects, score: score, center: center, width: width, speed: speed, angle: angleAt(performance.now()) }; },
+      _state: function () { return { screen: screen, phase: phase, hits: hits, perfects: perfects, score: score, center: center, width: width, speed: speed, dir: dir, special: special, untilSpecial: untilSpecial, angle: angleAt(performance.now()) }; },
       _press: press
     };
   }
 
   var api = {
     CONFIG: CONFIG, speedFor: speedFor, widthFor: widthFor, perfectWidth: perfectWidth,
-    norm: norm, judge: judge, placeSector: placeSector, minTimeMs: minTimeMs, mount: mount
+    norm: norm, judge: judge, placeSector: placeSector, between: between, minTimeMs: minTimeMs, mount: mount
   };
   root.SectorGame = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

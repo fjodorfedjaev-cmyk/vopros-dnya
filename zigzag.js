@@ -2,6 +2,8 @@
    Шарик сам катится по дорожке-зигзагу. Нажатие меняет направление: вверх-вправо ↔ вверх-влево.
    Не повернул вовремя или повернул раньше — шарик падает с дорожки, игра окончена.
    Очко — за каждый удачный поворот. Чем больше очков, тем быстрее шарик и тем короче прямые участки.
+   С 10 очков на длинных прямых бывают обрывы. Перед обрывом фиолетовая плитка — трамплин:
+   нажатие на ней — прыжок через обрыв вместо поворота (+1 очко). Не нажал — шарик падает.
    На дорожке лежат монеты: шарик собирает их сам, каждая — 1 монета сайта (начисляет база после партии).
    Модуль отдаёт window.ZigzagGame: настройки, логику без экрана (её удобно проверять) и mount() для экрана игры. */
 (function (root) {
@@ -27,6 +29,13 @@
     coinFrom: 6,
     coinGap: 12,
     coinChance: 0.1,
+    // Обрывы с трамплином. Участок с обрывом всегда из gapRun плиток:
+    // 2 обычные → трамплин → обрыв → 2 обычные (последняя — поворот), чтобы рядом с поворотом прыгать не пришлось.
+    gapFrom: 10,          // с какого участка (≈ очков) бывают обрывы
+    gapChance: 0.15,      // шанс, что участок будет с обрывом
+    gapMinApart: 4,       // между обрывами не меньше 4 участков
+    gapRun: 6,
+    gapAt: 2,             // номер трамплина внутри участка (с нуля); обрыв — следующая плитка
     ahead: 40,            // сколько плиток дорожки держать готовыми впереди шарика
     countdownMs: 600,     // один шаг обратного отсчёта после возврата на вкладку
     fallMs: 650           // сколько длится падение шарика
@@ -52,19 +61,20 @@
     rand = rand || Math.random;
     var tiles = [];
     var at = {};
-    var endX = -1, endY = 0, genDir = 'x', genSeg = 0, lastCoin = -1000;
+    var endX = -1, endY = 0, genDir = 'x', genSeg = 0, lastCoin = -1000, lastGap = -1000;
 
-    function add(x, y, seg) {
+    // kind: '' — обычная плитка, 'tramp' — трамплин (фиолетовый), 'hole' — обрыв (плитки нет, но место считается).
+    function add(x, y, seg, kind) {
       var i = tiles.length;
-      var coin = i >= CONFIG.coinFrom && i - lastCoin >= CONFIG.coinGap && rand() < CONFIG.coinChance;
+      var coin = !kind && i >= CONFIG.coinFrom && i - lastCoin >= CONFIG.coinGap && rand() < CONFIG.coinChance;
       if (coin) lastCoin = i;
       at[x + ',' + y] = i;
-      tiles.push({ x: x, y: y, seg: seg, gone: 0, coin: coin, got: 0 });
+      tiles.push({ x: x, y: y, seg: seg, gone: 0, coin: coin, got: 0, tramp: kind === 'tramp', hole: kind === 'hole' });
     }
-    function addSegment(dir, len, seg) {
+    function addSegment(dir, len, seg, gapAt) {
       for (var i = 0; i < len; i++) {
         if (dir === 'x') endX += 1; else endY += 1;
-        add(endX, endY, seg);
+        add(endX, endY, seg, gapAt >= 0 ? (i === gapAt ? 'tramp' : i === gapAt + 1 ? 'hole' : '') : '');
       }
     }
 
@@ -78,12 +88,34 @@
       coins: 0,           // собранные монеты
       alive: true,
       turns: 0,           // все нажатия
+      jumps: 0,           // удачные прыжки
+      air: false,         // шарик в прыжке
+      airHole: -1,        // номер плитки-обрыва, над которой летим
+      airFrom: 0, airTo: 0, // откуда и докуда летим (координата по направлению движения) — для дуги прыжка
       tileAt: function (x, y) { var k = at[x + ',' + y]; return k === undefined ? -1 : k; },
       speed: function () { return speedFor(run.score); },
+      // Нажатие: на трамплине — прыжок, иначе поворот. В прыжке нажатия не считаются.
       turn: function () {
-        if (!run.alive) return;
-        run.dir = run.dir === 'x' ? 'y' : 'x';
+        if (!run.alive || run.air) return '';
         run.turns += 1;
+        var t = tiles[run.tile];
+        if (t && t.tramp) {
+          var hole = tiles[run.tile + 1];
+          run.air = true;
+          run.airHole = run.tile + 1;
+          run.airFrom = run.dir === 'x' ? run.bx : run.by;
+          run.airTo = (run.dir === 'x' ? hole.x : hole.y) + 0.5; // приземляемся на край следующей плитки
+          return 'jump';
+        }
+        run.dir = run.dir === 'x' ? 'y' : 'x';
+        return 'turn';
+      },
+      // Высота прыжка от 0 до 1 (дуга): 0 — на дорожке.
+      lift: function () {
+        if (!run.air) return 0;
+        var p = run.dir === 'x' ? run.bx : run.by;
+        var k = (p - run.airFrom) / Math.max(0.01, run.airTo - run.airFrom);
+        return Math.sin(Math.max(0, Math.min(1, k)) * Math.PI);
       },
       // Сдвинуть шарик на sec секунд. Маленькими шагами, чтобы на большой скорости не «перепрыгнуть» край.
       advance: function (sec) {
@@ -94,6 +126,8 @@
           if (run.dir === 'x') run.bx += dist / steps; else run.by += dist / steps;
           var k = run.tileAt(Math.round(run.bx), Math.round(run.by));
           if (k < 0) { run.alive = false; break; }
+          if (tiles[k].hole && !run.air) { run.alive = false; break; } // не прыгнул — упал в обрыв
+          if (run.air && k > run.airHole) { run.air = false; run.jumps += 1; run.score += 1; } // приземлился: +1 очко
           if (k > run.tile) {
             // проехал по плиткам — собрал монеты на них
             for (var j = run.tile + 1; j <= k; j++) if (tiles[j].coin && !tiles[j].got) { tiles[j].got = -1; run.coins += 1; }
@@ -110,8 +144,12 @@
       while (tiles.length - run.tile < CONFIG.ahead) {
         genDir = genDir === 'x' ? 'y' : 'x';
         genSeg += 1;
-        // номер участка = сколько очков будет у игрока, когда шарик до него доедет
-        addSegment(genDir, segmentLength(genSeg, rand()), genSeg);
+        // номер участка = сколько поворотов будет у игрока, когда шарик до него доедет
+        var len = segmentLength(genSeg, rand()), gapAt = -1;
+        if (genSeg >= CONFIG.gapFrom && genSeg - lastGap >= CONFIG.gapMinApart && rand() < CONFIG.gapChance) {
+          len = CONFIG.gapRun; gapAt = CONFIG.gapAt; lastGap = genSeg;
+        }
+        addSegment(genDir, len, genSeg, gapAt);
       }
     }
 
@@ -148,6 +186,9 @@
               btn: v('--btn', '#C4500B'), err: v('--err', '#FF7A6B') };
     })();
     var TOP = '#45403C', LEFT = css.btn, RIGHT = '#8E3D0B';
+    // трамплин — фиолетовый (цвет особых полей сайта, --special)
+    var SP = getComputedStyle(document.documentElement).getPropertyValue('--special').trim() || '#9B7BFF';
+    var SP_LEFT = '#7457E0', SP_RIGHT = '#523AAE';
 
     var wrapEl = h('div', 'sector zz');
     var field = h('div', 'zz-field');
@@ -195,6 +236,7 @@
       ctx.closePath();
     }
     function drawTile(t, ox, oy, now) {
+      if (t.hole) return; // обрыв — пустое место
       var alpha = 1, drop = 0;
       if (t.gone) {
         var k = (now - t.gone) / 700;
@@ -207,11 +249,11 @@
       if (sy < -TH * 2 || sy > H + TH * 2) return;
       ctx.globalAlpha = alpha;
       // левая и правая боковые грани, потом верх
-      ctx.fillStyle = LEFT;
+      ctx.fillStyle = t.tramp ? SP_LEFT : LEFT;
       ctx.beginPath(); ctx.moveTo(sx - TW / 2, sy); ctx.lineTo(sx, sy + TH / 2); ctx.lineTo(sx, sy + TH / 2 + D); ctx.lineTo(sx - TW / 2, sy + D); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = RIGHT;
+      ctx.fillStyle = t.tramp ? SP_RIGHT : RIGHT;
       ctx.beginPath(); ctx.moveTo(sx, sy + TH / 2); ctx.lineTo(sx + TW / 2, sy); ctx.lineTo(sx + TW / 2, sy + D); ctx.lineTo(sx, sy + TH / 2 + D); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = TOP; tilePath(sx, sy); ctx.fill();
+      ctx.fillStyle = t.tramp ? SP : TOP; tilePath(sx, sy); ctx.fill();
       ctx.globalAlpha = 1;
       if (t.coin) drawCoin(t, sx, sy, now, alpha);
     }
@@ -248,8 +290,10 @@
         drop = reduceMotion ? 0 : k * k * H * 0.45;
         alpha = 1 - k * 0.85;
       } else {
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.beginPath(); ctx.ellipse(sx, sy, r * 0.9, r * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+        var up = run.lift(); // в прыжке тень на земле меньше и бледнее
+        ctx.fillStyle = 'rgba(0,0,0,' + (0.35 * (1 - up * 0.6)) + ')';
+        ctx.beginPath(); ctx.ellipse(sx, sy, r * 0.9 * (1 - up * 0.35), r * 0.45 * (1 - up * 0.35), 0, 0, Math.PI * 2); ctx.fill();
+        drop = -up * TH * 1.1; // шарик поднимается по дуге
       }
       ctx.globalAlpha = alpha;
       ctx.fillStyle = phase === 'falling' || screen === 'over' ? css.err : css.ink;
@@ -384,7 +428,7 @@
     function renderPanel(result, prevBest, info) {
       panel.replaceChildren();
       if (screen === 'start') {
-        panel.appendChild(h('p', 'sector-lead', 'Жми — шарик повернёт. Не упади!'));
+        panel.appendChild(h('p', 'sector-lead', 'Жми — шарик повернёт. На фиолетовой плитке — прыгнет.'));
         panel.appendChild(h('p', 'sector-best', 'Рекорд: ' + (opts.best ? (opts.best() || 0) : 0) + ' · собирай 🪙 на дорожке'));
         var b = h('button', 'btn primary sector-play', 'Играть');
         b.type = 'button';
@@ -464,7 +508,7 @@
       // для проверок
       // рекорд пришёл из базы — обновить подпись на стартовом экране
       refreshBest: function () { if (!destroyed && screen === 'start') renderPanel(); },
-      _state: function () { return { screen: screen, phase: phase, score: run.score, tile: run.tile, coins: run.coins, dir: run.dir, bx: run.bx, by: run.by, speed: speedFor(run.score), alive: run.alive }; },
+      _state: function () { return { screen: screen, phase: phase, score: run.score, tile: run.tile, coins: run.coins, dir: run.dir, air: run.air, jumps: run.jumps, bx: run.bx, by: run.by, speed: speedFor(run.score), alive: run.alive }; },
       _run: function () { return run; },
       _press: press
     };

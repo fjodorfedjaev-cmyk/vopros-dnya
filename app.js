@@ -13,6 +13,9 @@
   var PALETTE = ['#12806F', '#2F6FDE', '#8A4FD6', '#D6457A', '#D9622B', '#B8860B', '#3C8D2F', '#5B6770', '#C93535', '#1F9AC2', '#8A5A3B'];
   var PALETTE_NAMES = ['бирюзовый', 'синий', 'фиолетовый', 'розовый', 'оранжевый', 'золотистый', 'зелёный', 'серый', 'красный', 'голубой', 'коричневый'];
   var CAT = { deep: 'Глубокий', funny: 'Смешной', spicy: 'Провокационный' };
+  // Огонёк серии: свой значок из icons.js (в тексте подменяется картинкой, как 🪙 — монетой).
+  var FIRE = (window.Icons && Icons.FIRE) || '🔥';
+  function ico(name, cls) { return window.Icons ? Icons.el(name, cls) : el('span', { class: cls || null }); }
   // Реакции: код в базе, эмодзи на экране, подпись для экранного диктора.
   var REACTIONS = [
     ['laugh', '😂', 'смешно'], ['fire', '🔥', 'огонь'], ['heart', '❤️', 'нравится'], ['wow', '🤯', 'взрыв мозга'],
@@ -39,8 +42,8 @@
     email: '',
     authMode: 'login',       // login | register
     profile: null,
-    view: 'today',           // today (вопрос) | fill (слово) | horo | archive | profile
-    kind: 'question',        // какая игра сейчас на экране: question или fill
+    view: 'today',           // today (вопрос) | fill (слово) | poll (выбор) | horo | archive | profile
+    kind: 'question',        // какая игра сейчас на экране: question, fill или poll
     archiveKind: 'question', // какая игра выбрана в архиве
     board: { week: null, all: null }, // рейтинг «Сектора»
     points: null,            // мои баллы: { balance, today, game_today }
@@ -71,14 +74,17 @@
   function blankGame() {
     return { today: null, answers: [], who: [], reactions: [], comments: [], commentReactions: [], editing: false, draft: '', archive: null };
   }
-  S.kd = { question: blankGame(), fill: blankGame() };
+  S.kd = { question: blankGame(), fill: blankGame(), poll: blankGame() };
   ['today', 'answers', 'who', 'reactions', 'comments', 'commentReactions', 'editing', 'draft', 'archive'].forEach(function (k) {
     Object.defineProperty(S, k, {
       get: function () { return S.kd[S.kind][k]; },
       set: function (v) { S.kd[S.kind][k] = v; }
     });
   });
-  var GAME_RPC = { question: 'ensure_today_question', fill: 'ensure_today_fill' };
+  var GAME_RPC = { question: 'ensure_today_question', fill: 'ensure_today_fill', poll: 'ensure_today_poll' };
+  // Вкладка дня → вид ответа в базе.
+  function kindOf(view) { return view === 'fill' ? 'fill' : view === 'poll' ? 'poll' : 'question'; }
+  function isDayView(view) { return view === 'today' || view === 'fill' || view === 'poll'; }
 
   // Фраза с пропуском: «до ___ после». Ответ подставляется на место пропуска и подсвечивается.
   function fillSentence(prompt, answer, cls, blankId) {
@@ -336,9 +342,9 @@
     var overlay = el('div', { class: 'celebrate' + (milestone ? ' big' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'cel-title' }, [
       canvas,
       el('div', { class: 'cel-card' }, [
-        el('div', { class: 'cel-emoji', 'aria-hidden': 'true', text: milestone ? '🏆' : '✨' }),
+        ico(milestone ? 'trophy' : 'sparkle', 'cel-emoji'),
         el('h2', { id: 'cel-title', class: 'cel-title', text: milestone || (S.kind === 'fill' ? 'Вписано!' : 'Ответ принят!') }),
-        n ? el('p', { class: 'cel-streak', text: '🔥 Серия: ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд' }) : null,
+        n ? el('p', { class: 'cel-streak', text: FIRE + ' Серия: ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд' }) : null,
         el('p', { class: 'muted', text: others
           ? 'Ответы друзей открыты: ' + others + ' ' + plural(others, 'ответ', 'ответа', 'ответов') + '.'
           : 'Ты ответил первым. Ответы друзей появятся, как только они ответят.' }),
@@ -361,7 +367,7 @@
   }
 
   function firstRow(data) { return Array.isArray(data) ? data[0] : data; }
-  function mapQ(row) { return { day: row.q_day, id: row.q_id, category: row.q_category, text: row.q_text }; }
+  function mapQ(row) { return { day: row.q_day, id: row.q_id, category: row.q_category, text: row.q_text, options: row.q_options || null }; }
   function myAnswer() {
     for (var i = 0; i < S.answers.length; i++) if (S.answers[i].user_id === S.userId) return S.answers[i];
     return null;
@@ -678,12 +684,12 @@
         ]);
       }
       var items = [
-        menuItem('📋', 'Скопировать', async function () { closePicker(); toast((await copyText(c.body)) ? 'Скопировано' : 'Не получилось скопировать'); })
+        menuItem('copy', 'Скопировать', async function () { closePicker(); toast((await copyText(c.body)) ? 'Скопировано' : 'Не получилось скопировать'); })
       ];
       if (mine) {
-        items.push(menuItem('🗑', 'Удалить', function () { confirmFor = c.id; draw(); var f = wrap.querySelector('.menu button'); if (f) f.focus(); }, 'danger'));
+        items.push(menuItem('trash', 'Удалить', function () { confirmFor = c.id; draw(); var f = wrap.querySelector('.menu button'); if (f) f.focus(); }, 'danger'));
       } else {
-        items.push(menuItem('↩️', 'Ответить', function () {
+        items.push(menuItem('reply', 'Ответить', function () {
           var tag = '@' + m.name + ' ';
           var cur = S.commentDrafts[answerId] || '';
           if (cur.indexOf(tag) !== 0) S.commentDrafts[answerId] = tag + cur.replace(/^@\S+\s/, '');
@@ -735,7 +741,6 @@
     ['aquarius', '♒', 'Водолей', '20.01–18.02'], ['pisces', '♓', 'Рыбы', '19.02–20.03']
   ];
   function zodiacOf(code) { return ZODIAC.filter(function (z) { return z[0] === code; })[0] || null; }
-  function glyph(z) { return z[1] + '︎'; }
 
   // Упрощённые созвездия: точки в квадрате 100×100, соединённые линиями (собственная стилизация).
   var STARS = {
@@ -856,7 +861,7 @@
           onPick(z[0]);
           Array.prototype.forEach.call(box.children, function (x, j) { x.setAttribute('aria-checked', String(j === i)); });
         }
-      }, [el('span', { class: 'zod-g', 'aria-hidden': 'true', text: glyph(z) }), el('span', { class: 'zod-n', text: z[2] })]));
+      }, [el('span', { class: 'zod-g', 'aria-hidden': 'true' }, [ico(z[0])]), el('span', { class: 'zod-n', text: z[2] })]));
     });
     return box;
   }
@@ -867,7 +872,6 @@
     var z = zodiacOf(S.profile.zodiac);
     if (!z) {
       return [el('section', { class: 'card horo-empty' }, [
-        el('div', { class: 'horo-empty-art', 'aria-hidden': 'true', text: '✨' }),
         el('h2', { class: 'horo-empty-title', text: 'Укажи свой знак зодиака' }),
         el('p', { class: 'muted', text: 'Гороскоп откроется, как только ты выберешь знак в профиле. Это займёт пару секунд.' }),
         el('button', { type: 'button', class: 'btn primary', text: 'Выбрать знак', onclick: function () {
@@ -905,7 +909,7 @@
         constellation(z[0], 92),
         el('div', { class: 'horo-head-text' }, [
           el('span', { class: 'horo-date', text: fmtDayYear.format(parseDay(day)).replace(' г.', '') }),
-          el('h2', { class: 'horo-sign' }, [el('span', { class: 'horo-glyph', 'aria-hidden': 'true', text: glyph(z) }), el('span', { text: z[2] })]),
+          el('h2', { class: 'horo-sign' }, [el('span', { class: 'horo-glyph', 'aria-hidden': 'true' }, [ico(z[0])]), el('span', { text: z[2] })]),
           el('span', { class: 'muted', text: 'Твой гороскоп на сегодня' })
         ])
       ]),
@@ -950,7 +954,7 @@
     var r = await sb.rpc(GAME_RPC[k]);
     if (r.error) throw r.error;
     var row = firstRow(r.data);
-    if (!row) throw new Error(k === 'fill' ? 'Фраза на сегодня не найдена' : 'Вопрос на сегодня не найден');
+    if (!row) throw new Error(k === 'fill' ? 'Фраза на сегодня не найдена' : k === 'poll' ? 'Выбор на сегодня не найден' : 'Вопрос на сегодня не найден');
     S.kd[k].today = mapQ(row);
     await loadDay(k);
   }
@@ -1100,14 +1104,14 @@
     var st = myStats();
     var n = st ? st.current_streak : 0;
     c.hidden = !n;
-    c.textContent = '🔥 ' + n;
+    setText(c, FIRE + ' ' + n);
     c.setAttribute('title', 'Серия: ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд');
   }
 
   // Тихое обновление: подтягивает новые ответы и смену дня, не трогая поле, в котором человек печатает.
   async function refreshQuietly() {
     if (S.stage !== 'app' || document.hidden) return;
-    if (S.view !== 'today' && S.view !== 'fill') return;
+    if (!isDayView(S.view)) return;
     if (S.refreshing) { S.pending = true; return; }
     S.refreshing = true;
     try {
@@ -1125,6 +1129,8 @@
       }
       await loadDay();
       updateStreakChip();
+      var ps = document.getElementById('poll-sect');
+      if (ps && !S.pollBusy) fillPoll(ps);
       var f = document.getElementById('friends');
       if (f) { if (busy(f)) S.stale = true; else keepFocus(f, function () { fillFriends(f); }); }
       // Свой ответ перерисовываем, только если его не редактируют и не пишут к нему комментарий.
@@ -1331,10 +1337,10 @@
 
   /* ----- основной экран ----- */
 
-  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', horo: 'Гороскоп дня', game: 'Сектор', casino: 'Казино', archive: 'Архив', profile: 'Профиль' };
+  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', poll: 'Выбор дня', horo: 'Гороскоп дня', game: 'Сектор', casino: 'Казино', archive: 'Архив', profile: 'Профиль' };
   var TABS = [['today', 'Вопрос'], ['horo', 'Гороскоп'], ['game', 'Игры'], ['casino', 'Казино'], ['profile', 'Профиль']];
   // «Вопрос» и «Слово» живут на одной вкладке: внутри переключатель.
-  function navKey(view) { return view === 'fill' ? 'today' : view; }
+  function navKey(view) { return view === 'fill' || view === 'poll' ? 'today' : view; }
   function navTarget(key) { return key === 'today' ? (S.lastDay || 'today') : key; }
   function titleFor(view) {
     if (view === 'archive') return S.archiveKind === 'fill' ? 'Прошлые фразы' : 'Прошлые вопросы';
@@ -1350,7 +1356,7 @@
     var chip = el('button', {
       type: 'button', id: 'streak-chip', class: 'streak-chip',
       title: 'Серия: ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд',
-      text: '🔥 ' + n, onclick: function () { go('profile'); }
+      text: FIRE + ' ' + n, onclick: function () { go('profile'); }
     });
     chip.hidden = !n;
     var pchip = el('button', {
@@ -1381,8 +1387,8 @@
     closePicker();
     if (view !== 'profile' && S.profileOpen) closeSetPop(); // ушёл из профиля — окошко выбора закрывается
     S.view = view;
-    if (view === 'today' || view === 'fill') {
-      S.kind = view === 'fill' ? 'fill' : 'question';
+    if (isDayView(view)) {
+      S.kind = kindOf(view);
       S.lastDay = view;
       S.editing = false;
       if (!S.today) {
@@ -1417,7 +1423,7 @@
       return;
     }
     render();
-    if (view === 'today' || view === 'fill') refreshQuietly();
+    if (isDayView(view)) refreshQuietly();
   }
 
   function screenApp() {
@@ -1520,6 +1526,7 @@
   }
 
   function viewToday() {
+    if (S.kind === 'poll') return [daySwitch(), viewPoll()];
     var a = el('section', { class: 'sect', id: 'answer-sect' });
     fillAnswer(a);
     var f = el('section', { class: 'sect', id: 'friends' });
@@ -1530,13 +1537,88 @@
       text: S.kind === 'fill' ? 'Прошлые фразы →' : 'Прошлые вопросы →',
       onclick: function () { openArchive(S.kind); }
     })]);
-    var seg = el('div', { class: 'segment day-switch', role: 'group', 'aria-label': 'Вопрос или слово' }, [['today', 'Вопрос дня'], ['fill', 'Слово дня']].map(function (x) {
+    return [daySwitch(), a, f, past];
+  }
+
+  // Переключатель «Вопрос / Слово / Выбор». Анимация едет в сторону выбранной кнопки.
+  var DAY_TABS = [['today', 'Вопрос'], ['fill', 'Слово'], ['poll', 'Выбор']];
+  function daySwitch() {
+    var cur = DAY_TABS.map(function (x) { return x[0]; }).indexOf(S.view);
+    return el('div', { class: 'segment day-switch three', role: 'group', 'aria-label': 'Вопрос, слово или выбор' }, DAY_TABS.map(function (x, i) {
       return el('button', {
         type: 'button', text: x[1], 'aria-pressed': String(S.view === x[0]),
-        onclick: function () { if (S.view !== x[0]) switchTab(x[0], x[0] === 'fill' ? 'left' : 'right'); }
+        onclick: function () { if (S.view !== x[0]) switchTab(x[0], i > cur ? 'left' : 'right'); }
       });
     }));
-    return [seg, a, f, past];
+  }
+
+  /* ----- «Выбор дня»: вопрос с вариантами ----- */
+  // Ответ — номер варианта ('0'…'3'). Голоса друзей видны после своего выбора (так же закрывает база).
+  // Выбор можно поменять до конца дня: просто нажми другой вариант.
+  function viewPoll() {
+    var sect = el('section', { class: 'sect', id: 'poll-sect' });
+    fillPoll(sect);
+    return sect;
+  }
+  function fillPoll(sect) {
+    var q = S.kd.poll.today;
+    var answers = S.kd.poll.answers || [];
+    var opts = (q && Array.isArray(q.options)) ? q.options : [];
+    var mine = null;
+    answers.forEach(function (a) { if (a.user_id === S.userId) mine = a; });
+    var chosen = mine ? Number(mine.body) : -1;
+    var votes = opts.map(function () { return []; });
+    if (mine) answers.forEach(function (a) { var i = Number(a.body); if (votes[i]) votes[i].push(a.user_id); });
+    var total = votes.reduce(function (n, v) { return n + v.length; }, 0);
+    var list = el('div', { class: 'poll-opts' + (mine ? ' done' : ''), role: 'group', 'aria-label': 'Варианты ответа' }, opts.map(function (text, i) {
+      var n = votes[i].length, pct = total ? Math.round(n * 100 / total) : 0;
+      var kids = [el('span', { class: 'po-text', text: String(text) })];
+      if (mine) {
+        var bar = el('span', { class: 'po-bar', 'aria-hidden': 'true' });
+        bar.style.width = pct + '%';
+        kids.unshift(bar);
+        kids.push(el('span', { class: 'po-side' }, [n ? avatarStack(votes[i]) : null, el('span', { class: 'po-pct', text: pct + '%' })]));
+      }
+      return el('button', {
+        type: 'button', class: 'po' + (i === chosen ? ' mine' : ''), 'aria-pressed': String(i === chosen),
+        'aria-label': String(text) + (mine ? ': ' + pct + '%' : ''),
+        disabled: S.pollBusy ? true : null,
+        onclick: function () { if (i !== chosen) votePoll(sect, i); }
+      }, kids);
+    }));
+    sect.replaceChildren(el('div', { class: 'card qcard poll-card' }, [
+      el('div', { class: 'qhead' }, [el('span', { class: 'date', text: q ? dayLabel(q.day) : '' })]),
+      el('p', { class: 'qtext', text: q ? q.text : '' }),
+      list,
+      el('p', { class: 'muted small poll-foot', text: mine
+        ? (total === 1 ? 'Пока выбрал только ты' : 'Выбрали: ' + total)
+        : 'Голоса друзей откроются после выбора' })
+    ]));
+  }
+  async function votePoll(sect, i) {
+    var q = S.kd.poll.today;
+    if (S.pollBusy || !q) return;
+    var first = !S.kd.poll.answers.some(function (a) { return a.user_id === S.userId; });
+    var balBefore = balance();
+    S.pollBusy = true; fillPoll(sect);
+    try {
+      var r = await sb.from('answers').upsert(
+        { user_id: S.userId, day: q.day, kind: 'poll', body: String(i), updated_at: new Date().toISOString() },
+        { onConflict: 'user_id,day,kind' }
+      );
+      if (r.error) throw r.error;
+      await loadDay('poll');
+      S.pollBusy = false;
+      fillPoll(sect);
+      var box = sect.querySelector('.poll-opts');
+      if (first && box && !reduceMotion) box.classList.add('reveal');
+      var gained = balance() - balBefore;
+      if (first && gained > 0) toast('+' + gained + ' ' + pointsWord(gained) + ' 🪙');
+    } catch (e) {
+      S.pollBusy = false;
+      fillPoll(sect);
+      toast('Не получилось сохранить выбор. Попробуй ещё раз');
+    }
   }
 
   function fillAnswer(sect) {
@@ -1615,7 +1697,7 @@
     var st = myStats();
     if (!mine && st && st.current_streak > 0) {
       var n = st.current_streak;
-      sect.appendChild(el('p', { class: 'streak-hint', text: '🔥 Твоя серия: ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд. Ответь сегодня, чтобы она не прервалась.' }));
+      sect.appendChild(el('p', { class: 'streak-hint', text: FIRE + ' Твоя серия: ' + n + ' ' + plural(n, 'день', 'дня', 'дней') + ' подряд. Ответь сегодня, чтобы она не прервалась.' }));
     }
     sect.appendChild(form);
   }
@@ -1632,7 +1714,7 @@
     var out = [el('div', { class: 'me-cards' }, [
       el('section', { class: 'card me-card', 'aria-label': 'Серия дней: ' + n }, [
         el('span', { class: 'me-card-l', text: 'Серия дней' }),
-        el('span', { class: 'me-card-n' }, [el('span', { 'aria-hidden': 'true', text: '🔥 ' }), String(n)])
+        el('span', { class: 'me-card-n' }, [el('span', { 'aria-hidden': 'true', text: FIRE + ' ' }), String(n)])
       ]),
       el('section', { class: 'card me-card', 'aria-label': 'Монеты: ' + fmt2(S.points ? S.points.balance : 0) }, [
         el('span', { class: 'me-card-n coins' }, [el('span', { 'aria-hidden': 'true', text: '🪙 ' }), S.points ? fmt2(S.points.balance) : '…'])
@@ -1650,7 +1732,7 @@
             ])
           ])
         ]),
-        el('td', { text: s.current_streak ? '🔥 ' + s.current_streak : '—' }),
+        el('td', { text: s.current_streak ? FIRE + ' ' + s.current_streak : '—' }),
         el('td', { class: 'col-best', text: String(s.best_streak) }),
         el('td', { text: String(s.total_answers) }),
         el('td', { class: 'col-coins', text: S.coins && S.coins[s.user_id] !== undefined ? fmt(Math.floor(S.coins[s.user_id])) : '…' })
@@ -1703,11 +1785,11 @@
     }
   }
 
-  function menuItem(ico, text, fn, cls) {
+  function menuItem(icon, text, fn, cls) {
     return el('button', {
       type: 'button', role: 'menuitem', class: 'menu-item' + (cls ? ' ' + cls : ''),
       onclick: function (ev) { ev.stopPropagation(); fn(ev.currentTarget); }
-    }, [el('span', { class: 'mi-ico', 'aria-hidden': 'true', text: ico }), el('span', { text: text })]);
+    }, [el('span', { class: 'mi-ico', 'aria-hidden': 'true' }, [window.Icons ? Icons.el(icon) : '']), el('span', { text: text })]);
   }
 
   function myAnswerCard(mine, sect) {
@@ -1720,7 +1802,7 @@
       if (mode === 'menu') {
         anchor.appendChild(el('div', { class: 'menu', role: 'menu', 'aria-label': 'Действия с ответом' }, [
           el('p', { class: 'menu-meta', text: 'Отправлен сегодня в ' + timeLabel(mine.created_at) + (edited ? ' · изменён' : '') }),
-          menuItem('✏️', 'Изменить', function () {
+          menuItem('edit', 'Изменить', function () {
             closePicker();
             S.editing = true; S.draft = mine.body;
             fillAnswer(sect);
@@ -1728,11 +1810,11 @@
             var t = sect.querySelector('#answer');
             if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
           }),
-          menuItem('📋', 'Скопировать', async function () {
+          menuItem('copy', 'Скопировать', async function () {
             closePicker();
             toast((await copyText(mine.body)) ? 'Скопировано' : 'Не получилось скопировать');
           }),
-          menuItem('🗑', 'Удалить', function () { mode = 'confirm'; draw(); }, 'danger')
+          menuItem('trash', 'Удалить', function () { mode = 'confirm'; draw(); }, 'danger')
         ]));
       } else if (mode === 'confirm') {
         var msg = el('p', { class: 'msg', role: 'status' });
@@ -1849,7 +1931,7 @@
     if (!mine) {
       sect.appendChild(el('h2', { text: S.kind === 'fill' ? 'Варианты друзей' : 'Ответы друзей' }));
       var total = S.members.length;
-      var kids = [el('p', { text: S.kind === 'fill' ? '🔒 Варианты друзей откроются, когда впишешь свой.' : '🔒 Ответы друзей откроются, когда ответишь сам.' })];
+      var kids = [el('p', { text: S.kind === 'fill' ? 'Варианты друзей откроются, когда впишешь свой.' : 'Ответы друзей откроются, когда ответишь сам.' })];
       if (S.who.length) {
         kids.push(el('p', { class: 'lbl', text: 'Уже ответили · ' + S.who.length + ' из ' + total }));
         kids.push(el('div', { class: 'chips' }, S.who.map(function (w) { return chip(w.display_name, w.color, false, w.avatar); })));
@@ -1867,7 +1949,7 @@
         return li;
       })));
     } else {
-      sect.appendChild(el('p', { class: 'empty', text: 'Пока ответил только ты. Позови друзей 👋' }));
+      sect.appendChild(el('p', { class: 'empty', text: 'Пока ответил только ты. Позови друзей' }));
     }
   }
 
@@ -2082,9 +2164,10 @@
         el('tbody', null, rows.map(function (r) {
           var me = r.user_id === S.userId;
           if (me) mine = r;
-          var medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : String(r.rank);
+          // первые три места — свои медали (кружок с номером), дальше просто номер
+          var medal = r.rank <= 3 ? el('span', { class: 'medal m' + r.rank, text: String(r.rank) }) : String(r.rank);
           return el('tr', { class: me ? 'me-row' : null }, [
-            el('td', { class: 'col-rank', text: medal }),
+            el('td', { class: 'col-rank' }, [medal]),
             el('th', { scope: 'row' }, [el('span', { class: 'who' }, [
               avatar(r.display_name, r.color, true, r.avatar),
               el('span', { class: 'who-name' }, [el('span', { text: r.display_name })])
@@ -2125,8 +2208,8 @@
     var list = S.kd[S.archiveKind].archive;
     if (!list) return [seg, el('p', { class: 'muted', text: 'Загружаю…' })];
     if (!list.length) return [seg, el('p', { class: 'empty', text: S.archiveKind === 'fill'
-      ? 'Здесь будут прошлые фразы и ваши варианты. Первая появится завтра 🌙'
-      : 'Здесь будут прошлые вопросы и ответы на них. Первый появится завтра 🌙' })];
+      ? 'Здесь будут прошлые фразы и ваши варианты. Первая появится завтра'
+      : 'Здесь будут прошлые вопросы и ответы на них. Первый появится завтра' })];
     return [seg, el('div', { class: 'list' }, list.map(function (q) { return archiveItem(q, S.archiveKind); }))];
   }
 
@@ -2258,7 +2341,7 @@
       var dot = el('i'); dot.style.setProperty('--c', color);
       bAvatar.replaceChildren(el('span', { class: 'set-vis' }, [avatar(S.profile.display_name, color, false, emoji)]), el('span', { class: 'set-l', text: 'Аватарка' }));
       bColor.replaceChildren(el('span', { class: 'set-vis' }, [el('span', { class: 'set-rainbow', 'aria-hidden': 'true' }, [dot])]), el('span', { class: 'set-l', text: 'Цвет' }));
-      bZodiac.replaceChildren(el('span', { class: 'set-vis zod-g', 'aria-hidden': 'true', text: z ? glyph(z) : '?' }), el('span', { class: 'set-l', text: z ? z[2] : 'Знак' }));
+      bZodiac.replaceChildren(el('span', { class: 'set-vis zod-g', 'aria-hidden': 'true', text: z ? null : '?' }, z ? [ico(z[0])] : []), el('span', { class: 'set-l', text: z ? z[2] : 'Знак' }));
       var opened = S.profileOpen;
       [['avatar', bAvatar], ['color', bColor], ['zodiac', bZodiac]].forEach(function (x) { x[1].setAttribute('aria-expanded', String(opened === x[0] || (opened === 'mix' && x[0] === 'color'))); });
       if (!opened) { panel.hidden = true; back.hidden = true; panel.replaceChildren(); return; }
@@ -2340,7 +2423,7 @@
     S.loadSeq++;
     S.session = null; S.userId = null; S.profile = null;
     stopGame(); S.board = { week: null, all: null };
-    S.kd = { question: blankGame(), fill: blankGame() }; S.kind = 'question'; S.archiveKind = 'question';
+    S.kd = { question: blankGame(), fill: blankGame(), poll: blankGame() }; S.kind = 'question'; S.archiveKind = 'question';
     S.members = []; S.stats = []; S.group = null; S.coins = {};
     S.view = 'today'; S.stage = 'auth'; S.authMode = 'login';
     render();
@@ -2393,7 +2476,7 @@
       installEvt = null;
       markHintSeen();
       var h = document.querySelector('.install-hint'); if (h) h.remove();
-      toast('Приложение установлено 🎉');
+      toast('Приложение установлено');
       if (S.stage === 'app' && S.view === 'profile') render();
     });
   }
@@ -2618,7 +2701,6 @@
     }
     box.replaceChildren(
       el('div', { class: 'ih-row' }, [
-        el('span', { class: 'ih-bell', text: '🔔', 'aria-hidden': 'true' }),
         el('div', { class: 'ih-text' }, [
           el('p', { class: 'ih-title', text: 'Включить уведомления?' }),
           el('p', { class: 'ih-sub', text: 'Напомним раз в 3 дня про вопрос дня и сообщим, когда кто-то прокомментирует твой ответ. Можно выключить в Профиле.' })
@@ -2663,7 +2745,7 @@
     } else {
       body = [el('p', { class: 'muted', text: installHowTo() })];
     }
-    return el('div', { class: 'card stack tight install-card' }, [el('p', { class: 'install-title', text: '📱 Приложение на телефоне' })].concat(body));
+    return el('div', { class: 'card stack tight install-card' }, [el('p', { class: 'install-title', text: 'Приложение на телефоне' })].concat(body));
   }
 
   function init() {

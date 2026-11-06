@@ -32,19 +32,31 @@
     s.setAttribute('aria-label', 'монеты');
     return s;
   }
-  // Записать текст в элемент, заменив каждый 🪙 на картинку монеты.
+  // Знаки, которые в тексте заменяются картинками. Сначала только монета;
+  // icons.js добавляет сюда огонёк серии (Coin.register).
+  var MARKS = {};
+  MARKS[MARK] = el;
+  var re = null;
+  function rebuild() {
+    re = new RegExp('(' + Object.keys(MARKS).map(function (m) { return m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('|') + ')');
+  }
+  rebuild();
+  function register(mark, make) { MARKS[mark] = make; rebuild(); }
+  function has(t) { return typeof t === 'string' && re.test(t); }
+  // Записать текст в элемент, заменив каждый 🪙 (и другие знаки) на картинку.
   function fill(node, text) {
     text = String(text);
-    if (text.indexOf(MARK) < 0) { node.textContent = text; return node; }
+    if (!has(text)) { node.textContent = text; return node; }
     node.textContent = '';
-    text.split(MARK).forEach(function (part, i) {
-      if (i) node.appendChild(el());
-      if (part) node.appendChild(document.createTextNode(part));
+    text.split(re).forEach(function (part) {
+      if (!part) return;
+      if (MARKS[part]) node.appendChild(MARKS[part]());
+      else node.appendChild(document.createTextNode(part));
     });
     return node;
   }
   var img = new Image();
   img.src = URL_;
 
-  window.Coin = { el: el, fill: fill, has: function (t) { return typeof t === 'string' && t.indexOf(MARK) >= 0; }, img: img, url: URL_ };
+  window.Coin = { el: el, fill: fill, has: has, register: register, img: img, url: URL_ };
 })();
