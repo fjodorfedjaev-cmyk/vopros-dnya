@@ -131,14 +131,15 @@
     return el('section', { class: 'sect' }, [el('h2', { text: 'Витрина' }), el('div', { class: 'shelves' }, slots)]);
   }
 
-  // Одна редкость: заголовок со счётчиком и сетка. Нет карточки — «?» и название (видно, что искать).
+  // Одна редкость: заголовок со счётчиком и сетка. Нет карточки — только «?», название узнаешь, когда найдёшь.
   function groupSect(r) {
     var cards = K.catalog.filter(function (c) { return c.rarity === r; });
     var have = cards.filter(function (c) { return myCopies(c.card_id).length; }).length;
     var tiles = cards.map(function (c) {
       var mine = myCopies(c.card_id);
       if (!mine.length) {
-        return el('div', { class: 'kt kt-miss' }, [el('span', { class: 'kt-pic', 'aria-hidden': 'true', text: '?' }), el('span', { class: 'kt-name', text: c.name })]);
+        // ещё не найдена — название секрет: только «?» (пустая строка под ней держит ровную сетку)
+        return el('div', { class: 'kt kt-miss', role: 'img', 'aria-label': 'Ещё не найдена' }, [el('span', { class: 'kt-pic', 'aria-hidden': 'true', text: '?' }), el('span', { class: 'kt-name', 'aria-hidden': 'true', text: '\u00a0' })]);
       }
       var pic = el('span', { class: 'kt-pic' });
       pic.appendChild(window.Cards.art(c.code));
