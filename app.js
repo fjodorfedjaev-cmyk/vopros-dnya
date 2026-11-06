@@ -989,6 +989,7 @@
     ]);
     for (var i = 0; i < 3; i++) if (res[i].error) throw res[i].error;
     applyPoints(res[4]);
+    if (k === 'poll') await loadPollExtras();
     var answers = res[0].data || [];
     var extra = await Promise.all([loadReactions(answers), loadComments(answers)]);
     G.answers = answers;
@@ -1588,6 +1589,8 @@
   /* ----- «Выбор дня»: вопрос с вариантами ----- */
   // Ответ — номер варианта ('0'…'3'). Голоса друзей видны после своего выбора (так же закрывает база).
   // Выбор можно поменять до конца дня: просто нажми другой вариант.
+  // Под обычным «Выбором» — до 2 дополнительных от друзей (одобренные «Свой вопрос»). Они хранятся
+  // отдельно (poll_extras_today / poll_extra_vote), +15 за каждый, на серию не влияют.
   function viewPoll() {
     var sect = el('section', { class: 'sect', id: 'poll-sect' });
     fillPoll(sect);
@@ -1596,12 +1599,31 @@
   function fillPoll(sect) {
     var q = S.kd.poll.today;
     var answers = S.kd.poll.answers || [];
-    var opts = (q && Array.isArray(q.options)) ? q.options : [];
     var mine = null;
     answers.forEach(function (a) { if (a.user_id === S.userId) mine = a; });
-    var chosen = mine ? Number(mine.body) : -1;
+    var cards = [pollCard({
+      slot: 1, head: qhead(q && q.day, 'poll'), text: q ? q.text : '',
+      options: q && q.options, chosen: mine ? Number(mine.body) : -1,
+      votes: mine ? answers.map(function (a) { return { user_id: a.user_id, choice: Number(a.body) }; }) : null,
+      pick: function (i) { votePoll(sect, i); }
+    })];
+    // дополнительные — только если они на тот же день, что и обычный
+    (S.pollX || []).forEach(function (x) {
+      if (!q || x.q_day !== q.day) return;
+      cards.push(pollCard({
+        slot: x.slot, head: null, text: x.q_text, options: x.q_options,
+        chosen: x.my_choice == null ? -1 : x.my_choice, votes: x.votes || null,
+        pick: function (i) { voteExtra(sect, x, i); }
+      }));
+    });
+    sect.replaceChildren.apply(sect, cards);
+  }
+  // Одна карточка «Выбора»: варианты; после своего выбора — полоски, проценты и аватарки.
+  function pollCard(o) {
+    var opts = Array.isArray(o.options) ? o.options : [];
+    var chosen = o.chosen, mine = chosen >= 0;
     var votes = opts.map(function () { return []; });
-    if (mine) answers.forEach(function (a) { var i = Number(a.body); if (votes[i]) votes[i].push(a.user_id); });
+    if (mine && o.votes) o.votes.forEach(function (v) { if (votes[v.choice]) votes[v.choice].push(v.user_id); });
     var total = votes.reduce(function (n, v) { return n + v.length; }, 0);
     var list = el('div', { class: 'poll-opts' + (mine ? ' done' : ''), role: 'group', 'aria-label': 'Варианты ответа' }, opts.map(function (text, i) {
       var n = votes[i].length, pct = total ? Math.round(n * 100 / total) : 0;
@@ -1616,17 +1638,29 @@
         type: 'button', class: 'po' + (i === chosen ? ' mine' : ''), 'aria-pressed': String(i === chosen),
         'aria-label': String(text) + (mine ? ': ' + pct + '%' : ''),
         disabled: S.pollBusy ? true : null,
-        onclick: function () { if (i !== chosen) votePoll(sect, i); }
+        onclick: function () { if (i !== chosen) o.pick(i); }
       }, kids);
     }));
-    sect.replaceChildren(el('div', { class: 'card qcard poll-card' }, [
-      qhead(q && q.day, 'poll'),
-      el('p', { class: 'qtext', text: q ? q.text : '' }),
+    return el('div', { class: 'card qcard poll-card', 'data-slot': String(o.slot) }, [
+      o.head,
+      el('p', { class: 'qtext', text: o.text || '' }),
       list,
       el('p', { class: 'muted small poll-foot', text: mine
         ? (total === 1 ? 'Пока выбрал только ты' : 'Выбрали: ' + total)
         : 'Голоса друзей откроются после выбора' })
-    ]));
+    ]);
+  }
+  // После первого выбора полоски «вырастают»
+  function pollReveal(sect, slot) {
+    var box = sect.querySelector('[data-slot="' + slot + '"] .poll-opts');
+    if (box && !reduceMotion) box.classList.add('reveal');
+  }
+  async function loadPollExtras() {
+    try {
+      var r = await sb.rpc('poll_extras_today');
+      if (r.error) throw r.error;
+      S.pollX = r.data || [];
+    } catch (e) { /* не загрузились — обычный «Выбор» всё равно работает */ }
   }
   async function votePoll(sect, i) {
     var q = S.kd.poll.today;
@@ -1643,14 +1677,35 @@
       await loadDay('poll');
       S.pollBusy = false;
       fillPoll(sect);
-      var box = sect.querySelector('.poll-opts');
-      if (first && box && !reduceMotion) box.classList.add('reveal');
+      if (first) pollReveal(sect, 1);
       var gained = balance() - balBefore;
       if (first && gained > 0) toast('+' + gained + ' ' + pointsWord(gained) + ' 🪙');
     } catch (e) {
       S.pollBusy = false;
       fillPoll(sect);
       toast('Не получилось сохранить выбор. Попробуй ещё раз');
+    }
+  }
+  async function voteExtra(sect, x, i) {
+    if (S.pollBusy) return;
+    var first = x.my_choice == null;
+    var balBefore = balance();
+    S.pollBusy = true; fillPoll(sect);
+    try {
+      var r = await sb.rpc('poll_extra_vote', { p_day: x.q_day, p_slot: x.slot, p_choice: i });
+      if (r.error) throw r.error;
+      await Promise.all([loadPollExtras(), loadPoints()]);
+      S.pollBusy = false;
+      fillPoll(sect);
+      if (first) pollReveal(sect, x.slot);
+      var gained = balance() - balBefore;
+      if (first && gained > 0) toast('+' + gained + ' ' + pointsWord(gained) + ' 🪙');
+    } catch (e) {
+      S.pollBusy = false;
+      var day = /poll_day_over|poll_extra_gone/.test(String(e && e.message));
+      if (day) { await loadPollExtras(); }
+      fillPoll(sect);
+      toast(day ? 'Этот «Выбор» уже закончился' : 'Не получилось сохранить выбор. Попробуй ещё раз');
     }
   }
 
@@ -2568,7 +2623,7 @@
         });
         if (r.error) throw r.error;
         S.sug.pending = (S.sug.pending || []).filter(function (x) { return x.s_id !== s.s_id; });
-        toast(approve ? 'Одобрено — встало в очередь' : 'Отклонено, монеты вернулись');
+        toast(approve ? (isPoll ? 'Одобрено — с завтра будет дополнительным «Выбором»' : 'Одобрено — встало в очередь') : 'Отклонено, монеты вернулись');
         fillSugAdmin(sect);
         updateSugBadge();
         // своё предложение тоже могло поменять статус
@@ -2752,7 +2807,7 @@
     S.loadSeq++;
     S.session = null; S.userId = null; S.profile = null;
     stopGame(); S.board = { week: null, all: null };
-    S.kd = { question: blankGame(), fill: blankGame(), poll: blankGame() }; S.kind = 'question'; S.archiveKind = 'question'; S.sug = blankSug();
+    S.kd = { question: blankGame(), fill: blankGame(), poll: blankGame() }; S.pollX = null; S.kind = 'question'; S.archiveKind = 'question'; S.sug = blankSug();
     S.members = []; S.stats = []; S.group = null; S.coins = {};
     S.view = 'today'; S.stage = 'auth'; S.authMode = 'login';
     render();
