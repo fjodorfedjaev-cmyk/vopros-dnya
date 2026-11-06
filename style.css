@@ -1235,3 +1235,41 @@ body.kc-dragging { -webkit-user-select: none; user-select: none; cursor: grabbin
 .kc-pick.on { background: var(--soft); transform: translateY(-4px) scale(1.06); }
 .kc-pick.on .kc-pick-no { color: var(--accent); }
 .kc-ghost .kt-count { top: auto; bottom: 5px; right: 50%; transform: translateX(50%); }
+
+/* ===== Лавка (вкладка «Коллекция» → «Лавка») ===== */
+.coll-switch { margin-bottom: -8px; }
+.mk-head { display: flex; flex-direction: column; gap: 8px; }
+.mk-how { margin: 0; font-size: 13.5px; color: var(--muted); }
+.mk-list { display: flex; flex-direction: column; gap: 8px; }
+.mk-lot { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; padding: 8px 14px 8px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mk-lot:hover { background: var(--soft); }
+.mk-pic { width: 52px; border-width: 1.5px; border-radius: 8px; }
+.mk-pic .kc-art { width: 66%; }
+.mk-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mk-name { font-weight: 600; font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
+.mk-new { margin-left: 6px; }
+.mk-no { font: 500 11.5px/1.2 var(--font-mono); color: var(--muted); }
+.mk-who { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; color: var(--muted); }
+.mk-who-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-price { font-weight: 600; font-size: 15px; white-space: nowrap; }
+/* окна лавки */
+.mk-face { width: 150px; }
+.mk-title { margin: 0; font: 600 19px/1.3 var(--font-display); text-align: center; text-wrap: balance; }
+.mk-form { width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); }
+.mk-row { display: grid; grid-template-columns: minmax(0, 1fr) 138px; align-items: center; gap: 10px; }
+.mk-row label { font-size: 15px; font-weight: 500; line-height: 1.25; color: var(--ink); }
+.mk-row label small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.mk-in { position: relative; display: block; }
+.mk-in input[type="text"] { box-sizing: border-box; padding-right: 36px; font: 600 16px var(--font-mono); text-align: right; }
+.mk-coin { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); display: inline-flex; pointer-events: none; }
+.mk-hint { margin: 0; font-size: 13px; color: var(--muted); }
+.mk-hint.err { color: var(--err); }
+.mk-meta { width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); }
+.mk-meta-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; }
+.mk-meta-row > span:first-child { color: var(--muted); flex: none; }
+.mk-meta-row > span:last-child { text-align: right; min-width: 0; }
+.mk-meta .mk-who { color: var(--ink); font-size: 14px; }
+/* в коллекции: все копии этой карточки сейчас в лавке */
+.kt-away .kt-pic { border-style: dashed; }
+.kt-away .kt-pic .kc-art, .kt-away .kt-name { opacity: 0.45; }
+.kt-tag { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); padding: 2px 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.65); font: 600 9.5px/1.2 var(--font-mono); color: #F2ECE6; white-space: nowrap; }

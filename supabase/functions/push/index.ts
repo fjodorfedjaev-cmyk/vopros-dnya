@@ -1,6 +1,6 @@
 // Функция отправки уведомлений «Вопроса дня».
 // Вызывает её только сама база (через pg_net) с секретным заголовком x-hook-secret.
-// Типы вызова: init (создать ключи), test, comment, reminder.
+// Типы вызова: init (создать ключи), test, comment, reminder, sale (купили карточку в лавке), suggest (новое «Свой вопрос» — админу).
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { sendPush, vapidKey, b64u } from './webpush.js';
 
@@ -12,6 +12,7 @@ const cache: { secret?: string; vapid?: { key: CryptoKey; publicKey: string; sub
 
 function one(data: unknown) { return Array.isArray(data) ? data[0] : data; }
 function cut(s: string, n: number) { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+function money(n: number) { const c = Math.round(Number(n || 0) * 100); return (c / 100).toLocaleString('ru-RU', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 }); }
 
 async function hookSecret() {
   if (!cache.secret) { const r = await db.rpc('push_hook_secret'); cache.secret = (r.data as string) || undefined; }
@@ -84,6 +85,28 @@ Deno.serve(async (req) => {
       });
     }
     out.users = list.length; out.sent = sent;
+  } else if (body.type === 'sale') {
+    const s = one((await db.rpc('push_sale_info', { p_listing: body.listing_id })).data) as
+      { seller: string; card_name: string; serial: number; copies: number; net: number; buyer_name: string } | undefined;
+    if (s && s.seller) {
+      out.sent = await sendTo(s.seller, {
+        title: '🛒 Твою карточку купили',
+        body: '«' + s.card_name + '» ' + (s.copies === 1 ? '1/1' : '№' + s.serial) + ' · +' + money(s.net) + ' 🪙 · покупатель: ' + cut(s.buyer_name, 40),
+        url: SITE + '?tab=market', tag: 'sale' + body.listing_id
+      });
+    }
+  } else if (body.type === 'suggest') {
+    const list = ((await db.rpc('push_suggest_info', { p_id: body.suggestion_id })).data || []) as { admin: string; kind: string; body: string }[];
+    let sent = 0;
+    for (const t of list) {
+      const kind = t.kind === 'fill' ? 'Слово' : t.kind === 'poll' ? 'Выбор' : 'Вопрос';
+      sent += await sendTo(t.admin, {
+        title: '📝 Новое предложение: ' + kind,
+        body: cut(t.body, 140),
+        url: SITE + '?tab=suggest', tag: 'sug' + body.suggestion_id
+      });
+    }
+    out.sent = sent;
   } else {
     return new Response('unknown type', { status: 400 });
   }

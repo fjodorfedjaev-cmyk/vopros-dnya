@@ -3050,12 +3050,14 @@
     document.body.appendChild(box);
   }
 
-  // Ссылка из уведомления: ?tab=fill / today / profile …
+  // Ссылка из уведомления: ?tab=fill / today / profile / market (лавка) / suggest (предложения) …
   function openTabFromLink() {
     var tab = null;
     try { tab = new URLSearchParams(location.search).get('tab'); } catch (e) { return; }
     if (!tab) return;
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ничего */ }
+    if (tab === 'market') { if (window.Collection && window.Collection.setMode) window.Collection.setMode('market'); tab = 'cards'; }
+    if (tab === 'suggest') { S.sug.from = 'today'; if (tab !== S.view) go('suggest'); return; }
     var ok = tab === 'fill' || TABS.some(function (t) { return t[0] === tab; });
     if (ok && tab !== S.view) go(tab);
   }
@@ -3102,7 +3104,7 @@
     // Помощники для казино (casino.js).
     window.AppAPI = {
       sb: function () { return sb; }, el: el, toast: toast, plural: plural, fmt: fmt,
-      balance: balance, setBalance: setBalance, loadPoints: loadPoints
+      balance: balance, setBalance: setBalance, loadPoints: loadPoints, avatar: avatar
     };
 
     // Реакция на вход или выход в другой вкладке. Внутри обработчика нельзя ждать запросы к Supabase, поэтому setTimeout.
