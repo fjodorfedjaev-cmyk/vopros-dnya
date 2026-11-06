@@ -262,7 +262,8 @@
     archive: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
     horo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.4 5.6 6 .6-4.6 4 1.4 5.9L12 16l-5.2 3.1 1.4-5.9-4.6-4 6-.6z"/></svg>',
     fill: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h6M14 18h6"/><path d="M15.5 4.5l3 3L10 16l-4 1 1-4z"/></svg>',
-    game: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 12l4.5-4.5"/><path d="M12 3.5a8.5 8.5 0 0 1 7.4 4.3"/></svg>',
+    // геймпад: корпус, крестик слева, две кнопки справа
+    game: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 7h9a4.5 4.5 0 0 1 4.4 3.6l.9 4.6a2.6 2.6 0 0 1-4.6 2.1L15.6 15H8.4l-1.6 2.3a2.6 2.6 0 0 1-4.6-2.1l.9-4.6A4.5 4.5 0 0 1 7.5 7z"/><path d="M8 9.6v3.2M6.4 11.2h3.2"/><path d="M15.6 10.4h.01M17.6 12.2h.01"/></svg>',
     casino: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3M6 6l2.1 2.1M15.9 15.9L18 18M6 18l2.1-2.1M15.9 8.1L18 6"/></svg>',
     stats: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg>',
     profile: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.6-4 4.6-6 8-6s6.4 2 8 6"/></svg>',
@@ -1331,7 +1332,7 @@
   /* ----- основной экран ----- */
 
   var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', horo: 'Гороскоп дня', game: 'Сектор', casino: 'Казино', archive: 'Архив', profile: 'Профиль' };
-  var TABS = [['today', 'Вопрос'], ['horo', 'Гороскоп'], ['game', 'Игра'], ['casino', 'Казино'], ['profile', 'Профиль']];
+  var TABS = [['today', 'Вопрос'], ['horo', 'Гороскоп'], ['game', 'Игры'], ['casino', 'Казино'], ['profile', 'Профиль']];
   // «Вопрос» и «Слово» живут на одной вкладке: внутри переключатель.
   function navKey(view) { return view === 'fill' ? 'today' : view; }
   function navTarget(key) { return key === 'today' ? (S.lastDay || 'today') : key; }
@@ -1791,7 +1792,6 @@
     var card = isFill
       ? el('div', { class: 'card qcard ans mine tappable fill-top' }, [
           el('div', { class: 'qhead' }, [
-            el('span', { class: 'tag cat-fill', text: 'Впиши слово' }),
             el('span', { class: 'date', text: dayLabel(S.today.day) })
           ]),
           body,
@@ -2135,7 +2135,6 @@
     var d = el('details', { class: 'day' }, [
       el('summary', null, [
         el('div', { class: 'qhead' }, [
-          kind === 'fill' ? el('span', { class: 'tag cat-fill', text: 'Впиши слово' }) : null,
           el('span', { class: 'date', text: dayLabel(q.q_day) })
         ]),
         kind === 'fill' ? fillSentence(q.q_text, '', 'day-q') : el('span', { class: 'day-q', text: q.q_text })
