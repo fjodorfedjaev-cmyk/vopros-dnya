@@ -1159,7 +1159,8 @@ form.card .msg:empty, .push-card .msg:empty { display: none; }
 .kt-count { position: absolute; top: 5px; right: 5px; padding: 2px 5px; border-radius: 999px; background: rgba(0, 0, 0, 0.6); font: 600 10px/1.2 var(--font-mono); color: #F2ECE6; }
 .kt-name { font-size: 11.5px; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
 .kt-miss { cursor: default; }
-.kt-miss .kt-pic { border: 1.5px dashed #3A3634; background: #171615; font: 600 26px/1 var(--font-display); color: #4A4542; }
+.kt-miss .kt-pic { border: 1.5px solid #3A3634; background: radial-gradient(circle at 50% 45%, #252220, #181615 78%); }
+.kt-miss .kt-pic .kc-art { filter: grayscale(1); opacity: 0.3; }
 .kt-miss .kt-name { color: var(--muted); }
 
 /* окно поверх страницы: карточка крупно, витрина друга */

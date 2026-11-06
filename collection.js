@@ -153,7 +153,6 @@
     btn.addEventListener('click', openCard);
     var msg = el('p', { class: 'msg', role: 'status', id: 'coll-msg' });
     if (K.msg) setText(msg, K.msg);
-    else if (price && bal() < price) setText(msg, 'Не хватает: у тебя ' + A.fmt(Math.floor(bal())) + ' 🪙, нужно ' + price + '.');
     return el('section', { class: 'card coll-deck' }, [
       el('div', { class: 'coll-row' }, [
         el('span', { class: 'coll-got', text: 'Собрано ' + n + ' из ' + total }),
@@ -190,22 +189,18 @@
     return el('section', { class: 'sect' }, [el('h2', { text: 'Витрина' }), el('div', { class: 'shelves' }, slots)]);
   }
 
-  // Одна редкость: заголовок со счётчиком и сетка. Нет карточки — только «?», название узнаешь, когда найдёшь.
+  // Одна редкость: заголовок со счётчиком и сетка. Карточки нет в коллекции — серая рубашка с названием.
   function groupSect(r) {
     var cards = K.catalog.filter(function (c) { return c.rarity === r; });
     var have = cards.filter(function (c) { return myCopies(c.card_id).length; }).length;
     var tiles = cards.map(function (c) {
       var mine = myCopies(c.card_id);
-      var away = mine.length ? [] : myLots().filter(function (l) { return l.card_id === c.card_id; });
-      if (away.length) {
-        // все мои копии в лавке: в коллекции их нет, но карточку я уже находил — показываем бледной с пометкой
-        var ap = el('span', { class: 'kt-pic' }, [window.Cards.art(c.code), el('span', { class: 'kt-tag', text: 'в лавке' })]);
-        return el('button', { type: 'button', class: 'kt kt-away r-' + r, 'aria-label': c.name + ' — в лавке', onclick: function () { openMyLot(away[0]); } },
-          [ap, el('span', { class: 'kt-name', text: c.name })]);
-      }
       if (!mine.length) {
-        // ещё не найдена — название секрет: только «?» (пустая строка под ней держит ровную сетку)
-        return el('div', { class: 'kt kt-miss', role: 'img', 'aria-label': 'Ещё не найдена' }, [el('span', { class: 'kt-pic', 'aria-hidden': 'true', text: '?' }), el('span', { class: 'kt-name', 'aria-hidden': 'true', text: '\u00a0' })]);
+        // карточки нет в коллекции (не найдена, или все копии в лавке) — серая рубашка и название
+        return el('div', { class: 'kt kt-miss', role: 'img', 'aria-label': c.name + ' — нет в коллекции' }, [
+          el('span', { class: 'kt-pic', 'aria-hidden': 'true' }, [window.Cards.art('back')]),
+          el('span', { class: 'kt-name', 'aria-hidden': 'true', text: c.name })
+        ]);
       }
       var pic = el('span', { class: 'kt-pic' });
       pic.appendChild(window.Cards.art(c.code));
