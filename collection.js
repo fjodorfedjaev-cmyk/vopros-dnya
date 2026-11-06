@@ -53,7 +53,7 @@
 
   /* ---------- вкладка ---------- */
   function view() {
-    if (!root) root = el('div', { class: 'coll' });
+    if (!root) { root = el('div', { class: 'coll' }); bindDrag(root); }
     draw();
     return root;
   }
@@ -118,10 +118,13 @@
       var k = on[i];
       var c = k && cardById(k.card_id);
       if (!c) {
-        return el('button', { type: 'button', class: 'shelf shelf-empty', onclick: function () { A.toast('Открой карточку в коллекции и нажми «На витрину»'); } },
+        return el('button', { type: 'button', class: 'shelf shelf-empty', 'data-drop': String(i), onclick: function () { if (!justDragged()) A.toast('Зажми карточку в коллекции и перетащи сюда'); } },
           [el('span', { text: 'пусто' })]);
       }
-      var b = el('button', { type: 'button', class: 'shelf', 'aria-label': c.name + ' на витрине', onclick: function () { openDetail(c.card_id, k.copy_id); } });
+      var b = el('button', {
+        type: 'button', class: 'shelf', 'aria-label': c.name + ' на витрине', 'data-drop': String(i), 'data-drag': 'shelf:' + k.copy_id,
+        onclick: function () { if (!justDragged()) openDetail(c.card_id, k.copy_id); }
+      });
       b.appendChild(window.Cards.face(c, k.serial, 'md'));
       return b;
     });
@@ -141,8 +144,8 @@
       pic.appendChild(window.Cards.art(c.code));
       if (mine.length > 1) pic.appendChild(el('span', { class: 'kt-count', text: '×' + mine.length }));
       return el('button', {
-        type: 'button', class: 'kt r-' + r, 'aria-label': c.name + (mine.length > 1 ? ', копий: ' + mine.length : ''),
-        onclick: function () { openDetail(c.card_id); }
+        type: 'button', class: 'kt r-' + r, 'aria-label': c.name + (mine.length > 1 ? ', копий: ' + mine.length : ''), 'data-drag': 'grid:' + c.card_id,
+        onclick: function () { if (!justDragged()) openDetail(c.card_id); }
       }, [pic, el('span', { class: 'kt-name', text: c.name })]);
     });
     return el('section', { class: 'sect coll-group' }, [
@@ -267,8 +270,8 @@
       await work();
       await load();
       draw();
+      closeOverlay();
       A.toast(done);
-      openDetail(cardId, sel.copy_id);
     } catch (e) {
       setText(msg, errText(e));
       try { await load(); draw(); } catch (e2) { /* ничего */ }
@@ -286,6 +289,154 @@
       A.toast('+' + c.melt_value + ' 🪙 за «' + c.name + '»');
       if (myCopies(c.card_id).length) openDetail(c.card_id); else closeOverlay();
     } catch (e) { setText(msg, errText(e)); btn.disabled = false; }
+  }
+
+
+  /* ---------- перетаскивание: зажми карточку ---------- */
+  // Зажал карточку (≈0,4 с, не двигая палец) — она «поднимается» и едет за пальцем.
+  // С витрины — можно поменять местами с другой полкой. Из коллекции — сверху появляются три полки:
+  // на пустую карточка встаёт, на занятую — заменяет ту, что там стоит.
+  // Обычное нажатие открывает карточку, а движение пальцем без задержки — это прокрутка страницы.
+  var LONG = 380, SLOP = 9;
+  var drag = null;
+  var noClickUntil = 0;
+  function justDragged() { return Date.now() < noClickUntil; }
+
+  function bindDrag(node) {
+    node.addEventListener('touchstart', function (ev) { if (ev.touches.length === 1) start(ev, ev.touches[0]); }, { passive: true });
+    // не пассивный: пока карточка «поднята», страница не должна прокручиваться
+    node.addEventListener('touchmove', function (ev) { if (drag) move(ev, ev.touches[0]); }, { passive: false });
+    node.addEventListener('touchend', function (ev) { if (drag) end(ev); });
+    node.addEventListener('touchcancel', function () { cancel(); });
+    node.addEventListener('mousedown', function (ev) {
+      if (ev.button !== 0) return;
+      start(ev, ev);
+      if (!drag) return;
+      function mm(e) { move(e, e); }
+      function mu(e) { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); end(e); }
+      document.addEventListener('mousemove', mm);
+      document.addEventListener('mouseup', mu);
+    });
+    // долгое нажатие не должно открывать системное меню
+    node.addEventListener('contextmenu', function (ev) { if (ev.target.closest && ev.target.closest('[data-drag]')) ev.preventDefault(); });
+  }
+
+  function start(ev, p) {
+    cancel();
+    var t = ev.target.closest && ev.target.closest('[data-drag]');
+    if (!t || K.busy) return;
+    var parts = t.getAttribute('data-drag').split(':');
+    drag = { kind: parts[0], id: Number(parts[1]), node: t, x0: p.clientX, y0: p.clientY, x: p.clientX, y: p.clientY, active: false, over: null };
+    drag.timer = setTimeout(lift, LONG);
+  }
+  function move(ev, p) {
+    if (!drag) return;
+    drag.x = p.clientX; drag.y = p.clientY;
+    if (!drag.active) {
+      if (Math.abs(drag.x - drag.x0) > SLOP || Math.abs(drag.y - drag.y0) > SLOP) cancel(); // это прокрутка
+      return;
+    }
+    if (ev.cancelable) ev.preventDefault();
+    place();
+    var hit = document.elementFromPoint(drag.x, drag.y);
+    var over = hit && hit.closest ? hit.closest('[data-drop]') : null;
+    if (over !== drag.over) {
+      if (drag.over) drag.over.classList.remove('drop-over');
+      if (over) over.classList.add('drop-over');
+      drag.over = over;
+    }
+  }
+  function end(ev) {
+    if (!drag) return;
+    var d = drag;
+    if (!d.active) { cancel(); return; } // короткое нажатие — обычный клик
+    if (ev.cancelable) ev.preventDefault();
+    if (ev.stopPropagation) ev.stopPropagation(); // чтобы не сработало перелистывание вкладок
+    noClickUntil = Date.now() + 450;
+    var target = d.over ? Number(d.over.getAttribute('data-drop')) : null;
+    cancel();
+    if (target !== null && !isNaN(target)) dropTo(d, target);
+  }
+  function cancel() {
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    if (drag.ghost) drag.ghost.remove();
+    if (drag.bar) drag.bar.remove();
+    if (drag.over) drag.over.classList.remove('drop-over');
+    if (drag.node) drag.node.classList.remove('kc-lifting');
+    document.body.classList.remove('kc-dragging');
+    drag = null;
+  }
+
+  // Карточка «поднялась»: тень под пальцем, а для карточки из коллекции — полки сверху экрана.
+  function lift() {
+    if (!drag) return;
+    var c = drag.kind === 'shelf' ? cardOfCopy(drag.id) : cardById(drag.id);
+    if (!c) { cancel(); return; }
+    drag.active = true;
+    drag.node.classList.add('kc-lifting');
+    document.body.classList.add('kc-dragging');
+    var pic = el('span', { class: 'kt-pic r-' + c.rarity });
+    pic.appendChild(window.Cards.art(c.code));
+    drag.ghost = el('div', { class: 'kc-ghost', 'aria-hidden': 'true' }, [pic]);
+    document.body.appendChild(drag.ghost);
+    place();
+    if (drag.kind === 'grid') {
+      var on = shelved();
+      drag.bar = el('div', { class: 'kc-dropbar', 'aria-hidden': 'true' }, [0, 1, 2].map(function (i) {
+        var k = on[i], oc = k && cardById(k.card_id);
+        var t = el('div', { class: 'kc-drop' + (oc ? ' r-' + oc.rarity : ''), 'data-drop': String(i) });
+        if (oc) t.appendChild(window.Cards.art(oc.code)); else t.textContent = '+';
+        return t;
+      }));
+      document.body.appendChild(drag.bar);
+    }
+  }
+  function place() {
+    if (drag && drag.ghost) drag.ghost.style.transform = 'translate(' + drag.x + 'px,' + drag.y + 'px) translate(-50%, -62%) rotate(-3deg)';
+  }
+  function cardOfCopy(copyId) {
+    var k = (K.my || []).filter(function (x) { return x.copy_id === copyId; })[0];
+    return k ? cardById(k.card_id) : null;
+  }
+
+  // Что делать, когда карточку отпустили над полкой номер t (0, 1, 2).
+  async function dropTo(d, t) {
+    var on = shelved();
+    var order = on.map(function (k) { return k.copy_id; });
+    var copyId = null, msg = '';
+    if (d.kind === 'shelf') {
+      copyId = d.id;
+    } else {
+      // если какая-то копия этой карточки уже на витрине — просто двигаем её
+      var mine = myCopies(d.id);
+      var shelf = mine.filter(function (k) { return k.slot; })[0];
+      copyId = shelf ? shelf.copy_id : (mine[0] && mine[0].copy_id);
+    }
+    if (!copyId) return;
+    var from = order.indexOf(copyId);
+    if (from >= 0) {
+      if (t === from) return;
+      if (t < order.length) { order[from] = order[t]; order[t] = copyId; msg = 'Поменял местами'; }
+      else { order.splice(from, 1); order.push(copyId); msg = 'Передвинул'; }
+    } else if (t < order.length) {
+      order[t] = copyId; msg = 'Поставлено на витрину';     // заменяет ту, что стояла
+    } else {
+      order.push(copyId); msg = 'Поставлено на витрину';    // на первую свободную слева
+    }
+    K.busy = true;
+    try {
+      // пишем полки по порядку; убранная (при замене) уходит с витрины сама
+      for (var i = 0; i < order.length; i++) {
+        var was = on.filter(function (k) { return k.copy_id === order[i]; })[0];
+        if (!was || was.slot !== i + 1) await rpc('cards_set_showcase', { p_slot: i + 1, p_copy: order[i] });
+      }
+      A.toast(msg);
+    } catch (e) {
+      A.toast(errText(e));
+    }
+    K.busy = false;
+    await reload();
   }
 
   /* ---------- открытие карточки ---------- */

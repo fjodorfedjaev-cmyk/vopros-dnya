@@ -1211,3 +1211,18 @@ body.kc-lock { overflow: hidden; }
   .kr-l, .kr-flip, .kr-result { transition: none; }
   .kr-shake, .kr-wait .kc-back, .kc-shine, .kr-spark { animation: none; }
 }
+
+/* перетаскивание карточек: зажал — карточка «поднялась» и едет за пальцем */
+.kt, .shelf { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+body.kc-dragging { -webkit-user-select: none; user-select: none; cursor: grabbing; }
+.kc-lifting { opacity: 0.35; transform: scale(0.96); transition: opacity 0.15s, transform 0.15s; }
+.kc-ghost { position: fixed; left: 0; top: 0; z-index: 59; width: 78px; pointer-events: none; filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.55)); }
+.kc-ghost .kt-pic { width: 78px; }
+[data-drop].drop-over { outline: 2px solid var(--accent); outline-offset: 3px; }
+.shelf[data-drop] { border-radius: 12px; }
+.kc-dropbar { position: fixed; left: 12px; right: 12px; top: calc(10px + env(safe-area-inset-top, 0px)); z-index: 58; max-width: 420px; margin: 0 auto; padding: 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; border-radius: 16px; border: 1px solid var(--line); background: rgba(30, 30, 30, 0.97); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55); animation: farmFade 0.15s ease-out; }
+.kc-drop { height: 96px; border-radius: 10px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 1.5px dashed #4A4542; color: var(--muted); font-size: 24px; line-height: 1; }
+.kc-drop[class*="r-"] { border: 2px solid var(--kc-line); background: radial-gradient(circle at 50% 45%, var(--kc-hi), var(--kc-lo) 80%); }
+.kc-drop .kc-art { width: 46px; }
+.kc-drop.drop-over { outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .kc-lifting { transition: none; } }
