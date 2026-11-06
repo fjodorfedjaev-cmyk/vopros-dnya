@@ -1173,14 +1173,6 @@ body.kc-lock { overflow: hidden; }
 .kc-chip[aria-pressed="true"] { background: var(--btn); border-color: var(--btn); color: #fff; }
 .kc-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .kc-actions .btn { width: 100%; }
-.kc-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.kc-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; height: auto; }
-.kc-slot-pic { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1.5px dashed #3A3634; color: var(--muted); font-size: 20px; line-height: 1; }
-.kc-slot-pic[class*="r-"] { border: 1.5px solid var(--kc-line); background: radial-gradient(circle at 50% 45%, var(--kc-hi), var(--kc-lo) 80%); }
-.kc-slot-pic .kc-art { width: 70%; }
-.kc-ask { margin: 2px 0 0; font: 600 18px/1.2 var(--font-display); text-align: center; }
-.kc-slot-n { font-weight: 600; font-size: 13px; }
-.kc-slot-c { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 .kc-note { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
 .kc-sheet .msg:empty { display: none; }
 .kc-friend { padding: 22px 16px 18px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); }

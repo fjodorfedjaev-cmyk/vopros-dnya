@@ -113,14 +113,15 @@
 
   // Витрина: 3 полки. Карточку туда ставят из окна карточки («На витрину»).
   function showcaseSect() {
-    var slots = [1, 2, 3].map(function (s) {
-      var k = (K.my || []).filter(function (x) { return x.slot === s; })[0];
+    var on = shelved();
+    var slots = [0, 1, 2].map(function (i) {
+      var k = on[i];
       var c = k && cardById(k.card_id);
       if (!c) {
         return el('button', { type: 'button', class: 'shelf shelf-empty', onclick: function () { A.toast('Открой карточку в коллекции и нажми «На витрину»'); } },
-          [el('span', { text: 'Полка ' + s })]);
+          [el('span', { text: 'пусто' })]);
       }
-      var b = el('button', { type: 'button', class: 'shelf', 'aria-label': c.name + ', полка ' + s, onclick: function () { openDetail(c.card_id, k.copy_id); } });
+      var b = el('button', { type: 'button', class: 'shelf', 'aria-label': c.name + ' на витрине', onclick: function () { openDetail(c.card_id, k.copy_id); } });
       b.appendChild(window.Cards.face(c, k.serial, 'md'));
       return b;
     });
@@ -201,29 +202,9 @@
     var acts = el('div', { class: 'kc-actions' });
     // витрина
     if (sel.slot) {
-      acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'Убрать с витрины (полка ' + sel.slot + ')', onclick: function () { setShelf(sel.slot, null, cardId, sel.copy_id, msg); } }));
+      acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'Убрать с витрины', onclick: function () { shelfRemove(cardId, sel, msg); } }));
     } else {
-      acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'На витрину', onclick: askShelf }));
-    }
-    // Вопрос «На какую полку?»: вместо кнопок — три полки (что на них сейчас) и «Отмена».
-    function askShelf() {
-      var shelves = [1, 2, 3].map(function (s) {
-        var on = (K.my || []).filter(function (x) { return x.slot === s; })[0];
-        var oc = on && cardById(on.card_id);
-        var pic = el('span', { class: 'kc-slot-pic' + (oc ? ' r-' + oc.rarity : '') });
-        if (oc) pic.appendChild(window.Cards.art(oc.code)); else pic.textContent = '+';
-        return el('button', {
-          type: 'button', class: 'btn kc-slot', 'aria-label': 'Полка ' + s + (oc ? ', сейчас там «' + oc.name + '»' : ', пустая'),
-          onclick: function () { setShelf(s, sel.copy_id, cardId, sel.copy_id, msg); }
-        }, [pic, el('span', { class: 'kc-slot-n', text: 'Полка ' + s }), el('span', { class: 'kc-slot-c', text: oc ? 'заменить «' + oc.name + '»' : 'пустая' })]);
-      });
-      acts.replaceChildren(
-        el('p', { class: 'kc-ask', text: 'На какую полку?' }),
-        el('div', { class: 'kc-slots' }, shelves),
-        el('button', { type: 'button', class: 'btn', text: 'Отмена', onclick: function () { openDetail(cardId, sel.copy_id); } })
-      );
-      try { acts.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' }); } catch (e) { /* ничего */ }
-      var f = acts.querySelector('.kc-slot'); if (f) f.focus({ preventScroll: true });
+      acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'На витрину', onclick: function () { shelfAdd(cardId, sel, msg); } }));
     }
     // переплавка: в два нажатия, чтобы не промахнуться
     if (c.melt_value) {
@@ -253,15 +234,45 @@
     var first = sheet.querySelector('.kc-close'); if (first) first.focus();
   }
 
-  async function setShelf(slot, copyId, cardId, keepCopy, msg) {
+  // Витрина всегда «плотная»: карточки стоят слева направо без пустых мест.
+  function shelved() {
+    return (K.my || []).filter(function (x) { return x.slot; }).sort(function (a, b) { return a.slot - b.slot; });
+  }
+  // Новая — на первую свободную полку слева. Полная витрина — просим сначала убрать одну.
+  async function shelfAdd(cardId, sel, msg) {
+    var on = shelved();
+    if (on.length >= 3) { setText(msg, 'Витрина полная: сначала убери одну карточку.'); return; }
+    await shelfSave(cardId, sel, msg, 'Поставлено на витрину', async function () {
+      await packShelves(on);   // на всякий случай убираем дыры, если они были
+      await rpc('cards_set_showcase', { p_slot: on.length + 1, p_copy: sel.copy_id });
+    });
+  }
+  // Убрали — те, что стояли правее, сдвигаются влево.
+  async function shelfRemove(cardId, sel, msg) {
+    var rest = shelved().filter(function (x) { return x.copy_id !== sel.copy_id; });
+    await shelfSave(cardId, sel, msg, 'Убрано с витрины', async function () {
+      await rpc('cards_set_showcase', { p_slot: sel.slot, p_copy: null });
+      await packShelves(rest);
+    });
+  }
+  // Ставит карточки по порядку на полки 1, 2, 3 (двигает только те, что стоят не на своём месте).
+  async function packShelves(list) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].slot !== i + 1) await rpc('cards_set_showcase', { p_slot: i + 1, p_copy: list[i].copy_id });
+    }
+  }
+  async function shelfSave(cardId, sel, msg, done, work) {
     setText(msg, 'Сохраняю…');
     try {
-      await rpc('cards_set_showcase', { p_slot: slot, p_copy: copyId });
+      await work();
       await load();
       draw();
-      A.toast(copyId ? 'Поставлено на витрину' : 'Убрано с витрины');
-      openDetail(cardId, keepCopy);
-    } catch (e) { setText(msg, errText(e)); }
+      A.toast(done);
+      openDetail(cardId, sel.copy_id);
+    } catch (e) {
+      setText(msg, errText(e));
+      try { await load(); draw(); } catch (e2) { /* ничего */ }
+    }
   }
 
   async function doMelt(c, sel, btn, msg) {
