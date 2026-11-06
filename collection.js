@@ -285,9 +285,8 @@
     flip.appendChild(backFace); flip.appendChild(frontFace);
     var stage = el('button', { type: 'button', class: 'kr-stage kr-wait', 'aria-label': 'Открыть' }, [flip]);
     var hint = el('p', { class: 'kr-hint', 'aria-live': 'polite', text: 'Достаю из колоды…' });
-    var skip = el('button', { type: 'button', class: 'kr-skip', text: 'Пропустить', hidden: true });
     var result = el('div', { class: 'kr-result' });
-    o.appendChild(skip); o.appendChild(stage); o.appendChild(hint); o.appendChild(result);
+    o.appendChild(stage); o.appendChild(hint); o.appendChild(result);
     stage.focus();
 
     var res = null, level = 0, rank = 0, done = false;
@@ -309,7 +308,6 @@
       if (done) return;
       done = true;
       level = rank; setLevel(rank);
-      skip.hidden = true;
       hint.textContent = '';
       var card = { code: res.code, name: res.name, rarity: res.rarity, copies: res.copies };
       frontFace.appendChild(window.Cards.face(card, res.serial, 'lg'));
@@ -344,11 +342,10 @@
 
     o.addEventListener('click', function (ev) {
       var b = ev.target.closest && ev.target.closest('button');
-      if (b && b !== stage) return; // свои кнопки («Пропустить», «Готово») работают сами
+      if (b && b !== stage) return; // свои кнопки («Готово», «Открыть ещё») работают сами
       step();
     });
-    skip.addEventListener('click', function () { if (res) reveal(); });
-    o._cleanup = onKey(function () { if (done) finish(false); else if (res) reveal(); });
+    o._cleanup = onKey(function () { if (done) finish(false); });
 
     try {
       res = one(await rpc('cards_open', { p_series: SERIES, p_price: price }));
@@ -356,7 +353,6 @@
       A.setBalance(Number(res.balance));
       rank = R(res.rarity).rank;
       stage.classList.remove('kr-wait');
-      skip.hidden = false;
       hint.textContent = 'Нажми на карточку';
     } catch (e) {
       closeOverlay();
