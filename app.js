@@ -281,6 +281,8 @@
     today: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
     archive: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
     horo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.4 5.6 6 .6-4.6 4 1.4 5.9L12 16l-5.2 3.1 1.4-5.9-4.6-4 6-.6z"/></svg>',
+    // коллекция: две карточки внахлёст
+    cards: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="12" height="16" rx="2"/><path d="M5 7.5V19a2 2 0 0 0 2 2h9"/></svg>',
     fill: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h6M14 18h6"/><path d="M15.5 4.5l3 3L10 16l-4 1 1-4z"/></svg>',
     // геймпад: корпус, крестик слева, две кнопки справа
     game: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 7h9a4.5 4.5 0 0 1 4.4 3.6l.9 4.6a2.6 2.6 0 0 1-4.6 2.1L15.6 15H8.4l-1.6 2.3a2.6 2.6 0 0 1-4.6-2.1l.9-4.6A4.5 4.5 0 0 1 7.5 7z"/><path d="M8 9.6v3.2M6.4 11.2h3.2"/><path d="M15.6 10.4h.01M17.6 12.2h.01"/></svg>',
@@ -1352,10 +1354,11 @@
 
   /* ----- основной экран ----- */
 
-  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', poll: 'Выбор дня', horo: 'Гороскоп дня', game: 'Сектор', casino: 'Казино', archive: 'Архив', suggest: 'Свой вопрос', profile: 'Профиль' };
-  var TABS = [['today', 'Вопрос'], ['horo', 'Гороскоп'], ['game', 'Игры'], ['casino', 'Казино'], ['profile', 'Профиль']];
-  // «Вопрос» и «Слово» живут на одной вкладке: внутри переключатель.
-  function navKey(view) { return view === 'fill' || view === 'poll' ? 'today' : view; }
+  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', poll: 'Выбор дня', horo: 'Гороскоп дня', game: 'Сектор', casino: 'Казино', cards: 'Коллекция', archive: 'Архив', suggest: 'Свой вопрос', profile: 'Профиль' };
+  // «Коллекция» — в центре: самое заметное место. Гороскоп живёт в переключателе вкладки «Вопрос».
+  var TABS = [['today', 'Вопрос'], ['game', 'Игры'], ['cards', 'Коллекция'], ['casino', 'Казино'], ['profile', 'Профиль']];
+  // «Вопрос», «Слово», «Выбор» и «Гороскоп» живут на одной вкладке: внутри переключатель.
+  function navKey(view) { return view === 'fill' || view === 'poll' || view === 'horo' ? 'today' : view; }
   function navTarget(key) { return key === 'today' ? (S.lastDay || 'today') : key; }
   function titleFor(view) {
     if (view === 'archive') return S.archiveKind === 'fill' ? 'Прошлые фразы' : 'Прошлые вопросы';
@@ -1412,6 +1415,7 @@
         if (S.view !== view) return;
       }
     }
+    if (view === 'horo') S.lastDay = 'horo';
     if (view === 'archive') {
       S.kind = S.archiveKind;
       if (!S.archive) {
@@ -1442,6 +1446,11 @@
       if (window.Casino) window.Casino.enter();
       return;
     }
+    if (view === 'cards') {
+      render();
+      if (window.Collection) window.Collection.enter();
+      return;
+    }
     render();
     if (isDayView(view)) refreshQuietly();
   }
@@ -1451,12 +1460,14 @@
     if (S.view !== 'game') { stopGame(); stopZigzag(); }
     if ((S.view !== 'game' || S.gameMode !== 'farm') && window.Farm) window.Farm.leave();
     if (S.view !== 'casino' && window.Casino) window.Casino.leave();
+    if (S.view !== 'cards' && window.Collection) window.Collection.leave();
     if (S.view === 'game') body = viewGame();
     else if (S.view === 'casino') body = window.Casino ? window.Casino.view() : [el('p', { class: 'empty', text: 'Казино не загрузилось. Обнови страницу.' })];
+    else if (S.view === 'cards') body = window.Collection ? [window.Collection.view()] : [el('p', { class: 'empty', text: 'Коллекция не загрузилась. Обнови страницу.' })];
     else if (S.view === 'archive') body = viewArchive();
     else if (S.view === 'suggest') body = viewSuggest();
     else if (S.view === 'profile') body = viewProfile();
-    else if (S.view === 'horo') body = viewHoroscope();
+    else if (S.view === 'horo') body = [daySwitch()].concat(viewHoroscope());
     else if (!S.today) body = [el('p', { class: 'muted', text: 'Загружаю…' })];
     else body = viewToday();
     var w = shell([header()].concat(body).concat([bottomNav()]));
@@ -1487,7 +1498,7 @@
       active = false;
       if (S.stage !== 'app' || ev.touches.length !== 1 || window.innerWidth > 640) return;
       var t = ev.target;
-      if (t.closest && t.closest('input, textarea, .table-wrap, .picker, .menu, .celebrate, .bottom-nav, .emojis, .zodiacs, .swatches, .farm-back, .set-pop')) return;
+      if (t.closest && t.closest('input, textarea, .table-wrap, .picker, .menu, .celebrate, .bottom-nav, .emojis, .zodiacs, .swatches, .farm-back, .set-pop, .kc-overlay, .kr')) return;
       if (openPicker) return;
       if (S.gameState === 'play' || (t.closest && t.closest('.sector-field, .zz-field'))) return; // во время игры вкладки не листаются
       sx = ev.touches[0].clientX; sy = ev.touches[0].clientY; t0 = Date.now(); active = true;
@@ -1563,10 +1574,10 @@
   }
 
   // Переключатель «Вопрос / Слово / Выбор». Анимация едет в сторону выбранной кнопки.
-  var DAY_TABS = [['today', 'Вопрос'], ['fill', 'Слово'], ['poll', 'Выбор']];
+  var DAY_TABS = [['today', 'Вопрос'], ['fill', 'Слово'], ['poll', 'Выбор'], ['horo', 'Гороскоп']];
   function daySwitch() {
     var cur = DAY_TABS.map(function (x) { return x[0]; }).indexOf(S.view);
-    return el('div', { class: 'segment day-switch three', role: 'group', 'aria-label': 'Вопрос, слово или выбор' }, DAY_TABS.map(function (x, i) {
+    return el('div', { class: 'segment day-switch four', role: 'group', 'aria-label': 'Вопрос, слово, выбор или гороскоп' }, DAY_TABS.map(function (x, i) {
       return el('button', {
         type: 'button', text: x[1], 'aria-pressed': String(S.view === x[0]),
         onclick: function () { if (S.view !== x[0]) switchTab(x[0], i > cur ? 'left' : 'right'); }
@@ -1747,7 +1758,10 @@
       var me = s.user_id === S.userId;
       return el('tr', { class: me ? 'me-row' : null }, [
         el('th', { scope: 'row' }, [
-          el('span', { class: 'who' }, [
+          el('button', {
+            type: 'button', class: 'who who-btn', 'aria-label': 'Витрина: ' + s.display_name,
+            onclick: function () { if (window.Collection) window.Collection.showFriend(s.user_id, s.display_name); }
+          }, [
             avatar(s.display_name, s.color, true, s.avatar),
             el('span', { class: 'who-name' }, [
               el('span', { text: s.display_name + (me ? ' (ты)' : '') })
