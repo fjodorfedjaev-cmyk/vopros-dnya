@@ -423,10 +423,10 @@
     }
     function show() {
       var good = pc != null && pc >= MIN_P && pc <= MAX_P && !err;
+      // под полями — только ошибка (например, цена меньше 0,02); без ошибки строки нет
       hint.classList.toggle('err', !!err);
-      if (err) setText(hint, err);
-      else if (good) setText(hint, 'Сгорит ' + money(feeC(pc) / 100) + ' 🪙 — это комиссия лавки.');
-      else hint.textContent = 'Впиши сумму в любое поле — второе посчитается само.';
+      hint.hidden = !err;
+      hint.textContent = err;
       onChange(good ? pc : null);
     }
     pIn.addEventListener('input', function () {
@@ -516,7 +516,6 @@
     sheet.appendChild(box.node);
     sheet.appendChild(el('div', { class: 'kc-actions' }, [go,
       el('button', { type: 'button', class: 'btn', text: 'Назад', onclick: function () { if (back) back(); else openDetail(cardId, sel.copy_id); } })]));
-    sheet.appendChild(el('p', { class: 'kc-note', text: 'Пока карточка в лавке, её не будет в коллекции. Снять с продажи можно в любой момент.' }));
     sheet.appendChild(msg);
     // на компьютере сразу ставим курсор в поле; на телефоне — нет, чтобы клавиатура не закрыла карточку
     if (!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) box.focus();
