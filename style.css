@@ -1070,3 +1070,23 @@ form.card .msg:empty, .push-card .msg:empty { display: none; }
 @keyframes po-grow { from { transform: scaleX(0); transform-origin: left; } to { transform: scaleX(1); transform-origin: left; } }
 .poll-foot { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .po-bar { transition: none; } .poll-opts.reveal .po-bar { animation: none; } }
+
+/* «Свой вопрос»: форма, мои предложения и очередь на проверку */
+.past-link { gap: 0 18px; flex-wrap: wrap; }
+.sug-badge[hidden] { display: none; }
+.sug-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 380px) { .sug-opts { grid-template-columns: 1fr; } }
+.sug-preview { padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; }
+.sug-ptext { font: 500 18px/1.4 var(--font-display); overflow-wrap: anywhere; }
+.sug-rules { margin: 0; padding: 0 4px 0 18px; color: var(--muted); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.card.sug-item { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
+.sug-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.sug-kind, .sug-date { font: 500 11.5px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.sug-st { font: 600 11px/1.5 var(--font-mono); text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.sug-st.st-pending { background: rgba(242, 120, 44, 0.16); color: var(--accent); }
+.sug-st.st-approved { background: rgba(47, 125, 79, 0.25); color: #7DD3A0; }
+.sug-st.st-rejected { background: var(--soft); color: var(--muted); }
+.sug-text { margin: 0; overflow-wrap: anywhere; }
+.sug-optline, .sug-note { margin: 0; font-size: 13px; color: var(--muted); }
+.sug-item textarea { min-height: 64px; }
+.sug-item .msg:empty { display: none; }

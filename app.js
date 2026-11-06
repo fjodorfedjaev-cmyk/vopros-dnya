@@ -75,6 +75,12 @@
     return { today: null, answers: [], who: [], reactions: [], comments: [], commentReactions: [], editing: false, draft: '', archive: null };
   }
   S.kd = { question: blankGame(), fill: blankGame(), poll: blankGame() };
+  // «Свой вопрос»: что предлагаем, откуда пришли, мои предложения, очередь на проверку (только у админа) и черновики.
+  function blankSug() {
+    return { kind: 'question', from: 'today', mine: null, pending: null, admin: false, err: null,
+      drafts: { question: '', fill: '', poll: { text: '', opts: ['', '', '', ''] } } };
+  }
+  S.sug = blankSug();
   ['today', 'answers', 'who', 'reactions', 'comments', 'commentReactions', 'editing', 'draft', 'archive'].forEach(function (k) {
     Object.defineProperty(S, k, {
       get: function () { return S.kd[S.kind][k]; },
@@ -160,6 +166,14 @@
     if (m.indexOf('bad_code') >= 0) text = 'Код приглашения не подошёл. Проверь его и попробуй ещё раз.';
     else if (m.indexOf('bad_name') >= 0) text = 'Введи имя, под которым тебя увидят друзья.';
     else if (m.indexOf('not_member') >= 0) text = 'Сначала нужно ввести код приглашения.';
+    else if (m.indexOf('sug_not_enough') >= 0) text = 'Не хватает монет: нужно 300 🪙.';
+    else if (m.indexOf('sug_need_blank') >= 0) text = 'Нужен ровно один пропуск ___ — туда друзья впишут слово.';
+    else if (m.indexOf('sug_bad_text') >= 0) text = 'Текст должен быть от 5 до 200 символов.';
+    else if (m.indexOf('sug_same_options') >= 0) text = 'Варианты не должны повторяться.';
+    else if (m.indexOf('sug_bad_options') >= 0) text = 'Нужно 4 варианта, каждый до 60 символов.';
+    else if (m.indexOf('sug_duplicate') >= 0) text = 'Такой уже есть или его уже предложили. Монеты не списаны.';
+    else if (m.indexOf('sug_reviewed') >= 0) text = 'Это предложение уже проверено.';
+    else if (m.indexOf('not_admin') >= 0) text = 'Проверять предложения может только админ.';
     else if (m.indexOf('invalid login credentials') >= 0) text = 'Почта или пароль не подошли.';
     else if (m.indexOf('already registered') >= 0) text = 'Эта почта уже зарегистрирована. Открой вкладку «Вход».';
     else if (m.indexOf('password should be') >= 0 || m.indexOf('weak') >= 0) text = 'Пароль слишком простой. Нужно хотя бы 8 символов.';
@@ -942,6 +956,7 @@
       openTabFromLink();
       maybeShowInstallHint();
       refreshPushState(true).then(maybeShowPushHint);
+      refreshSugBadge();
       startPolling();
     } catch (e) {
       if (seq !== S.loadSeq) return;
@@ -1337,7 +1352,7 @@
 
   /* ----- основной экран ----- */
 
-  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', poll: 'Выбор дня', horo: 'Гороскоп дня', game: 'Сектор', casino: 'Казино', archive: 'Архив', profile: 'Профиль' };
+  var TITLES = { today: 'Вопрос дня', fill: 'Слово дня', poll: 'Выбор дня', horo: 'Гороскоп дня', game: 'Сектор', casino: 'Казино', archive: 'Архив', suggest: 'Свой вопрос', profile: 'Профиль' };
   var TABS = [['today', 'Вопрос'], ['horo', 'Гороскоп'], ['game', 'Игры'], ['casino', 'Казино'], ['profile', 'Профиль']];
   // «Вопрос» и «Слово» живут на одной вкладке: внутри переключатель.
   function navKey(view) { return view === 'fill' || view === 'poll' ? 'today' : view; }
@@ -1405,6 +1420,11 @@
         if (S.view !== view) return;
       }
     }
+    if (view === 'suggest') {
+      render();
+      try { await loadSuggest(); S.sug.err = null; } catch (e) { S.sug.err = e; }
+      if (S.view !== view) return;
+    }
     if (view === 'profile') {
       render();
       await loadStats();
@@ -1434,6 +1454,7 @@
     if (S.view === 'game') body = viewGame();
     else if (S.view === 'casino') body = window.Casino ? window.Casino.view() : [el('p', { class: 'empty', text: 'Казино не загрузилось. Обнови страницу.' })];
     else if (S.view === 'archive') body = viewArchive();
+    else if (S.view === 'suggest') body = viewSuggest();
     else if (S.view === 'profile') body = viewProfile();
     else if (S.view === 'horo') body = viewHoroscope();
     else if (!S.today) body = [el('p', { class: 'muted', text: 'Загружаю…' })];
@@ -1526,7 +1547,7 @@
   }
 
   function viewToday() {
-    if (S.kind === 'poll') return [daySwitch(), viewPoll()];
+    if (S.kind === 'poll') return [daySwitch(), viewPoll(), el('div', { class: 'past-link' }, [suggestLink('poll')])];
     var a = el('section', { class: 'sect', id: 'answer-sect' });
     fillAnswer(a);
     var f = el('section', { class: 'sect', id: 'friends' });
@@ -1536,7 +1557,7 @@
       type: 'button', class: 'link quiet',
       text: S.kind === 'fill' ? 'Прошлые фразы →' : 'Прошлые вопросы →',
       onclick: function () { openArchive(S.kind); }
-    })]);
+    }), suggestLink(S.kind)]);
     return [daySwitch(), a, f, past];
   }
 
@@ -2264,6 +2285,301 @@
     return d;
   }
 
+  /* ----- «Свой вопрос»: предложить вопрос, фразу для «Слова» или «Выбор» за 300 монет ----- */
+  // Предложение уходит на проверку админу. Одобрил — выйдет одним из следующих (раньше обычных), автора никто не увидит.
+  // Не подошло — монеты вернутся. Списывает и возвращает монеты только база, сайт лишь показывает.
+  var SUG_PRICE = 300;
+  var SUG_KINDS = [['question', 'Вопрос'], ['fill', 'Слово'], ['poll', 'Выбор']];
+  var SUG_STATUS = { pending: 'На проверке', approved: 'Одобрено', rejected: 'Не подошло' };
+  function sugKindName(k) { return k === 'fill' ? 'Слово' : k === 'poll' ? 'Выбор' : 'Вопрос'; }
+
+  // Ссылка внизу «Вопроса», «Слова» и «Выбора». У админа рядом — сколько предложений ждёт проверки.
+  function suggestLink(kind) {
+    var n = S.sug.admin && S.sug.pending ? S.sug.pending.length : 0;
+    var badge = el('span', { class: 'seg-badge sug-badge', id: 'sug-badge', text: String(n), title: 'Ждут проверки' });
+    badge.hidden = !n;
+    return el('button', { type: 'button', class: 'link quiet', onclick: function () { openSuggest(kind); } },
+      [kind === 'fill' ? 'Предложить свою →' : 'Предложить свой →', badge]);
+  }
+  function openSuggest(kind) {
+    S.sug.kind = kind;
+    S.sug.from = S.view;
+    switchTab('suggest', 'left');
+  }
+
+  async function loadSuggest() {
+    var res = await Promise.all([sb.rpc('my_suggestions'), sb.rpc('is_admin'), sb.rpc('my_points')]);
+    if (res[0].error) throw res[0].error;
+    S.sug.mine = res[0].data || [];
+    S.sug.admin = !res[1].error && res[1].data === true;
+    applyPoints(res[2]);
+    if (S.sug.admin) {
+      var p = await sb.rpc('admin_suggestions');
+      S.sug.pending = p.error ? [] : (p.data || []);
+    }
+  }
+  // При запуске: админ ли я и сколько ждёт проверки. Если что-то не так — просто без значка.
+  async function refreshSugBadge() {
+    try {
+      var a = await sb.rpc('is_admin');
+      S.sug.admin = !a.error && a.data === true;
+      if (!S.sug.admin) return;
+      var p = await sb.rpc('admin_suggestions');
+      if (!p.error) S.sug.pending = p.data || [];
+      updateSugBadge();
+    } catch (e) { /* не страшно */ }
+  }
+  function updateSugBadge() {
+    var b = document.getElementById('sug-badge');
+    var n = S.sug.admin && S.sug.pending ? S.sug.pending.length : 0;
+    if (b) { b.textContent = String(n); b.hidden = !n; }
+  }
+
+  // Та же чистка, что в базе: лишние пробелы убираем (и пробел перед точкой или запятой), «____» превращаем в ___.
+  function sugClean(t) { return String(t || '').trim().replace(/\s+/g, ' ').replace(/ ([.,!?…:;»)])/g, '$1'); }
+  function sugCheck(k, d) {
+    var t = sugClean(k === 'poll' ? d.poll.text : d[k]);
+    if (k === 'fill') {
+      t = t.replace(/_{2,}/g, '___');
+      var blanks = t.split('___').length - 1;
+      if (blanks !== 1) return { err: blanks ? 'Пропуск нужен ровно один.' : 'Поставь пропуск ___ — туда друзья впишут слово.' };
+    }
+    if (t.length < 5) return { err: 'Слишком коротко: нужно хотя бы 5 символов.' };
+    if (t.length > 200) return { err: 'Слишком длинно: не больше 200 символов.' };
+    var opts = null;
+    if (k === 'poll') {
+      opts = d.poll.opts.map(sugClean);
+      if (opts.some(function (o) { return !o; })) return { err: 'Заполни все 4 варианта.' };
+      var low = opts.map(function (o) { return o.toLowerCase(); });
+      if (low.some(function (o, i) { return low.indexOf(o) !== i; })) return { err: 'Варианты не должны повторяться.' };
+    }
+    return { text: t, options: opts };
+  }
+
+  function viewSuggest() {
+    var from = S.sug.from || 'today';
+    var back = el('div', { class: 'back-row' }, [el('button', {
+      type: 'button', class: 'link quiet back-link',
+      text: '← ' + (TITLES[from] || 'Вопрос дня'),
+      onclick: function () { switchTab(from, 'right'); }
+    })]);
+    var form = el('section', { class: 'sect', id: 'sug-form' });
+    fillSugForm(form);
+    var out = [back, form];
+    if (S.sug.admin) {
+      var adm = el('section', { class: 'sect', id: 'sug-admin' });
+      fillSugAdmin(adm);
+      out.push(adm);
+    }
+    var mine = el('section', { class: 'sect', id: 'sug-mine' });
+    fillSugMine(mine);
+    out.push(mine);
+    return out;
+  }
+
+  function fillSugForm(sect) {
+    var k = S.sug.kind, d = S.sug.drafts;
+    sect.replaceChildren();
+    var seg = el('div', { class: 'segment three', role: 'group', 'aria-label': 'Что предложить' }, SUG_KINDS.map(function (x) {
+      return el('button', {
+        type: 'button', text: x[1], 'aria-pressed': String(k === x[0]),
+        onclick: function () { if (S.sug.kind !== x[0]) { S.sug.kind = x[0]; fillSugForm(sect); } }
+      });
+    }));
+    var msg = el('p', { class: 'msg', role: 'status' });
+    var btn = el('button', { type: 'submit', class: 'btn primary', text: 'Предложить за ' + SUG_PRICE + ' 🪙' });
+    var short = balance() < SUG_PRICE;
+    var fields = [];
+    var main, preview = null, counter = el('span', { class: 'count' });
+
+    if (k === 'poll') {
+      main = el('input', { type: 'text', maxlength: 200, autocomplete: 'off', autocapitalize: 'off', 'data-cap': '1', 'aria-label': 'Вопрос', placeholder: 'Например: что взять на необитаемый остров?' });
+      main.value = d.poll.text;
+      main.addEventListener('input', function () { d.poll.text = main.value; sync(); });
+      var box = el('div', { class: 'sug-opts' });
+      d.poll.opts.forEach(function (v, i) {
+        var o = el('input', { type: 'text', maxlength: 60, autocomplete: 'off', autocapitalize: 'off', 'data-cap': '1', 'aria-label': 'Вариант ' + (i + 1), placeholder: 'Вариант ' + (i + 1) });
+        o.value = v;
+        o.addEventListener('input', function () { d.poll.opts[i] = o.value; });
+        box.appendChild(o);
+      });
+      fields.push(el('div', { class: 'field' }, [el('span', { class: 'lbl', text: 'Вопрос' }), main]));
+      fields.push(el('div', { class: 'field' }, [el('span', { class: 'lbl', text: '4 варианта' }), box]));
+    } else {
+      var isFill = k === 'fill';
+      main = el('textarea', { rows: 3, maxlength: 200, autocapitalize: 'off', 'data-cap': '1',
+        'aria-label': isFill ? 'Фраза с пропуском' : 'Твой вопрос',
+        placeholder: isFill ? 'Например: идеальный выходной — это ___ и тишина.' : 'Например: какой звук самый бесячий?' });
+      main.value = d[k];
+      main.addEventListener('input', function () { d[k] = main.value; sync(); });
+      fields.push(el('div', { class: 'field' }, [el('span', { class: 'lbl', text: isFill ? 'Фраза с пропуском' : 'Твой вопрос' }), main]));
+      if (isFill) {
+        preview = el('div', { class: 'sug-preview', 'aria-live': 'polite' });
+        fields.push(el('div', { class: 'row' }, [el('button', { type: 'button', class: 'btn', text: 'Вставить пропуск ___', onclick: insertBlank })]));
+        fields.push(preview);
+      }
+    }
+
+    // Пропуск ставим туда, где курсор, и сами добавляем пробелы вокруг.
+    function insertBlank() {
+      var v = main.value;
+      var a = typeof main.selectionStart === 'number' ? main.selectionStart : v.length;
+      var b = typeof main.selectionEnd === 'number' ? main.selectionEnd : v.length;
+      var before = v.slice(0, a), after = v.slice(b);
+      var ins = (before && !/\s$/.test(before) ? ' ' : '') + '___' + (!/^[\s.,!?…:;)»]/.test(after) ? ' ' : '');
+      main.value = before + ins + after;
+      var pos = (before + ins).length;
+      main.focus();
+      try { main.setSelectionRange(pos, pos); } catch (e) { /* ничего */ }
+      d.fill = main.value;
+      sync();
+    }
+
+    function sync() {
+      var len = sugClean(main.value).length;
+      counter.textContent = len + ' / 200';
+      if (preview) {
+        var t = sugClean(main.value).replace(/_{2,}/g, '___');
+        preview.replaceChildren(t.indexOf('___') >= 0
+          ? fillSentence(t, '', 'sug-ptext')
+          : el('p', { class: 'muted small', text: 'Здесь будет видно, как фраза выглядит для друзей.' }));
+      }
+    }
+    sync();
+
+    var form = el('form', {
+      class: 'card stack tight',
+      onsubmit: async function (ev) {
+        ev.preventDefault();
+        var c = sugCheck(k, d);
+        if (c.err) { showMsg(msg, 'err', c.err); return; }
+        if (balance() < SUG_PRICE) { showMsg(msg, 'err', 'Не хватает монет: нужно ' + SUG_PRICE + ' 🪙.'); return; }
+        btn.disabled = true;
+        showMsg(msg, '', 'Отправляю…');
+        try {
+          var r = await sb.rpc('suggest_question', { p_kind: k, p_text: c.text, p_options: c.options });
+          if (r.error) throw r.error;
+          var row = firstRow(r.data);
+          if (row) setBalance(Number(row.s_balance));
+          if (k === 'poll') d.poll = { text: '', opts: ['', '', '', ''] }; else d[k] = '';
+          try { await loadSuggest(); } catch (e) { /* список обновится в следующий раз */ }
+          if (S.view !== 'suggest') return;
+          fillSugForm(sect);
+          var m = document.getElementById('sug-mine'); if (m) fillSugMine(m);
+          var adm = document.getElementById('sug-admin'); if (adm) fillSugAdmin(adm);
+          toast('Отправлено на проверку');
+        } catch (e) {
+          showError(msg, e);
+          btn.disabled = false;
+        }
+      }
+    }, fields.concat([
+      el('div', { class: 'row between' }, [btn, counter]),
+      short ? el('p', { class: 'hint-line', text: 'У тебя ' + fmt(balance()) + ' 🪙 — нужно ' + SUG_PRICE + '.' }) : null,
+      msg
+    ]));
+    if (short) btn.disabled = true;
+
+    sect.appendChild(seg);
+    sect.appendChild(form);
+    sect.appendChild(el('ul', { class: 'sug-rules' }, [
+      el('li', { text: 'Одобренное выйдет одним из следующих. Автора никто не увидит.' }),
+      el('li', { text: 'Не подошло — 300 🪙 вернутся.' }),
+      el('li', { text: 'Смешное или «норм или стрём». Не личное, не про нашу компанию, без мужского и женского рода.' })
+    ]));
+  }
+
+  function fillSugMine(sect) {
+    sect.replaceChildren(el('h2', { text: 'Мои предложения' }));
+    if (S.sug.err) {
+      var m = el('p', { class: 'msg' });
+      showError(m, S.sug.err);
+      sect.appendChild(m);
+      return;
+    }
+    var list = S.sug.mine;
+    if (!list) { sect.appendChild(el('p', { class: 'muted', text: 'Загружаю…' })); return; }
+    if (!list.length) { sect.appendChild(el('p', { class: 'empty', text: 'Здесь будут твои предложения и их статус.' })); return; }
+    sect.appendChild(el('ul', { class: 'list' }, list.map(function (s) {
+      return el('li', { class: 'card sug-item' }, [
+        el('div', { class: 'sug-head' }, [
+          el('span', { class: 'sug-kind', text: sugKindName(s.s_kind) }),
+          el('span', { class: 'sug-st st-' + s.s_status, text: SUG_STATUS[s.s_status] || s.s_status })
+        ]),
+        s.s_kind === 'fill' ? fillSentence(s.s_text, '', 'sug-text') : el('p', { class: 'sug-text', text: s.s_text }),
+        s.s_kind === 'poll' && Array.isArray(s.s_options) ? el('p', { class: 'sug-optline', text: s.s_options.join(' · ') }) : null,
+        s.s_status === 'rejected' ? el('p', { class: 'sug-note', text: SUG_PRICE + ' 🪙 вернулись на баланс' }) : null
+      ]);
+    })));
+  }
+
+  // Очередь на проверку (видит только админ). Текст и варианты можно поправить перед «Одобрить».
+  function fillSugAdmin(sect) {
+    var list = S.sug.pending || [];
+    sect.replaceChildren(el('h2', { text: 'Ждут проверки' + (list.length ? ' · ' + list.length : '') }));
+    if (!list.length) { sect.appendChild(el('p', { class: 'muted small', text: 'Новых предложений нет.' })); return; }
+    sect.appendChild(el('ul', { class: 'list' }, list.map(function (s) { return sugReviewCard(s, sect); })));
+  }
+
+  function sugReviewCard(s, sect) {
+    var k = s.s_kind, isPoll = k === 'poll';
+    var ta = el('textarea', { rows: 2, maxlength: 200, 'aria-label': 'Текст' });
+    ta.value = s.s_text;
+    var opts = (isPoll && Array.isArray(s.s_options) ? s.s_options : []).map(function (v, i) {
+      var o = el('input', { type: 'text', maxlength: 60, autocomplete: 'off', 'aria-label': 'Вариант ' + (i + 1) });
+      o.value = v;
+      return o;
+    });
+    var msg = el('p', { class: 'msg', role: 'status' });
+    var ok = el('button', { type: 'button', class: 'btn primary', text: 'Одобрить', onclick: function () { act(true); } });
+    var no = el('button', { type: 'button', class: 'btn', text: 'Отклонить' });
+    // Отклонить — в два нажатия, чтобы не промахнуться.
+    var armed = false, timer = null;
+    no.addEventListener('click', function () {
+      if (!armed) {
+        armed = true; no.textContent = 'Точно отклонить?'; no.classList.add('danger');
+        timer = setTimeout(function () { armed = false; no.textContent = 'Отклонить'; no.classList.remove('danger'); }, 3000);
+        return;
+      }
+      clearTimeout(timer);
+      act(false);
+    });
+    async function act(approve) {
+      ok.disabled = true; no.disabled = true;
+      showMsg(msg, '', approve ? 'Одобряю…' : 'Отклоняю…');
+      try {
+        var r = await sb.rpc('admin_review_suggestion', {
+          p_id: s.s_id, p_approve: approve,
+          p_text: approve ? ta.value : null,
+          p_options: approve && isPoll ? opts.map(function (o) { return o.value; }) : null
+        });
+        if (r.error) throw r.error;
+        S.sug.pending = (S.sug.pending || []).filter(function (x) { return x.s_id !== s.s_id; });
+        toast(approve ? 'Одобрено — встало в очередь' : 'Отклонено, монеты вернулись');
+        fillSugAdmin(sect);
+        updateSugBadge();
+        // своё предложение тоже могло поменять статус
+        var mr = await sb.rpc('my_suggestions');
+        if (!mr.error) { S.sug.mine = mr.data || []; var m = document.getElementById('sug-mine'); if (m) fillSugMine(m); }
+        loadPoints();
+      } catch (e) {
+        showError(msg, e);
+        ok.disabled = false; no.disabled = false;
+        armed = false; no.textContent = 'Отклонить'; no.classList.remove('danger');
+      }
+    }
+    return el('li', { class: 'card sug-item' }, [
+      el('div', { class: 'sug-head' }, [
+        el('span', { class: 'sug-kind', text: sugKindName(k) }),
+        el('span', { class: 'sug-date', text: fmtLong.format(new Date(s.s_created)) })
+      ]),
+      ta,
+      isPoll ? el('div', { class: 'sug-opts' }, opts) : null,
+      el('div', { class: 'row' }, [ok, no]),
+      msg
+    ]);
+  }
+
   /* ----- профиль ----- */
 
   function emojiPicker(current, initial, onPick) {
@@ -2423,7 +2739,7 @@
     S.loadSeq++;
     S.session = null; S.userId = null; S.profile = null;
     stopGame(); S.board = { week: null, all: null };
-    S.kd = { question: blankGame(), fill: blankGame(), poll: blankGame() }; S.kind = 'question'; S.archiveKind = 'question';
+    S.kd = { question: blankGame(), fill: blankGame(), poll: blankGame() }; S.kind = 'question'; S.archiveKind = 'question'; S.sug = blankSug();
     S.members = []; S.stats = []; S.group = null; S.coins = {};
     S.view = 'today'; S.stage = 'auth'; S.authMode = 'login';
     render();
