@@ -562,7 +562,6 @@
     if (!c) return null;
     var pic = el('span', { class: 'kt-pic mk-pic r-' + c.rarity });
     pic.appendChild(window.Cards.art(c.code));
-    var isNew = !l.mine && !haveCard(c.card_id);
     var price = el('span', { class: 'mk-price' }); setText(price, money(l.price) + ' 🪙');
     var who = l.mine
       ? el('span', { class: 'mk-who', text: 'нажми, чтобы изменить цену или снять' })
@@ -574,7 +573,7 @@
     }, [
       pic,
       el('span', { class: 'mk-info' }, [
-        el('span', { class: 'mk-name' }, [c.name, isNew ? el('span', { class: 'seg-badge mk-new', text: 'новая' }) : null]),
+        el('span', { class: 'mk-name', text: c.name }),
         el('span', { class: 'mk-no', text: R(c.rarity).name + ' · ' + copyNo(c, l.serial) }),
         who
       ]),
@@ -602,7 +601,7 @@
     sheet.appendChild(el('div', { class: 'mk-meta' }, [
       metaRow('Продаёт', seller),
       last ? metaRow('Последняя продажа', last) : null,
-      metaRow('У тебя', have ? (have === 1 ? 'уже есть' : 'уже есть, копий: ' + have) : (haveCard(c.card_id) ? 'есть в твоих лотах' : 'ещё нет — будет новая'))
+      metaRow('У тебя', have ? (have === 1 ? 'уже есть' : 'уже есть, копий: ' + have) : (haveCard(c.card_id) ? 'есть в твоих лотах' : 'ещё нет'))
     ]));
     var buy = el('button', { type: 'button', class: 'btn primary' });
     var acts = el('div', { class: 'kc-actions' }, [buy]);

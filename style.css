@@ -1247,7 +1247,6 @@ body.kc-dragging { -webkit-user-select: none; user-select: none; cursor: grabbin
 .mk-pic .kc-art { width: 66%; }
 .mk-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .mk-name { font-weight: 600; font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
-.mk-new { margin-left: 6px; }
 .mk-no { font: 500 11.5px/1.2 var(--font-mono); color: var(--muted); }
 .mk-who { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; color: var(--muted); }
 .mk-who-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
