@@ -1520,20 +1520,21 @@
 
   /* ----- сегодня ----- */
 
+  // Шапка карточки дня: дата слева, справа — кнопка «Предложить свой» (видна сразу рядом с вопросом).
+  function qhead(day, kind) {
+    return el('div', { class: 'qhead' }, [el('span', { class: 'date', text: day ? dayLabel(day) : '' }), suggestBtn(kind)]);
+  }
+
   function questionCard(q) {
     if (S.kind === 'fill') {
       var mine = myAnswer();
       return el('section', { class: 'card qcard', 'aria-label': 'Фраза дня' }, [
-        el('div', { class: 'qhead' }, [
-          el('span', { class: 'date', text: dayLabel(q.day) })
-        ]),
+        qhead(q.day, 'fill'),
         fillSentence(q.text, mine && !S.editing ? mine.body : (S.draft || ''), 'qtext', 'fill-blank')
       ]);
     }
     return el('section', { class: 'card qcard', 'aria-label': 'Вопрос дня' }, [
-      el('div', { class: 'qhead' }, [
-        el('span', { class: 'date', text: dayLabel(q.day) })
-      ]),
+      qhead(q.day, 'question'),
       el('p', { class: 'qtext q-accent', text: q.text })
     ]);
   }
@@ -1547,7 +1548,7 @@
   }
 
   function viewToday() {
-    if (S.kind === 'poll') return [daySwitch(), viewPoll(), el('div', { class: 'past-link' }, [suggestLink('poll')])];
+    if (S.kind === 'poll') return [daySwitch(), viewPoll()];
     var a = el('section', { class: 'sect', id: 'answer-sect' });
     fillAnswer(a);
     var f = el('section', { class: 'sect', id: 'friends' });
@@ -1557,7 +1558,7 @@
       type: 'button', class: 'link quiet',
       text: S.kind === 'fill' ? 'Прошлые фразы →' : 'Прошлые вопросы →',
       onclick: function () { openArchive(S.kind); }
-    }), suggestLink(S.kind)]);
+    })]);
     return [daySwitch(), a, f, past];
   }
 
@@ -1608,7 +1609,7 @@
       }, kids);
     }));
     sect.replaceChildren(el('div', { class: 'card qcard poll-card' }, [
-      el('div', { class: 'qhead' }, [el('span', { class: 'date', text: q ? dayLabel(q.day) : '' })]),
+      qhead(q && q.day, 'poll'),
       el('p', { class: 'qtext', text: q ? q.text : '' }),
       list,
       el('p', { class: 'muted small poll-foot', text: mine
@@ -1894,9 +1895,7 @@
     body.setAttribute('title', 'Нажми, чтобы изменить, скопировать или удалить');
     var card = isFill
       ? el('div', { class: 'card qcard ans mine tappable fill-top' }, [
-          el('div', { class: 'qhead' }, [
-            el('span', { class: 'date', text: dayLabel(S.today.day) })
-          ]),
+          qhead(S.today.day, 'fill'),
           body,
           el('p', { class: 'saved-line', text: '✓ Твой ответ сохранён' }),
           anchor,
@@ -1904,7 +1903,7 @@
           mcb
         ])
       : el('div', { class: 'card qcard ans mine tappable q-top' }, [
-          el('div', { class: 'qhead' }, [el('span', { class: 'date', text: dayLabel(S.today.day) })]),
+          qhead(S.today.day, 'question'),
           el('p', { class: 'qtext q-accent', text: S.today.text }),
           body,
           anchor,
@@ -2293,13 +2292,15 @@
   var SUG_STATUS = { pending: 'На проверке', approved: 'Одобрено', rejected: 'Не подошло' };
   function sugKindName(k) { return k === 'fill' ? 'Слово' : k === 'poll' ? 'Выбор' : 'Вопрос'; }
 
-  // Ссылка внизу «Вопроса», «Слова» и «Выбора». У админа рядом — сколько предложений ждёт проверки.
-  function suggestLink(kind) {
+  // Кнопка в шапке карточки «Вопроса», «Слова» и «Выбора». У админа на ней — сколько предложений ждёт проверки.
+  function suggestBtn(kind) {
     var n = S.sug.admin && S.sug.pending ? S.sug.pending.length : 0;
     var badge = el('span', { class: 'seg-badge sug-badge', id: 'sug-badge', text: String(n), title: 'Ждут проверки' });
     badge.hidden = !n;
-    return el('button', { type: 'button', class: 'link quiet', onclick: function () { openSuggest(kind); } },
-      [kind === 'fill' ? 'Предложить свою →' : 'Предложить свой →', badge]);
+    return el('button', {
+      type: 'button', class: 'sug-btn', 'aria-label': kind === 'fill' ? 'Предложить свою фразу' : 'Предложить свой вопрос',
+      onclick: function (ev) { ev.stopPropagation(); openSuggest(kind); }
+    }, [ico('plus'), 'Предложить', badge]);
   }
   function openSuggest(kind) {
     S.sug.kind = kind;
@@ -2393,7 +2394,7 @@
     var main, preview = null, counter = el('span', { class: 'count' });
 
     if (k === 'poll') {
-      main = el('input', { type: 'text', maxlength: 200, autocomplete: 'off', autocapitalize: 'off', 'data-cap': '1', 'aria-label': 'Вопрос', placeholder: 'Например: что взять на необитаемый остров?' });
+      main = el('input', { type: 'text', maxlength: 200, autocomplete: 'off', autocapitalize: 'off', 'data-cap': '1', 'aria-label': 'Вопрос' });
       main.value = d.poll.text;
       main.addEventListener('input', function () { d.poll.text = main.value; sync(); });
       var box = el('div', { class: 'sug-opts' });
@@ -2408,8 +2409,7 @@
     } else {
       var isFill = k === 'fill';
       main = el('textarea', { rows: 3, maxlength: 200, autocapitalize: 'off', 'data-cap': '1',
-        'aria-label': isFill ? 'Фраза с пропуском' : 'Твой вопрос',
-        placeholder: isFill ? 'Например: идеальный выходной — это ___ и тишина.' : 'Например: какой звук самый бесячий?' });
+        'aria-label': isFill ? 'Фраза с пропуском' : 'Твой вопрос' });
       main.value = d[k];
       main.addEventListener('input', function () { d[k] = main.value; sync(); });
       fields.push(el('div', { class: 'field' }, [el('span', { class: 'lbl', text: isFill ? 'Фраза с пропуском' : 'Твой вопрос' }), main]));
@@ -2484,8 +2484,7 @@
     sect.appendChild(form);
     sect.appendChild(el('ul', { class: 'sug-rules' }, [
       el('li', { text: 'Одобренное выйдет одним из следующих. Автора никто не увидит.' }),
-      el('li', { text: 'Не подошло — 300 🪙 вернутся.' }),
-      el('li', { text: 'Смешное или «норм или стрём». Не личное, не про нашу компанию, без мужского и женского рода.' })
+      el('li', { text: 'Не подошло — 300 🪙 вернутся.' })
     ]));
   }
 

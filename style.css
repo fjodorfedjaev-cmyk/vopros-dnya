@@ -1072,7 +1072,15 @@ form.card .msg:empty, .push-card .msg:empty { display: none; }
 @media (prefers-reduced-motion: reduce) { .po-bar { transition: none; } .poll-opts.reveal .po-bar { animation: none; } }
 
 /* «Свой вопрос»: форма, мои предложения и очередь на проверку */
-.past-link { gap: 0 18px; flex-wrap: wrap; }
+.sug-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 4px 12px 4px 10px; border-radius: 999px;
+  border: 1px solid rgba(242, 120, 44, 0.45); background: rgba(242, 120, 44, 0.1); color: var(--accent);
+  font: 500 13px/1.2 var(--font-body); white-space: nowrap;
+}
+.sug-btn:hover { background: rgba(242, 120, 44, 0.18); }
+.sug-btn .ic { width: 14px; height: 14px; }
+.sug-btn .ic-line { stroke-width: 2.2; }
+.sug-btn .seg-badge { margin-left: 2px; }
 .sug-badge[hidden] { display: none; }
 .sug-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 @media (max-width: 380px) { .sug-opts { grid-template-columns: 1fr; } }
