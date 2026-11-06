@@ -244,10 +244,12 @@
   // Новая — на первую свободную полку слева. Полная витрина — просим сначала убрать одну.
   async function shelfAdd(cardId, sel, msg) {
     var on = shelved();
-    if (on.length >= 3) { setText(msg, 'Витрина полная: сначала убери одну карточку.'); return; }
+    var twin = on.filter(function (k) { return k.card_id === cardId; })[0];
+    if (!twin && on.length >= 3) { setText(msg, 'Витрина полная: сначала убери одну карточку.'); return; }
     await shelfSave(cardId, sel, msg, 'Поставлено на витрину', async function () {
       await packShelves(on);   // на всякий случай убираем дыры, если они были
-      await rpc('cards_set_showcase', { p_slot: on.length + 1, p_copy: sel.copy_id });
+      // другая копия этой карточки уже стоит — новая встаёт на её место; иначе — первая свободная слева
+      await writeShelves(planShelves(sel.copy_id, twin ? on.indexOf(twin) : on.length));
     });
   }
   // Убрали — те, что стояли правее, сдвигаются влево.
@@ -337,6 +339,7 @@
       return;
     }
     if (ev.cancelable) ev.preventDefault();
+    if (drag.phase === 'pick') { pickMove(); return; }
     place();
     var hit = document.elementFromPoint(drag.x, drag.y);
     var over = hit && hit.closest ? hit.closest('[data-drop]') : null;
@@ -353,8 +356,8 @@
     if (ev.cancelable) ev.preventDefault();
     if (ev.stopPropagation) ev.stopPropagation(); // чтобы не сработало перелистывание вкладок
     noClickUntil = Date.now() + 450;
-    var target = d.over ? Number(d.over.getAttribute('data-drop')) : null;
-    cancel();
+    var target = d.phase === 'move' && d.over ? Number(d.over.getAttribute('data-drop')) : null;
+    cancel(); // отпустил на ряду копий или мимо полок — ничего не происходит
     if (target !== null && !isNaN(target)) dropTo(d, target);
   }
   function cancel() {
@@ -362,29 +365,88 @@
     clearTimeout(drag.timer);
     if (drag.ghost) drag.ghost.remove();
     if (drag.bar) drag.bar.remove();
+    if (drag.picker) drag.picker.remove();
     if (drag.over) drag.over.classList.remove('drop-over');
     if (drag.node) drag.node.classList.remove('kc-lifting');
     document.body.classList.remove('kc-dragging');
     drag = null;
   }
 
-  // Карточка «поднялась»: тень под пальцем, а для карточки из коллекции — полки сверху экрана.
+  // Зажал. С витрины — сразу «поднимаем» эту копию. Из коллекции: одна копия — тоже сразу,
+  // несколько — сначала ряд копий над пальцем (№2, №5…): ведёшь палец на нужную, потом дальше — на полки.
   function lift() {
     if (!drag) return;
-    var c = drag.kind === 'shelf' ? cardOfCopy(drag.id) : cardById(drag.id);
-    if (!c) { cancel(); return; }
     drag.active = true;
-    drag.node.classList.add('kc-lifting');
     document.body.classList.add('kc-dragging');
+    drag.node.classList.add('kc-lifting');
+    if (drag.kind === 'shelf') { carry(drag.id); return; }
+    var copies = myCopies(drag.id);
+    if (!copies.length) { cancel(); return; }
+    if (copies.length === 1) { carry(copies[0].copy_id); return; }
+    showPicker(copies);
+  }
+
+  function showPicker(copies) {
+    var c = cardById(drag.id);
+    drag.phase = 'pick';
+    drag.copies = copies;
+    drag.pick = -1;
+    drag.entered = false;
+    drag.picker = el('div', { class: 'kc-picker', 'aria-hidden': 'true' }, copies.map(function (k, i) {
+      var pic = el('span', { class: 'kt-pic r-' + c.rarity });
+      pic.appendChild(window.Cards.art(c.code));
+      return el('div', { class: 'kc-pick', 'data-pick': String(i) }, [pic, el('span', { class: 'kc-pick-no', text: '№' + k.serial + (k.slot ? ' ★' : '') })]);
+    }));
+    document.body.appendChild(drag.picker);
+    // над пальцем; если не помещается сверху — под пальцем
+    var r = drag.picker.getBoundingClientRect();
+    var vw = document.documentElement.clientWidth;
+    var left = Math.min(Math.max(8, drag.x - r.width / 2), vw - r.width - 8);
+    var top = drag.y - r.height - 34;
+    if (top < 8) top = drag.y + 34;
+    drag.picker.style.left = left + 'px';
+    drag.picker.style.top = top + 'px';
+  }
+  function pickMove() {
+    var hit = document.elementFromPoint(drag.x, drag.y);
+    var p = hit && hit.closest ? hit.closest('.kc-pick') : null;
+    if (p) {
+      var i = Number(p.getAttribute('data-pick'));
+      if (i !== drag.pick) {
+        drag.picker.querySelectorAll('.kc-pick').forEach(function (n) { n.classList.toggle('on', n === p); });
+        drag.pick = i;
+      }
+      drag.entered = true;
+      return;
+    }
+    var r = drag.picker.getBoundingClientRect(), m = 16;
+    var inside = drag.x > r.left - m && drag.x < r.right + m && drag.y > r.top - m && drag.y < r.bottom + m;
+    var far = Math.hypot(drag.x - drag.x0, drag.y - drag.y0) > 56;
+    // выбрал копию и повёл палец дальше — копия «поднимается», появляются полки
+    if ((drag.entered && !inside) || (!drag.entered && far && !inside)) {
+      var k = drag.copies[drag.pick >= 0 ? drag.pick : 0];
+      drag.picker.remove(); drag.picker = null;
+      carry(k.copy_id);
+    }
+  }
+
+  // Копия едет за пальцем; для карточки из коллекции сверху — три полки.
+  function carry(copyId) {
+    var k = (K.my || []).filter(function (x) { return x.copy_id === copyId; })[0];
+    var c = k && cardById(k.card_id);
+    if (!c) { cancel(); return; }
+    drag.phase = 'move';
+    drag.copyId = copyId;
     var pic = el('span', { class: 'kt-pic r-' + c.rarity });
     pic.appendChild(window.Cards.art(c.code));
+    if (myCopies(c.card_id).length > 1) pic.appendChild(el('span', { class: 'kt-count', text: '№' + k.serial }));
     drag.ghost = el('div', { class: 'kc-ghost', 'aria-hidden': 'true' }, [pic]);
     document.body.appendChild(drag.ghost);
     place();
     if (drag.kind === 'grid') {
       var on = shelved();
       drag.bar = el('div', { class: 'kc-dropbar', 'aria-hidden': 'true' }, [0, 1, 2].map(function (i) {
-        var k = on[i], oc = k && cardById(k.card_id);
+        var s = on[i], oc = s && cardById(s.card_id);
         var t = el('div', { class: 'kc-drop' + (oc ? ' r-' + oc.rarity : ''), 'data-drop': String(i) });
         if (oc) t.appendChild(window.Cards.art(oc.code)); else t.textContent = '+';
         return t;
@@ -395,46 +457,46 @@
   function place() {
     if (drag && drag.ghost) drag.ghost.style.transform = 'translate(' + drag.x + 'px,' + drag.y + 'px) translate(-50%, -62%) rotate(-3deg)';
   }
-  function cardOfCopy(copyId) {
-    var k = (K.my || []).filter(function (x) { return x.copy_id === copyId; })[0];
-    return k ? cardById(k.card_id) : null;
-  }
 
-  // Что делать, когда карточку отпустили над полкой номер t (0, 1, 2).
-  async function dropTo(d, t) {
+  // Новый порядок витрины, если копию copyId положить на полку t (0, 1, 2).
+  // Одна карточка стоит на витрине только один раз: другая её копия уступает место.
+  function planShelves(copyId, t) {
     var on = shelved();
     var order = on.map(function (k) { return k.copy_id; });
-    var copyId = null, msg = '';
-    if (d.kind === 'shelf') {
-      copyId = d.id;
-    } else {
-      // если какая-то копия этой карточки уже на витрине — просто двигаем её
-      var mine = myCopies(d.id);
-      var shelf = mine.filter(function (k) { return k.slot; })[0];
-      copyId = shelf ? shelf.copy_id : (mine[0] && mine[0].copy_id);
-    }
-    if (!copyId) return;
+    var cardId = ((K.my || []).filter(function (x) { return x.copy_id === copyId; })[0] || {}).card_id;
     var from = order.indexOf(copyId);
+    var moving = from >= 0;              // эта копия уже стоит на витрине — просто двигаем
+    if (!moving) {
+      var twin = on.filter(function (k) { return k.card_id === cardId; })[0];
+      if (twin) { from = order.indexOf(twin.copy_id); order[from] = copyId; } // другая копия — уступает место
+    }
     if (from >= 0) {
-      if (t === from) return;
-      if (t < order.length) { order[from] = order[t]; order[t] = copyId; msg = 'Поменял местами'; }
-      else { order.splice(from, 1); order.push(copyId); msg = 'Передвинул'; }
+      if (t >= order.length) { order.splice(from, 1); order.push(copyId); }       // на пустую — в конец
+      else if (t !== from) { order[from] = order[t]; order[t] = copyId; }         // поменять местами
     } else if (t < order.length) {
-      order[t] = copyId; msg = 'Поставлено на витрину';     // заменяет ту, что стояла
+      order[t] = copyId;                 // заменяет ту, что стояла
     } else {
-      order.push(copyId); msg = 'Поставлено на витрину';    // на первую свободную слева
+      order.push(copyId);                // на первую свободную слева
     }
+    var msg = !moving ? 'Поставлено на витрину' : (t < on.length ? 'Поменял местами' : 'Передвинул');
+    return { on: on, order: order, msg: msg };
+  }
+  async function writeShelves(plan) {
+    // пишем полки по порядку; убранная (при замене) уходит с витрины сама
+    for (var i = 0; i < plan.order.length; i++) {
+      var was = plan.on.filter(function (k) { return k.copy_id === plan.order[i]; })[0];
+      if (!was || was.slot !== i + 1) await rpc('cards_set_showcase', { p_slot: i + 1, p_copy: plan.order[i] });
+    }
+  }
+
+  // Карточку отпустили над полкой t.
+  async function dropTo(d, t) {
+    if (!d.copyId) return;
+    var plan = planShelves(d.copyId, t);
+    var same = plan.order.length === plan.on.length && plan.order.every(function (id, i) { return plan.on[i].copy_id === id; });
+    if (same) return;
     K.busy = true;
-    try {
-      // пишем полки по порядку; убранная (при замене) уходит с витрины сама
-      for (var i = 0; i < order.length; i++) {
-        var was = on.filter(function (k) { return k.copy_id === order[i]; })[0];
-        if (!was || was.slot !== i + 1) await rpc('cards_set_showcase', { p_slot: i + 1, p_copy: order[i] });
-      }
-      A.toast(msg);
-    } catch (e) {
-      A.toast(errText(e));
-    }
+    try { await writeShelves(plan); A.toast(plan.msg); } catch (e) { A.toast(errText(e)); }
     K.busy = false;
     await reload();
   }

@@ -1226,3 +1226,12 @@ body.kc-dragging { -webkit-user-select: none; user-select: none; cursor: grabbin
 .kc-drop .kc-art { width: 46px; }
 .kc-drop.drop-over { outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .kc-lifting { transition: none; } }
+/* ряд копий над пальцем: ведёшь на нужную, потом дальше — на полки */
+.kc-picker { position: fixed; z-index: 59; display: flex; gap: 6px; padding: 8px; border-radius: 14px; border: 1px solid var(--line); background: rgba(30, 30, 30, 0.97); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55); animation: farmFade 0.12s ease-out; pointer-events: auto; }
+.kc-pick { width: 50px; display: flex; flex-direction: column; align-items: center; gap: 4px; border-radius: 10px; padding: 3px; transition: transform 0.1s, background 0.1s; }
+.kc-pick .kt-pic { width: 100%; border-width: 1.5px; border-radius: 8px; }
+.kc-pick .kc-art { width: 64%; }
+.kc-pick-no { font: 600 11px/1 var(--font-mono); color: var(--muted); }
+.kc-pick.on { background: var(--soft); transform: translateY(-4px) scale(1.06); }
+.kc-pick.on .kc-pick-no { color: var(--accent); }
+.kc-ghost .kt-count { top: auto; bottom: 5px; right: 50%; transform: translateX(50%); }
