@@ -203,16 +203,27 @@
     if (sel.slot) {
       acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'Убрать с витрины (полка ' + sel.slot + ')', onclick: function () { setShelf(sel.slot, null, cardId, sel.copy_id, msg); } }));
     } else {
-      var slotsRow = el('div', { class: 'kc-slots', hidden: true }, [1, 2, 3].map(function (s) {
+      acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'На витрину', onclick: askShelf }));
+    }
+    // Вопрос «На какую полку?»: вместо кнопок — три полки (что на них сейчас) и «Отмена».
+    function askShelf() {
+      var shelves = [1, 2, 3].map(function (s) {
         var on = (K.my || []).filter(function (x) { return x.slot === s; })[0];
         var oc = on && cardById(on.card_id);
-        return el('button', { type: 'button', class: 'btn kc-slot', onclick: function () { setShelf(s, sel.copy_id, cardId, sel.copy_id, msg); } }, [
-          el('span', { class: 'kc-slot-n', text: 'Полка ' + s }),
-          el('span', { class: 'kc-slot-c', text: oc ? oc.name : 'пусто' })
-        ]);
-      }));
-      acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'На витрину', onclick: function () { slotsRow.hidden = !slotsRow.hidden; } }));
-      acts.appendChild(slotsRow);
+        var pic = el('span', { class: 'kc-slot-pic' + (oc ? ' r-' + oc.rarity : '') });
+        if (oc) pic.appendChild(window.Cards.art(oc.code)); else pic.textContent = '+';
+        return el('button', {
+          type: 'button', class: 'btn kc-slot', 'aria-label': 'Полка ' + s + (oc ? ', сейчас там «' + oc.name + '»' : ', пустая'),
+          onclick: function () { setShelf(s, sel.copy_id, cardId, sel.copy_id, msg); }
+        }, [pic, el('span', { class: 'kc-slot-n', text: 'Полка ' + s }), el('span', { class: 'kc-slot-c', text: oc ? 'заменить «' + oc.name + '»' : 'пустая' })]);
+      });
+      acts.replaceChildren(
+        el('p', { class: 'kc-ask', text: 'На какую полку?' }),
+        el('div', { class: 'kc-slots' }, shelves),
+        el('button', { type: 'button', class: 'btn', text: 'Отмена', onclick: function () { openDetail(cardId, sel.copy_id); } })
+      );
+      try { acts.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' }); } catch (e) { /* ничего */ }
+      var f = acts.querySelector('.kc-slot'); if (f) f.focus({ preventScroll: true });
     }
     // переплавка: в два нажатия, чтобы не промахнуться
     if (c.melt_value) {
@@ -284,9 +295,8 @@
     var frontFace = el('div', { class: 'kr-face kr-front' });
     flip.appendChild(backFace); flip.appendChild(frontFace);
     var stage = el('button', { type: 'button', class: 'kr-stage kr-wait', 'aria-label': 'Открыть' }, [flip]);
-    var hint = el('p', { class: 'kr-hint', 'aria-live': 'polite', text: 'Достаю из колоды…' });
     var result = el('div', { class: 'kr-result' });
-    o.appendChild(stage); o.appendChild(hint); o.appendChild(result);
+    o.appendChild(stage); o.appendChild(result);
     stage.focus();
 
     var res = null, level = 0, rank = 0, done = false;
@@ -301,14 +311,13 @@
     }
     function step() {
       if (!res || done) return;
-      if (level < rank) { level++; setLevel(level); shake(); hint.textContent = level === 1 ? 'Нажми ещё' : 'Ещё!'; return; }
+      if (level < rank) { level++; setLevel(level); shake(); return; }
       reveal();
     }
     function reveal() {
       if (done) return;
       done = true;
       level = rank; setLevel(rank);
-      hint.textContent = '';
       var card = { code: res.code, name: res.name, rarity: res.rarity, copies: res.copies };
       frontFace.appendChild(window.Cards.face(card, res.serial, 'lg'));
       flip.classList.add('flipped');
@@ -353,7 +362,6 @@
       A.setBalance(Number(res.balance));
       rank = R(res.rarity).rank;
       stage.classList.remove('kr-wait');
-      hint.textContent = 'Нажми на карточку';
     } catch (e) {
       closeOverlay();
       K.busy = false;
