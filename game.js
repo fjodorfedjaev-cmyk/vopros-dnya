@@ -1,7 +1,13 @@
-/* «Сектор» — аркада на реакцию и точность.
+/* «Сектор» — аркада на реакцию, точность и опыт.
    Стрелка вращается по часовой стрелке; нажми, когда она внутри выделенного сектора.
    Иногда сектор фиолетовый — это разворот: попал в него, и стрелка крутится в другую сторону.
    Следующий фиолетовый (возврат по часовой) может быть сразу или через 1–4 попадания.
+   С 16-го сектора бывает бирюзовый — «крутится круг»: стрелка замирает, а вращается весь круг
+   вместе с делениями, сектором и счётом. Следующий бирюзовый снова запускает стрелку, а круг
+   останавливается где был (счёт может остаться вверх ногами). До 30 попаданий режимы идут по одному,
+   с 30 — могут идти одновременно.
+   Внутри игра считает угол стрелки ОТНОСИТЕЛЬНО круга — он меняется с той же скоростью в любом режиме,
+   поэтому проверка честности в базе (game_min_ms) не меняется.
    Углы считаются в градусах по часовой стрелке от 12 часов.
    Модуль отдаёт window.SectorGame: настройки, чистые функции (их удобно проверять) и mount() для экрана игры. */
 (function (root) {
@@ -15,6 +21,7 @@
     maxSpeed: 360,
     startWidth: 64,       // ширина сектора, градусы
     widthStep: 1.0,       // уменьшение ширины за каждое попадание (было 1.6 — сужался быстрее)
+    widthStopAt: 35,      // после 35 попаданий сектор больше не сужается: 64 − 35 = 29°
     minWidth: 16,
     perfectShare: 0.2,    // центральные 20% сектора — PERFECT
     minPerfect: 4,        // но PERFECT-зона не уже 4°
@@ -25,11 +32,17 @@
     firstReverse: [4, 7], // первый разворот — 5-й…8-й сектор игры
     backAfter: [0, 4],    // возврат по часовой — сразу (0) или через 1–4 попадания после разворота
     nextReverse: [5, 9],  // следующий разворот — через 5–9 попаданий после возврата
+    // «Крутится круг» (бирюзовые сектора). Числа — сколько попаданий до следующего бирюзового.
+    firstSpin: [15, 19],  // первый — 16-й…20-й сектор игры
+    spinBackAfter: [2, 5],// стрелка снова крутится — через 2–5 попаданий
+    nextSpin: [6, 10],    // следующий «крутится круг» — через 6–10 попаданий
+    mixFrom: 30,          // с 30 попаданий разворот и «крутится круг» могут идти одновременно
+    glowFull: 40,         // рамка разгорается на полную к 40-му сектору
     countdownMs: 600      // один шаг обратного отсчёта после возврата на вкладку
   };
 
   function speedFor(hits) { return Math.min(CONFIG.maxSpeed, CONFIG.startSpeed + hits * CONFIG.speedStep); }
-  function widthFor(hits) { return Math.max(CONFIG.minWidth, CONFIG.startWidth - hits * CONFIG.widthStep); }
+  function widthFor(hits) { return Math.max(CONFIG.minWidth, CONFIG.startWidth - Math.min(hits, CONFIG.widthStopAt) * CONFIG.widthStep); }
   function perfectWidth(w) { return Math.max(CONFIG.minPerfect, w * CONFIG.perfectShare); }
   // Разница углов в диапазоне (-180, 180] — правильно работает и на переходе 359° → 0°.
   function norm(d) { d = ((d % 360) + 360) % 360; return d > 180 ? d - 360 : d; }
@@ -52,6 +65,24 @@
   }
   // Случайное целое от a до b включительно. r — случайное число от 0 до 1.
   function between(range, r) { return range[0] + Math.min(range[1] - range[0], Math.floor(r * (range[1] - range[0] + 1))); }
+
+  // Какой будет следующий сектор: 'normal', 'rev' (разворот) или 'spin' (крутится круг).
+  // st = { hits, dir, spin, untilRev, untilSpin }. До CONFIG.mixFrom режимы не пересекаются:
+  // разворот не начинается, пока крутится круг, и круг не начинает крутиться во время разворота.
+  // Если оба «созрели» сразу — первым идёт тот, что возвращает к обычной игре; второй — в следующий раз.
+  function pickKind(st) {
+    var revOk = st.untilRev <= 0, spinOk = st.untilSpin <= 0;
+    if (st.hits < CONFIG.mixFrom) {
+      if (revOk && st.dir === 1 && st.spin) revOk = false;
+      if (spinOk && !st.spin && st.dir === -1) spinOk = false;
+    }
+    if (revOk && spinOk) {
+      if (st.dir === -1) return 'rev';
+      if (st.spin) return 'spin';
+      return 'rev';
+    }
+    return revOk ? 'rev' : spinOk ? 'spin' : 'normal';
+  }
 
   // Минимально возможное время игры с таким числом попаданий (так же считает база).
   function minTimeMs(hits) {
@@ -85,7 +116,8 @@
         line: v('--line', '#333131'), ink: v('--ink', '#E8E6E3'), muted: v('--muted', '#A0968E'),
         accent: v('--accent', '#F2782C'), btn: v('--btn', '#C4500B'), surface: v('--surface', '#1E1E1E'),
         tile: v('--tile', '#262422'), err: v('--err', '#FF7A6B'),
-        special: v('--special', '#9B7BFF'), specialHi: v('--special-hi', '#CDBEFF')
+        special: v('--special', '#9B7BFF'), specialHi: v('--special-hi', '#CDBEFF'),
+        turq: v('--turq', '#2EC4B6'), turqHi: v('--turq-hi', '#A6EEE6')
       };
     }
     readColors();
@@ -97,12 +129,18 @@
     var canvas = h('canvas', 'sector-canvas');
     var hub = h('div', 'sector-hub');
     var scoreEl = h('div', 'sector-score', '0');
+    var scoreRot = h('div', 'sector-rot');   // поворачивается вместе с кругом
     var hint = h('div', 'sector-hint', '');
-    hub.appendChild(scoreEl); hub.appendChild(hint);
+    scoreRot.appendChild(scoreEl);
+    hub.appendChild(scoreRot); hub.appendChild(hint);
     var pop = h('div', 'sector-pop', '');
     pop.setAttribute('aria-live', 'polite');
     field.appendChild(canvas); field.appendChild(hub); field.appendChild(pop);
     var panel = h('div', 'sector-panel');
+    // светящаяся рамка: glow разгорается с попаданиями, flash — вспышка цветом особого сектора
+    var glowEl = h('div', 'sector-glow'), flashEl = h('div', 'sector-flash');
+    glowEl.setAttribute('aria-hidden', 'true'); flashEl.setAttribute('aria-hidden', 'true');
+    wrapEl.appendChild(glowEl); wrapEl.appendChild(flashEl);
     wrapEl.appendChild(field); wrapEl.appendChild(panel);
     container.appendChild(wrapEl);
 
@@ -114,8 +152,13 @@
     var phase = 'idle';     // running | transition | paused | countdown | dead
     var a0 = 0, t0 = 0, speed = CONFIG.startSpeed;
     var dir = 1;            // 1 — по часовой, -1 — против (после фиолетового сектора)
-    var special = false;    // текущий сектор — разворот (фиолетовый)
-    var untilSpecial = 0;   // сколько обычных секторов осталось до следующего разворота
+    var kind = 'normal';    // текущий сектор: normal | rev (фиолетовый разворот) | spin (бирюзовый «крутится круг»)
+    var untilRev = 0;       // сколько попаданий до следующего разворота
+    var untilSpin = 0;      // сколько попаданий до следующего бирюзового
+    var spin = false;       // сейчас крутится круг, а стрелка стоит
+    var rot = 0;            // на сколько градусов повёрнут круг на экране (когда он не крутится)
+    var arrowScreen = 0;    // где стоит стрелка на экране, пока крутится круг
+    var rotShown = null;    // последний поворот счёта (чтобы не трогать страницу каждый кадр зря)
     var center = 120, width = CONFIG.startWidth;
     var hits = 0, perfects = 0, score = 0;
     var transitionEnd = 0, sectorFadeFrom = 0;
@@ -123,8 +166,28 @@
     var pulseAt = -1, missAt = -1;
     var raf = 0, destroyed = false;
 
+    // Угол стрелки относительно круга (по нему и считается попадание).
     function angleAt(t) { return wrap(a0 + dir * speed * Math.max(0, t - t0) / 1000); }
     function rebase(t) { a0 = angleAt(t); t0 = t; }
+    // Поворот круга на экране при таком относительном угле стрелки:
+    // пока крутится круг, стрелка на экране стоит, значит круг повёрнут на (где стрелка − её угол на круге).
+    function dialRot(rel) { return spin ? wrap(arrowScreen - rel) : rot; }
+    // Переключить «крутится круг» в момент t (стрелка и круг продолжают движение без рывка)
+    function toggleSpin(t) {
+      var rel = angleAt(t);
+      if (!spin) { arrowScreen = wrap(rel + rot); spin = true; }
+      else { rot = wrap(arrowScreen - rel); spin = false; }
+    }
+    // Рамка: чем дальше в игре, тем ярче (0 — нет, 1 — на полную)
+    function setGlow(v) { wrapEl.style.setProperty('--glow', String(Math.max(0, Math.min(1, v)))); }
+    function flash(color) {
+      if (!flashEl.animate) return;
+      flashEl.style.setProperty('--fc', color);
+      flashEl.animate(reduceMotion
+        ? [{ opacity: 1 }, { opacity: 0 }]
+        : [{ opacity: 0 }, { opacity: 1, offset: 0.08 }, { opacity: 0.35, offset: 0.2 }, { opacity: 1, offset: 0.32 }, { opacity: 0 }],
+        { duration: 1200, easing: 'ease-out' });
+    }
 
     function resize() {
       var w = Math.min(field.clientWidth || 300, 360);
@@ -144,6 +207,13 @@
       var c = size / 2, R = size / 2 - 18;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, size, size);
+      // угол стрелки относительно круга и поворот круга на экране
+      var ang = (screen === 'play' && (phase === 'running' || phase === 'transition')) ? angleAt(now)
+        : (phase === 'paused' || phase === 'countdown') ? pauseAngle : a0;
+      var turn = dialRot(ang);
+      if (turn) { ctx.translate(c, c); ctx.rotate(turn * Math.PI / 180); ctx.translate(-c, -c); }
+      var shown = Math.round(turn * 10) / 10;
+      if (shown !== rotShown) { rotShown = shown; scoreRot.style.transform = shown ? 'rotate(' + shown + 'deg)' : ''; }
       // дорожка
       ctx.lineWidth = 12; ctx.strokeStyle = css.tile;
       ctx.beginPath(); ctx.arc(c, c, R, 0, Math.PI * 2); ctx.stroke();
@@ -165,10 +235,10 @@
         ctx.globalAlpha = alpha;
         ctx.lineCap = 'butt';
         ctx.lineWidth = 24;
-        ctx.strokeStyle = dead ? css.err : special ? css.special : css.btn;
+        ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : css.btn;
         ctx.beginPath(); ctx.arc(c, c, R, rad(center - width / 2), rad(center + width / 2)); ctx.stroke();
         var pw = perfectWidth(width);
-        ctx.strokeStyle = dead ? css.err : special ? css.specialHi : '#FFB37A';
+        ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : '#FFB37A';
         ctx.beginPath(); ctx.arc(c, c, R, rad(center - pw / 2), rad(center + pw / 2)); ctx.stroke();
         ctx.globalAlpha = 1;
       }
@@ -182,9 +252,7 @@
           ctx.globalAlpha = 1;
         } else pulseAt = -1;
       }
-      // стрелка
-      var ang = (screen === 'play' && (phase === 'running' || phase === 'transition')) ? angleAt(now)
-        : (phase === 'paused' || phase === 'countdown') ? pauseAngle : a0;
+      // стрелка (рисуем в повёрнутом круге по её углу на круге — на экране она там, где нужно)
       var hubR = size * 0.17;
       var ar = rad(ang);
       ctx.strokeStyle = missAt >= 0 ? css.err : css.ink;
@@ -225,8 +293,10 @@
       speed = speedFor(0); width = widthFor(0);
       var now = performance.now();
       a0 = 0; t0 = now;
-      dir = 1; special = false;
-      untilSpecial = between(CONFIG.firstReverse, Math.random());
+      dir = 1; kind = 'normal'; spin = false; rot = 0; arrowScreen = 0;
+      untilRev = between(CONFIG.firstReverse, Math.random());
+      untilSpin = between(CONFIG.firstSpin, Math.random());
+      setGlow(0);
       center = placeSector(0, width, Math.random(), 1);
       setScore(0); hint.textContent = ''; pop.textContent = ''; pop.className = 'sector-pop';
       wrapEl.classList.add('playing'); wrapEl.classList.remove('over');
@@ -242,7 +312,7 @@
       rebase(now);
       speed = speedFor(hits);
       width = widthFor(hits);
-      special = untilSpecial <= 0;
+      kind = pickKind({ hits: hits, dir: dir, spin: spin, untilRev: untilRev, untilSpin: untilSpin });
       center = placeSector(angleAt(now), width, Math.random(), dir);
       phase = 'running';
     }
@@ -262,12 +332,22 @@
       var res = judge(angleAt(t), center, width);
       if (res === 'miss') { lose(t); return; }
       hits += 1;
-      if (special) {
-        // разворот: стрелка сразу крутится в другую сторону
+      if (kind === 'rev') {
+        // разворот: стрелка (или круг) сразу крутится в другую сторону
         rebase(t);
         dir = -dir;
-        untilSpecial = between(dir === -1 ? CONFIG.backAfter : CONFIG.nextReverse, Math.random());
-      } else untilSpecial -= 1;
+        untilRev = between(dir === -1 ? CONFIG.backAfter : CONFIG.nextReverse, Math.random());
+        untilSpin -= 1;
+        flash(css.special);
+      } else if (kind === 'spin') {
+        // «крутится круг»: стрелка замирает и крутится круг — или наоборот
+        rebase(t);
+        toggleSpin(t);
+        untilSpin = between(spin ? CONFIG.spinBackAfter : CONFIG.nextSpin, Math.random());
+        untilRev -= 1;
+        flash(css.turq);
+      } else { untilRev -= 1; untilSpin -= 1; }
+      setGlow(hits / CONFIG.glowFull);
       if (res === 'perfect') { perfects += 1; score += 2; pulseAt = now; showPop('PERFECT +2', 'perfect'); }
       else { score += 1; }
       setScore(score);
@@ -283,6 +363,7 @@
       speed = 0; // стрелка замирает там, где было нажатие
       phase = 'dead';
       missAt = performance.now();
+      setGlow(0);
       wrapEl.classList.remove('playing');
       document.documentElement.classList.remove('sector-on');
       draw(performance.now());
@@ -413,14 +494,18 @@
         if (opts.onStateChange) opts.onStateChange('gone');
       },
       // для проверок
-      _state: function () { return { screen: screen, phase: phase, hits: hits, perfects: perfects, score: score, center: center, width: width, speed: speed, dir: dir, special: special, untilSpecial: untilSpecial, angle: angleAt(performance.now()) }; },
+      _state: function () {
+        var now = performance.now(), rel = angleAt(now);
+        return { screen: screen, phase: phase, hits: hits, perfects: perfects, score: score, center: center, width: width, speed: speed, dir: dir,
+          kind: kind, special: kind === 'rev', spin: spin, untilRev: untilRev, untilSpin: untilSpin, angle: rel, rot: dialRot(rel), arrowScreen: wrap(rel + dialRot(rel)) };
+      },
       _press: press
     };
   }
 
   var api = {
     CONFIG: CONFIG, speedFor: speedFor, widthFor: widthFor, perfectWidth: perfectWidth,
-    norm: norm, judge: judge, placeSector: placeSector, between: between, minTimeMs: minTimeMs, mount: mount
+    norm: norm, judge: judge, placeSector: placeSector, between: between, pickKind: pickKind, minTimeMs: minTimeMs, mount: mount
   };
   root.SectorGame = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

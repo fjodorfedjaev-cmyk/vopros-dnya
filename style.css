@@ -16,6 +16,8 @@
   --err: #FF7A6B;
   --special: #9B7BFF;     /* фиолетовый: особые поля в играх (разворот в Секторе, трамплин в Зигзаге) */
   --special-hi: #CDBEFF;  /* светлый фиолетовый: PERFECT-зона особого сектора */
+  --turq: #2EC4B6;        /* бирюзовый: «крутится круг» в Секторе (можно использовать и в других местах) */
+  --turq-hi: #A6EEE6;     /* светлый бирюзовый: PERFECT-зона бирюзового сектора */
   --font-display: 'Literata', Georgia, 'Times New Roman', serif;
   --font-body: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
@@ -619,7 +621,24 @@ html, body { overflow-x: hidden; }
 
 /* ===== игра «Сектор» ===== */
 .game-sect { gap: 14px; }
-.sector { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 18px 12px 20px; background: var(--surface); border-radius: 20px; }
+.sector { position: relative; display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 18px 12px 20px; background: var(--surface); border-radius: 20px; }
+/* Светящаяся рамка Сектора: --glow от 0 до 1 (разгорается с попаданиями), вспышка — цветом особого сектора */
+@property --sg-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.sector-glow, .sector-flash { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0; }
+.sector-glow { --gc: var(--accent); opacity: var(--glow, 0); transition: opacity 0.6s ease; }
+.sector-flash { --gc: var(--fc, var(--special)); opacity: 0; }
+.sector-glow, .sector-flash { box-shadow: 0 0 22px -4px var(--gc), inset 0 0 18px -8px var(--gc); }
+.sector-glow::before, .sector-flash::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 2px;
+  background: conic-gradient(from var(--sg-a), var(--gc), transparent 22%, var(--gc) 50%, transparent 72%, var(--gc));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+.sector-flash::before { background: var(--gc); }
+.sector.playing .sector-glow::before { animation: sgSpin 5s linear infinite; }
+@keyframes sgSpin { to { --sg-a: 360deg; } }
+.sector > .sector-field, .sector > .sector-panel { position: relative; z-index: 1; }
+.sector-rot { display: flex; align-items: center; justify-content: center; }
 .sector-field {
   position: relative; width: 100%; max-width: 360px; display: flex; justify-content: center;
   touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
@@ -659,7 +678,7 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .sector-warn { margin: 0; font-size: 13px; color: var(--err); }
 .lb .col-rank { width: 40px; text-align: center; }
 .lb-score { font-weight: 600; color: var(--ink); }
-@media (prefers-reduced-motion: reduce) { .sector-score.bump, .sector-pop.show { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .sector-score.bump, .sector-pop.show, .sector-glow::before { animation: none !important; } }
 
 /* вопрос дня — оранжевым, чтобы сразу бросался в глаза */
 .qtext.q-accent { color: var(--accent); }
