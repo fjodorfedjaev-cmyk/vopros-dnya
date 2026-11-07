@@ -56,11 +56,15 @@
       '<defs>' + COIN_GRAD + '</defs><circle cx="6" cy="16" r="1.4" fill="url(#f)"/>' +
       '<circle cx="17.2" cy="9.6" r="2.7" fill="#F2ECE6"/><circle cx="16.3" cy="8.7" r=".8" fill="#fff"/>' +
       '<path d="M12.6 8.6h-2.4M13.4 11.2h-2.2" stroke="#A0968E" stroke-width=".7" stroke-linecap="round"/>' },
-    cress: { body: '<path d="M2.5 19.6c3-2.2 16-2.2 19 0v1.9h-19z" fill="#6B4A32"/><path d="M2.5 19.6c3-2.2 16-2.2 19 0" fill="none" stroke="#8A6346" stroke-width=".8"/>' +
-      '<path d="M8 18.6c-.2-2.6.3-4.7 1.6-6.6M12 18.4V9.8M16 18.6c.2-2.6-.3-4.7-1.6-6.6" fill="none" stroke="#5FB35C" stroke-width="1" stroke-linecap="round"/>' +
-      '<ellipse cx="7.6" cy="11.4" rx="2.2" ry="1.1" transform="rotate(-25 7.6 11.4)" fill="#7FD47A"/><ellipse cx="11.2" cy="11.2" rx="1.7" ry=".9" transform="rotate(30 11.2 11.2)" fill="#6CC468"/>' +
-      '<ellipse cx="10.4" cy="8.6" rx="2.2" ry="1.1" transform="rotate(-30 10.4 8.6)" fill="#8EE088"/><ellipse cx="13.6" cy="8.6" rx="2.2" ry="1.1" transform="rotate(30 13.6 8.6)" fill="#7FD47A"/>' +
-      '<ellipse cx="16.4" cy="11.4" rx="2.2" ry="1.1" transform="rotate(25 16.4 11.4)" fill="#7FD47A"/><ellipse cx="12.8" cy="11.2" rx="1.7" ry=".9" transform="rotate(-30 12.8 11.2)" fill="#6CC468"/>' },
+    // кресс-салат: горшочек с землёй и тонкие ростки, у каждого — пара круглых листочков
+    cress: { body: '<defs><linearGradient id="p" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#A9461F"/><stop offset=".45" stop-color="#D9774B"/><stop offset="1" stop-color="#9A3E1A"/></linearGradient>' +
+      '<linearGradient id="l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A6EA98"/><stop offset="1" stop-color="#5FB35C"/></linearGradient></defs>' +
+      '<ellipse cx="12" cy="15.1" rx="6.9" ry="1" fill="#4A3424"/>' +
+      '<path d="M7.8 15.2c-.3-2.4-.8-4.4-1.5-6.1M10.2 15.2c0-2.9 0-5.4-.4-8.3M12.5 15.2c.1-3.5.2-6.7.1-10M14.7 15.2c.2-2.9.6-5.3 1.1-7.7M16.6 15.2c.5-2 1.1-3.7 1.9-5.1" fill="none" stroke="#D8EFC4" stroke-width=".8" stroke-linecap="round"/>' +
+      '<ellipse cx="5.05" cy="8.75" rx="1.5" ry=".95" transform="rotate(-28 5.05 8.75)" fill="url(#l)"/><ellipse cx="7.55" cy="8.75" rx="1.5" ry=".95" transform="rotate(28 7.55 8.75)" fill="url(#l)"/><ellipse cx="8.55" cy="6.55" rx="1.5" ry=".95" transform="rotate(-28 8.55 6.55)" fill="url(#l)"/><ellipse cx="11.05" cy="6.55" rx="1.5" ry=".95" transform="rotate(28 11.05 6.55)" fill="url(#l)"/>' +
+      '<ellipse cx="11.35" cy="4.85" rx="1.5" ry=".95" transform="rotate(-28 11.35 4.85)" fill="url(#l)"/><ellipse cx="13.85" cy="4.85" rx="1.5" ry=".95" transform="rotate(28 13.85 4.85)" fill="url(#l)"/><ellipse cx="14.55" cy="7.15" rx="1.5" ry=".95" transform="rotate(-28 14.55 7.15)" fill="url(#l)"/><ellipse cx="17.05" cy="7.15" rx="1.5" ry=".95" transform="rotate(28 17.05 7.15)" fill="url(#l)"/><ellipse cx="17.25" cy="9.75" rx="1.5" ry=".95" transform="rotate(-28 17.25 9.75)" fill="url(#l)"/><ellipse cx="19.75" cy="9.75" rx="1.5" ry=".95" transform="rotate(28 19.75 9.75)" fill="url(#l)"/>' +
+      '<path d="M6.1 17.2h11.8l-1.25 4.6a1.1 1.1 0 0 1-1.06.8H8.41a1.1 1.1 0 0 1-1.06-.8z" fill="url(#p)"/>' +
+      '<rect x="4.7" y="15.4" width="14.6" height="2.1" rx=".7" fill="#D9774B"/><path d="M5.6 15.9h12.8" stroke="#F2A27A" stroke-width=".5" stroke-linecap="round" opacity=".8"/>' },
     mine: { body: '<path d="M12 2.8v3.4M12 17.8v3.4M2.8 12h3.4M17.8 12h3.4M5.5 5.5l2.4 2.4M16.1 16.1l2.4 2.4M5.5 18.5l2.4-2.4M16.1 7.9l2.4-2.4" stroke="#F2782C" stroke-width="2" stroke-linecap="round"/>' +
       '<circle cx="12" cy="12" r="6.4" fill="#1A1716" stroke="#F2782C" stroke-width="1.6"/><circle cx="9.8" cy="9.8" r="1.6" fill="#FFB37A"/>' },
 
