@@ -7,7 +7,7 @@
    * красный сектор в полоску — ловушка: нажимать нельзя, стрелка должна его проехать;
    * фиолетовый сектор — разворот: стрелка крутится в другую сторону;
    * бирюзовый — «крутится круг»: стрелка замирает, вращается весь круг вместе со счётом;
-   * рамка и кружок вокруг счёта разгораются к 40-му сектору и вспыхивают цветом особого сектора при попадании
+   * рамка, кружок вокруг счёта и деления циферблата разгораются к 40-му сектору и вспыхивают цветом особого сектора при попадании
      (и красным — когда ловушка позади);
    * в дуэли у сектора три зоны: края — 1 очко, ближе к центру — 2, центр — 3.
    Модуль отдаёт window.SectorGame: mount() и функции ядра (для проверок). */
@@ -164,6 +164,22 @@
       }
       return 0;
     }
+    // Деления циферблата (12 палочек между внутренним и внешним кругом). color/alpha/blur — для свечения поверх обычных.
+    function ticks(c, R, color, alpha, blur) {
+      if (alpha <= 0.01) return;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, alpha);
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      if (blur) { ctx.shadowColor = color; ctx.shadowBlur = blur; }
+      for (var i = 0; i < 12; i++) {
+        var a = rad(i * 30), r2 = R - (i % 3 === 0 ? 32 : 28);
+        ctx.beginPath();
+        ctx.moveTo(c + Math.cos(a) * (R - 22), c + Math.sin(a) * (R - 22));
+        ctx.lineTo(c + Math.cos(a) * r2, c + Math.sin(a) * r2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     // Светящийся кружок вокруг счёта: оранжевый градиент крутится, как на рамке (пока идёт игра), плюс мягкое свечение.
     function hubRing(now, c, r, color, alpha) {
       if (alpha <= 0.01) return;
@@ -193,19 +209,19 @@
       ctx.clearRect(0, 0, size, size);
       var ang = relAngle(now);
       var turn = dialRot(ang);
+      // свечение (кружок и деления): догоняет нужную силу примерно за 0,6 с, как рамка; сверху — вспышка
+      var dt = lastDrawAt ? Math.max(0, Math.min(100, now - lastDrawAt)) : 0;
+      lastDrawAt = now;
+      glowShow = glowV + (glowShow - glowV) * Math.exp(-dt / 200);
+      var fl = flashLevel(now);
       if (turn) { ctx.translate(c, c); ctx.rotate(turn * Math.PI / 180); ctx.translate(-c, -c); }
       // дорожка
       ctx.lineWidth = 12; ctx.strokeStyle = css.tile;
       ctx.beginPath(); ctx.arc(c, c, R, 0, Math.PI * 2); ctx.stroke();
-      // деления, как на циферблате
-      ctx.strokeStyle = css.line; ctx.lineWidth = 2; ctx.lineCap = 'round';
-      for (var i = 0; i < 12; i++) {
-        var a = rad(i * 30);
-        ctx.beginPath();
-        ctx.moveTo(c + Math.cos(a) * (R - 22), c + Math.sin(a) * (R - 22));
-        ctx.lineTo(c + Math.cos(a) * (R - (i % 3 === 0 ? 32 : 28)), c + Math.sin(a) * (R - (i % 3 === 0 ? 32 : 28)));
-        ctx.stroke();
-      }
+      // деления, как на циферблате; разгораются вместе с рамкой и вспыхивают цветом особого сектора
+      ticks(c, R, css.line, 1, 0);
+      ticks(c, R, css.accent, glowShow, 10);
+      ticks(c, R, flashColor, fl, 12);
       // сектор
       var center = s ? s.center : 120, width = s ? s.width : CONFIG.startWidth, kind = s ? s.kind : 'normal';
       var alpha = 1;
@@ -262,12 +278,9 @@
       ctx.beginPath(); ctx.arc(c, c, hubR, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = css.line; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(c, c, hubR, 0, Math.PI * 2); ctx.stroke();
-      // свечение кружка: догоняет нужную силу примерно за 0,6 с (как рамка), сверху — вспышка
-      var dt = lastDrawAt ? Math.max(0, Math.min(100, now - lastDrawAt)) : 0;
-      lastDrawAt = now;
-      glowShow = glowV + (glowShow - glowV) * Math.exp(-dt / 200);
+      // свечение кружка (сила посчитана в начале draw)
       hubRing(now, c, hubR, css.accent, glowShow);
-      hubRing(now, c, hubR, flashColor, flashLevel(now));
+      hubRing(now, c, hubR, flashColor, fl);
       // в центре — счёт (или отсчёт перед дуэлью): центр самих цифр ровно в центре круга
       var txt = String(s ? s.score : 0), color = missAt >= 0 ? css.err : css.ink;
       if (screen === 'wait') {
