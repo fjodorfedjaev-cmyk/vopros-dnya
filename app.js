@@ -2046,8 +2046,8 @@
   // Игра не влияет на серию дней. Рекорд хранится на телефоне и в базе (для рейтинга).
 
   // Номер в ключе меняем, когда рекорды сбрасывают в базе: тогда старая копия на телефоне больше не читается
-  // (у остальных рекорд всё равно берётся из базы). 2 — сброс 07.11.2026.
-  function localBestKey() { return 'sector-best2:' + (S.userId || 'anon'); }
+  // (у остальных рекорд всё равно берётся из базы). 2 и 3 — сбросы 07.11.2026.
+  function localBestKey() { return 'sector-best3:' + (S.userId || 'anon'); }
   function localBest() {
     try { return parseInt(localStorage.getItem(localBestKey()), 10) || 0; } catch (e) { return 0; }
   }
