@@ -20,6 +20,8 @@
   --turq-hi: #A6EEE6;     /* светлый бирюзовый: PERFECT-зона бирюзового сектора */
   --trap: #E8364F;        /* красный: ловушка в Секторе (нажимать нельзя) */
   --trap-dark: #5C1220;   /* тёмно-красные полосы на ловушке */
+  --split: #C8E650;       /* лаймовый: раздвоение стрелки в Секторе */
+  --split-hi: #F0FAC8;    /* светлый лаймовый: PERFECT-зона лаймового сектора */
   --font-display: 'Literata', Georgia, 'Times New Roman', serif;
   --font-body: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;

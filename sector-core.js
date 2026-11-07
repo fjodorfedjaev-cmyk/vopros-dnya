@@ -12,8 +12,13 @@
      появляется не ближе 90° и не ближе, чем стрелка доедет за 0,4 секунды.
    * Угол стрелки считается относительно круга: в режиме «крутится круг» сближение то же самое.
    * Виды секторов: обычный (оранжевый), ловушка (красный, нажимать нельзя), разворот (фиолетовый),
-     «крутится круг» (бирюзовый). Впервые появляются по порядку: красный → фиолетовый → бирюзовый.
+     «крутится круг» (бирюзовый), раздвоение (лаймовый). Впервые появляются по порядку:
+     красный → фиолетовый → бирюзовый → лаймовый.
      Потом — случайно, и чем дальше, тем чаще особые и реже обычные (к 150-му сектору обычных почти нет).
+   * Раздвоение: после попадания стрелка раздваивается — вторая идёт зеркально, в другую сторону. Пока стрелок две,
+     сектор ставится только туда, где они встречаются (на противоположной стороне круга), — обе влетают в него
+     одновременно, считается так же, как с одной. Следующий лаймовый (сразу или через один сектор) — снова одна стрелка;
+     сектор после этого появляется дальше обычного (есть время понять, куда идёт стрелка). С «крутится круг» не пересекается.
    * Ловушка: любое нажатие, пока она на круге, — проигрыш. Стрелка проехала её — засчитывается как
      попадание (+1 очко), через 300 мс появляется следующий сектор.
    * Очки. Обычная игра: попал — 1, PERFECT (центр) — 2. В дуэли (zones3) сектор делится на 5 равных полос:
@@ -41,20 +46,26 @@
     firstTrap: [4, 7],    // красный — 5-й…8-й сектор игры
     firstReverse: [9, 12],// фиолетовый — 10-й…13-й
     firstSpin: [15, 19],  // бирюзовый — 16-й…20-й
+    firstSplit: [23, 27], // лаймовый (раздвоение) — 24-й…28-й
     // После первого появления — случайно, по «весам»: [попаданий, вес] — между точками вес меняется плавно,
     // после последней не меняется. Шанс вида = его вес / сумма весов тех видов, что сейчас возможны.
-    // Особых всё больше, обычных всё меньше: оранжевых ~70% в начале, ~40% к 80-му, почти нет к 150-му.
+    // Особых всё больше, обычных всё меньше: оранжевых ~70% в начале, ~30% к 80-му, почти нет к 150-му.
     weights: {
       normal: [[0, 0.72], [80, 0.35], [150, 0.03]],
       trap:   [[0, 0.10], [80, 0.22], [150, 0.30]],
       rev:    [[0, 0.12], [80, 0.26], [150, 0.36]],
-      spin:   [[0, 0.06], [80, 0.17], [150, 0.26]]
+      spin:   [[0, 0.06], [80, 0.17], [150, 0.26]],
+      split:  [[0, 0.05], [80, 0.12], [150, 0.18]]
     },
     trapMaxRow: 1,        // двух ловушек подряд не бывает
     trapNear: 0.5,        // ловушка ставится в ближней половине (чтобы не ждать её долго)
     spinBackAfter: [0, 1],// «крутится круг»: стрелка снова крутится — следующий сектор или через один
     spinRest: 2,          // после этого — хотя бы 2 сектора до нового «крутится круг»
-    mixFrom: 30           // до 30 попаданий, пока крутится круг, других особых секторов нет
+    splitBackAfter: [0, 1],// раздвоение: снова одна стрелка — следующий сектор или через один
+    splitRest: 2,         // после этого — хотя бы 2 сектора до нового раздвоения
+    afterSplitGap: 150,   // сектор сразу после раздвоения — не ближе 150°…
+    afterSplitReactMs: 800,// …и не ближе, чем стрелка доедет за 0,8 с (вдвое больше обычного)
+    mixFrom: 30           // до 30 попаданий, пока крутится круг или стрелок две, других особых секторов нет
   };
 
   function speedFor(hits) { return Math.min(CONFIG.maxSpeed, CONFIG.startSpeed + hits * CONFIG.speedStep); }
@@ -88,10 +99,20 @@
   // Центр нового сектора: впереди стрелки (по направлению движения) с запасом на реакцию.
   // r — случайное число от 0 до 1, dir — 1 по часовой или -1 против.
   // near — какую часть круга использовать (1 — весь, 0.5 — только ближнюю половину).
-  function placeSector(arrow, width, r, dir, speed, near) {
-    var gap = gapFor(speed || CONFIG.startSpeed);
+  // wide — сектор сразу после раздвоения: запас на реакцию больше обычного.
+  function placeSector(arrow, width, r, dir, speed, near, wide) {
+    var gap = wide ? Math.max(CONFIG.afterSplitGap, (speed || CONFIG.startSpeed) * CONFIG.afterSplitReactMs / 1000)
+                   : gapFor(speed || CONFIG.startSpeed);
     var span = Math.max(0, 360 - gap - CONFIG.gapBehind - width) * (near || 1);
     return wrap(arrow + (dir === -1 ? -1 : 1) * (gap + width / 2 + r * span));
+  }
+  // Пока стрелок две (раздвоение): центр сектора — в ближайшей точке, где стрелки встретятся, но не ближе
+  // обычного запаса на реакцию. axis — точка раздвоения; стрелки встречаются в axis и axis + 180°.
+  function placeMirror(arrow, width, dir, speed, axis) {
+    var gap = gapFor(speed || CONFIG.startSpeed) + width / 2;
+    var d = wrap((dir === -1 ? -1 : 1) * (axis - arrow)) % 180;
+    while (d < gap) d += 180;
+    return wrap(arrow + (dir === -1 ? -1 : 1) * d);
   }
   // Случайное целое от a до b включительно. r — случайное число от 0 до 1.
   function between(range, r) { return range[0] + Math.min(range[1] - range[0], Math.floor(r * (range[1] - range[0] + 1))); }
@@ -109,22 +130,26 @@
     return pts[pts.length - 1][1];
   }
 
-  // Какой будет следующий сектор: 'normal', 'trap' (ловушка), 'rev' (разворот) или 'spin' (крутится круг).
-  // r — случайное число от 0 до 1. Порядок проверок:
-  // 1) круг крутится и пора возвращать стрелку — бирюзовый;
-  // 2) первое появление каждого вида — по порядку: красный, фиолетовый, бирюзовый;
-  // 3) до CONFIG.mixFrom, пока крутится круг, — только обычные;
+  // Какой будет следующий сектор: 'normal', 'trap' (ловушка), 'rev' (разворот), 'spin' (крутится круг)
+  // или 'split' (раздвоение). r — случайное число от 0 до 1. Порядок проверок:
+  // 1) круг крутится / стрелок две и пора возвращать — бирюзовый / лаймовый;
+  // 2) первое появление каждого вида — по порядку: красный, фиолетовый, бирюзовый, лаймовый;
+  // 3) до CONFIG.mixFrom, пока крутится круг или стрелок две, — только обычные;
   // 4) иначе случайно, по весам — среди тех видов, что уже появлялись и сейчас возможны.
+  //    «Крутится круг» и раздвоение никогда не идут одновременно.
   function pickKind(st, r) {
     if (st.spin && st.untilSpin <= 0) return 'spin';
+    if (st.split && st.untilSplit <= 0) return 'split';
     if (!st.seen.trap && st.hits >= st.firstAt.trap) return 'trap';
     if (!st.seen.rev && st.hits >= st.firstAt.rev) return 'rev';
-    if (!st.seen.spin && st.hits >= st.firstAt.spin) return 'spin';
-    if (st.spin && st.hits < CONFIG.mixFrom) return 'normal';
+    if (!st.seen.spin && st.hits >= st.firstAt.spin && !st.split) return 'spin';
+    if (!st.seen.split && st.hits >= st.firstAt.split && !st.spin) return 'split';
+    if ((st.spin || st.split) && st.hits < CONFIG.mixFrom) return 'normal';
     var kinds = ['normal'];
     if (st.seen.trap && st.trapRow < CONFIG.trapMaxRow) kinds.push('trap');
     if (st.seen.rev) kinds.push('rev');
-    if (st.seen.spin && !st.spin && st.sinceSpin >= CONFIG.spinRest) kinds.push('spin');
+    if (st.seen.spin && !st.spin && !st.split && st.sinceSpin >= CONFIG.spinRest) kinds.push('spin');
+    if (st.seen.split && !st.split && !st.spin && st.sinceSplit >= CONFIG.splitRest) kinds.push('split');
     var w = kinds.map(function (k) { return weightOf(k, st.hits); });
     var sum = w.reduce(function (a, b) { return a + b; }, 0), acc = 0;
     for (var i = 0; i < kinds.length; i++) { acc += w[i] / sum; if (r < acc) return kinds[i]; }
@@ -159,8 +184,9 @@
       seed: seed, zones3: zones3, phase: 'running', // running | transition | over
       a0: 0, t0: 0, speed: speedFor(0), dir: 1,
       kind: 'normal', spin: false, untilSpin: 0, sinceSpin: 0, trapRow: 0, traps: 0,
-      firstAt: { trap: 0, rev: 0, spin: 0 },        // на каком попадании впервые появится каждый вид
-      seen: { trap: false, rev: false, spin: false }, // какие виды уже были в этой игре
+      split: false, axis: 0, untilSplit: 0, sinceSplit: 0, wide: false, // раздвоение: axis — где раздвоилась стрелка
+      firstAt: { trap: 0, rev: 0, spin: 0, split: 0 },                 // на каком попадании впервые появится каждый вид
+      seen: { trap: false, rev: false, spin: false, split: false },    // какие виды уже были в этой игре
       center: 0, width: widthFor(0), exitAt: 0, transitionEnd: 0,
       hits: 0, perfects: 0, score: 0, end: null, endAt: 0
     };
@@ -174,6 +200,7 @@
     s.firstAt.trap = between(CONFIG.firstTrap, rnd());
     s.firstAt.rev = between(CONFIG.firstReverse, rnd());
     s.firstAt.spin = between(CONFIG.firstSpin, rnd());
+    s.firstAt.split = between(CONFIG.firstSplit, rnd());
     s.center = placeSector(0, s.width, rnd(), 1, s.speed);
     s.exitAt = exitTime();
 
@@ -183,7 +210,10 @@
       s.width = widthFor(s.hits);
       s.kind = pickKind(s, rnd());
       s.trapRow = s.kind === 'trap' ? s.trapRow + 1 : 0;
-      s.center = placeSector(angleAt(t), s.width, rnd(), s.dir, s.speed, s.kind === 'trap' ? CONFIG.trapNear : 1);
+      var r = rnd(), arrow = angleAt(t);
+      if (s.split) s.center = placeMirror(arrow, s.width, s.dir, s.speed, s.axis);   // две стрелки — точка их встречи
+      else s.center = placeSector(arrow, s.width, r, s.dir, s.speed, s.kind === 'trap' ? CONFIG.trapNear : 1, s.wide);
+      s.wide = false;
       s.exitAt = exitTime();
       s.phase = 'running';
     }
@@ -197,6 +227,12 @@
         else s.sinceSpin = 0;
       } else if (s.spin) s.untilSpin -= 1;
       else s.sinceSpin += 1;
+      if (kind === 'split') {
+        s.split = !s.split;
+        if (s.split) { s.axis = angleAt(t); s.untilSplit = between(CONFIG.splitBackAfter, rnd()); }
+        else { s.sinceSplit = 0; s.wide = true; }       // снова одна стрелка — следующий сектор дальше обычного
+      } else if (s.split) s.untilSplit -= 1;
+      else s.sinceSplit += 1;
       if (kind !== 'normal') s.seen[kind] = true;
       s.score += points;
       s.phase = 'transition';
@@ -264,7 +300,7 @@
 
   var api = {
     CONFIG: CONFIG, speedFor: speedFor, widthFor: widthFor, perfectWidth: perfectWidth, norm: norm, wrap: wrap,
-    judge: judge, judge3: judge3, goodWidth: goodWidth, gapFor: gapFor, placeSector: placeSector, between: between, pickKind: pickKind, weightOf: weightOf,
+    judge: judge, judge3: judge3, goodWidth: goodWidth, gapFor: gapFor, placeSector: placeSector, between: between, pickKind: pickKind, weightOf: weightOf, placeMirror: placeMirror,
     rng: rng, randomSeed: randomSeed, minTimeMs: minTimeMs, create: create, replay: replay
   };
   root.SectorCore = api;

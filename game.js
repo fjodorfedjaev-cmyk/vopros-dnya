@@ -7,6 +7,8 @@
    * красный сектор в полоску — ловушка: нажимать нельзя, стрелка должна его проехать;
    * фиолетовый сектор — разворот: стрелка крутится в другую сторону;
    * бирюзовый — «крутится круг»: стрелка замирает, вращается весь круг вместе со счётом;
+   * лаймовый — раздвоение: появляется вторая стрелка, зеркальная; сектор ставится туда, где стрелки встретятся;
+     следующий лаймовый — снова одна (вторая плавно гаснет);
    * сектор мягко светится своим цветом (сильнее с уровнем), у него слегка скруглённые углы, и появляется он плавно (0,1 с);
    * рамка, кружок вокруг счёта и деления циферблата разгораются к 40-му сектору и вспыхивают цветом особого сектора при попадании
      (и красным — когда ловушка позади);
@@ -59,6 +61,7 @@
         special: v('--special', '#9B7BFF'), specialHi: v('--special-hi', '#CDBEFF'),
         turq: v('--turq', '#2EC4B6'), turqHi: v('--turq-hi', '#A6EEE6'),
         trap: v('--trap', '#E8364F'), trapDark: v('--trap-dark', '#5C1220'),
+        split: v('--split', '#C8E650'), splitHi: v('--split-hi', '#F0FAC8'),
         mono: v('--font-mono', 'ui-monospace, monospace')
       };
     }
@@ -102,6 +105,7 @@
     // свечение кружка вокруг счёта — то же, что у рамки: glowV — сколько должно гореть, glowShow — сколько горит сейчас
     // (догоняет плавно, как рамка в CSS), вспышка — цветом особого сектора
     var glowV = 0, glowShow = 0, lastDrawAt = 0, flashColor = '', flashAt = -1, flashK = 0;
+    var ghostEndAt = -1, ghostAxis = 0;   // раздвоение кончилось: вторая стрелка гаснет за 0,25 с
     var rot = 0, arrowScreen = 0;   // поворот круга на экране и место стрелки, пока крутится круг
     var winAt = -1, winA = 0, winV = 0;
     var oppShown = '';
@@ -265,7 +269,7 @@
       if (winAt >= 0) alpha = Math.max(0, 1 - (now - winAt) / 500);   // победа: сектор тает
       if (alpha > 0) {
         var dead = missAt >= 0;
-        var col = dead ? css.err : kind === 'trap' ? css.trap : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : css.btn;
+        var col = dead ? css.err : kind === 'trap' ? css.trap : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : kind === 'split' ? css.split : css.btn;
         var d0 = center - width / 2, d1 = center + width / 2;
         ctx.save();
         ctx.globalAlpha = alpha;
@@ -286,12 +290,12 @@
         } else if (s && s.zones3) {
           // дуэль: средняя зона «2 очка» — промежуточным цветом
           var gw = Core.goodWidth(width);
-          ctx.fillStyle = dead ? css.err : kind === 'rev' ? '#B9A2FF' : kind === 'spin' ? '#6FD9CE' : '#E8803A';
+          ctx.fillStyle = dead ? css.err : kind === 'rev' ? '#B9A2FF' : kind === 'spin' ? '#6FD9CE' : kind === 'split' ? '#DCEF8A' : '#E8803A';
           bandPath(c, R, SECTOR_W, center - gw / 2, center + gw / 2, CORNER / 2); ctx.fill();
         }
         if (kind !== 'trap') {
           var pw = Core.perfectWidth(width);
-          ctx.fillStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : '#FFB37A';
+          ctx.fillStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : kind === 'split' ? css.splitHi : '#FFB37A';
           bandPath(c, R, SECTOR_W, center - pw / 2, center + pw / 2, CORNER / 2); ctx.fill();
         }
         ctx.restore();
@@ -315,6 +319,18 @@
       ctx.moveTo(c + Math.cos(ar) * (hubR - 2), c + Math.sin(ar) * (hubR - 2));
       ctx.lineTo(c + Math.cos(ar) * (R + 8), c + Math.sin(ar) * (R + 8));
       ctx.stroke();
+      // вторая стрелка (раздвоение): зеркально относительно точки, где стрелка раздвоилась
+      var ghostA = s && s.split ? 1 : ghostEndAt >= 0 ? 1 - (now - ghostEndAt) / 250 : 0;
+      if (ghostA <= 0) ghostEndAt = -1;
+      else if (s) {
+        var gr2 = rad(wrap(2 * (s.split ? s.axis : ghostAxis) - ang));
+        ctx.globalAlpha = Math.min(1, ghostA);
+        ctx.beginPath();
+        ctx.moveTo(c + Math.cos(gr2) * (hubR - 2), c + Math.sin(gr2) * (hubR - 2));
+        ctx.lineTo(c + Math.cos(gr2) * (R + 8), c + Math.sin(gr2) * (R + 8));
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
       // центр
       ctx.fillStyle = css.surface;
       ctx.beginPath(); ctx.arc(c, c, hubR, 0, Math.PI * 2); ctx.fill();
@@ -391,7 +407,7 @@
       presses = []; missAt = -1; pulseAt = -1; bumpAt = -1; winAt = -1; trapsShown = 0;
       rot = 0; arrowScreen = 0; paused = false; countdownEnd = 0;
       setScore(0); hint.textContent = ''; pop.textContent = ''; pop.className = 'sector-pop';
-      setGlow(0); glowShow = 0; flashAt = -1;
+      setGlow(0); glowShow = 0; flashAt = -1; ghostEndAt = -1;
     }
     // одиночная игра: «Играть»
     function start() {
@@ -436,6 +452,9 @@
         var rel = g.angleAt(t);
         if (s.spin) arrowScreen = wrap(rel + rot); else rot = wrap(arrowScreen - rel);
         flash(css.turq);
+      } else if (r.kind === 'split') {
+        if (!s.split) { ghostEndAt = now; ghostAxis = s.axis; }   // снова одна стрелка — вторая гаснет
+        flash(css.split);
       }
       if (r.res === 'perfect') { pulseAt = now; showPop('PERFECT +' + r.points, 'perfect'); }
       else if (r.points > 1) showPop('+' + r.points, 'good');
@@ -667,7 +686,7 @@
         var s = st(), now = performance.now(), rel = relAngle(now);
         if (!s) return { screen: screen };
         return { screen: screen, phase: s.phase, hits: s.hits, perfects: s.perfects, score: s.score, center: s.center, width: s.width,
-          speed: s.speed, dir: s.dir, kind: s.kind, spin: s.spin, untilSpin: s.untilSpin, traps: s.traps,
+          speed: s.speed, dir: s.dir, kind: s.kind, spin: s.spin, untilSpin: s.untilSpin, traps: s.traps, split: s.split, axis: s.axis,
           exitAt: s.exitAt, t: et(now), angle: rel, rot: dialRot(rel), arrowScreen: wrap(rel + dialRot(rel)), end: s.end, presses: presses.slice(), seed: s.seed };
       },
       _press: press
