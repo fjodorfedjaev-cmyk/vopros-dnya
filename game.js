@@ -18,7 +18,7 @@
   var CONFIG = {
     startSpeed: 110,      // градусов в секунду
     speedStep: 6,         // прибавка скорости за каждое попадание
-    maxSpeed: 360,
+    maxSpeed: 320,        // было 360. База проверяет по 360 — это мягче, честные результаты проходят
     startWidth: 64,       // ширина сектора, градусы
     widthStep: 1.0,       // уменьшение ширины за каждое попадание (было 1.6 — сужался быстрее)
     widthStopAt: 35,      // после 35 попаданий сектор больше не сужается: 64 − 35 = 29°
@@ -34,7 +34,7 @@
     nextReverse: [5, 9],  // следующий разворот — через 5–9 попаданий после возврата
     // «Крутится круг» (бирюзовые сектора). Числа — сколько попаданий до следующего бирюзового.
     firstSpin: [15, 19],  // первый — 16-й…20-й сектор игры
-    spinBackAfter: [2, 5],// стрелка снова крутится — через 2–5 попаданий
+    spinBackAfter: [0, 1],// стрелка снова крутится — следующий сектор или через один
     nextSpin: [6, 10],    // следующий «крутится круг» — через 6–10 попаданий
     mixFrom: 30,          // с 30 попаданий разворот и «крутится круг» могут идти одновременно
     glowFull: 40,         // рамка разгорается на полную к 40-му сектору
@@ -117,10 +117,15 @@
         accent: v('--accent', '#F2782C'), btn: v('--btn', '#C4500B'), surface: v('--surface', '#1E1E1E'),
         tile: v('--tile', '#262422'), err: v('--err', '#FF7A6B'),
         special: v('--special', '#9B7BFF'), specialHi: v('--special-hi', '#CDBEFF'),
-        turq: v('--turq', '#2EC4B6'), turqHi: v('--turq-hi', '#A6EEE6')
+        turq: v('--turq', '#2EC4B6'), turqHi: v('--turq-hi', '#A6EEE6'),
+        mono: v('--font-mono', 'ui-monospace, monospace')
       };
     }
     readColors();
+    // счёт рисуется на холсте нашим шрифтом — когда шрифт загрузится, перерисуем
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load('600 44px ' + css.mono).then(function () { if (!destroyed) draw(performance.now()); }, function () {});
+    }
 
     var wrapEl = h('div', 'sector');
     var field = h('div', 'sector-field');
@@ -128,11 +133,11 @@
     field.setAttribute('aria-label', 'Игровое поле: нажми в любом месте экрана, когда стрелка в секторе');
     var canvas = h('canvas', 'sector-canvas');
     var hub = h('div', 'sector-hub');
-    var scoreEl = h('div', 'sector-score', '0');
-    var scoreRot = h('div', 'sector-rot');   // поворачивается вместе с кругом
-    var hint = h('div', 'sector-hint', '');
-    scoreRot.appendChild(scoreEl);
-    hub.appendChild(scoreRot); hub.appendChild(hint);
+    // Счёт видно на холсте (точно по центру круга и поворачивается вместе с ним);
+    // этот элемент — для экранного диктора, на экране он скрыт.
+    var scoreEl = h('div', 'sector-score sr', '0');
+    var hint = h('div', 'sector-hint low', '');
+    hub.appendChild(scoreEl); hub.appendChild(hint);
     var pop = h('div', 'sector-pop', '');
     pop.setAttribute('aria-live', 'polite');
     field.appendChild(canvas); field.appendChild(hub); field.appendChild(pop);
@@ -158,7 +163,7 @@
     var spin = false;       // сейчас крутится круг, а стрелка стоит
     var rot = 0;            // на сколько градусов повёрнут круг на экране (когда он не крутится)
     var arrowScreen = 0;    // где стоит стрелка на экране, пока крутится круг
-    var rotShown = null;    // последний поворот счёта (чтобы не трогать страницу каждый кадр зря)
+    var bumpAt = -1;        // когда счёт «подпрыгнул» (после попадания)
     var center = 120, width = CONFIG.startWidth;
     var hits = 0, perfects = 0, score = 0;
     var transitionEnd = 0, sectorFadeFrom = 0;
@@ -180,12 +185,15 @@
     }
     // Рамка: чем дальше в игре, тем ярче (0 — нет, 1 — на полную)
     function setGlow(v) { wrapEl.style.setProperty('--glow', String(Math.max(0, Math.min(1, v)))); }
+    // Вспышка цветом особого сектора — такой же силы, как сейчас разгорелась рамка
+    // (в начале игры слабая, к 40-му сектору — на полную; совсем слабой не бывает).
     function flash(color) {
       if (!flashEl.animate) return;
+      var k = Math.max(0.3, Math.min(1, hits / CONFIG.glowFull));
       flashEl.style.setProperty('--fc', color);
       flashEl.animate(reduceMotion
-        ? [{ opacity: 1 }, { opacity: 0 }]
-        : [{ opacity: 0 }, { opacity: 1, offset: 0.08 }, { opacity: 0.35, offset: 0.2 }, { opacity: 1, offset: 0.32 }, { opacity: 0 }],
+        ? [{ opacity: k }, { opacity: 0 }]
+        : [{ opacity: 0 }, { opacity: k, offset: 0.08 }, { opacity: 0.35 * k, offset: 0.2 }, { opacity: k, offset: 0.32 }, { opacity: 0 }],
         { duration: 1200, easing: 'ease-out' });
     }
 
@@ -212,8 +220,6 @@
         : (phase === 'paused' || phase === 'countdown') ? pauseAngle : a0;
       var turn = dialRot(ang);
       if (turn) { ctx.translate(c, c); ctx.rotate(turn * Math.PI / 180); ctx.translate(-c, -c); }
-      var shown = Math.round(turn * 10) / 10;
-      if (shown !== rotShown) { rotShown = shown; scoreRot.style.transform = shown ? 'rotate(' + shown + 'deg)' : ''; }
       // дорожка
       ctx.lineWidth = 12; ctx.strokeStyle = css.tile;
       ctx.beginPath(); ctx.arc(c, c, R, 0, Math.PI * 2); ctx.stroke();
@@ -266,6 +272,25 @@
       ctx.beginPath(); ctx.arc(c, c, hubR, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = css.line; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(c, c, hubR, 0, Math.PI * 2); ctx.stroke();
+      // счёт: центр самих цифр (а не строки текста) — ровно в центре круга, поэтому при повороте не съезжает
+      var txt = String(score);
+      var fs = Math.min(44, Math.round(hubR * 0.86));
+      var sc = 1;
+      if (bumpAt >= 0) {
+        var bk = (now - bumpAt) / 220;
+        if (bk >= 1 || reduceMotion) bumpAt = -1; else sc = 1 + 0.12 * Math.sin(Math.PI * bk);
+      }
+      ctx.save();
+      ctx.translate(c, c);
+      if (sc !== 1) ctx.scale(sc, sc);
+      ctx.font = '600 ' + fs + 'px ' + css.mono;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      var m = ctx.measureText(txt);
+      var left = m.actualBoundingBoxLeft || 0, right = m.actualBoundingBoxRight || m.width;
+      var asc = m.actualBoundingBoxAscent || fs * 0.72, desc = m.actualBoundingBoxDescent || 0;
+      ctx.fillStyle = missAt >= 0 ? css.err : css.ink;
+      ctx.fillText(txt, (left - right) / 2, (asc - desc) / 2);
+      ctx.restore();
     }
 
     function frame(now) {
@@ -351,7 +376,7 @@
       if (res === 'perfect') { perfects += 1; score += 2; pulseAt = now; showPop('PERFECT +2', 'perfect'); }
       else { score += 1; }
       setScore(score);
-      scoreEl.classList.remove('bump'); void scoreEl.offsetWidth; scoreEl.classList.add('bump');
+      bumpAt = now;
       phase = 'transition';
       sectorFadeFrom = now;
       transitionEnd = now + CONFIG.transitionMs;

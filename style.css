@@ -638,7 +638,7 @@ html, body { overflow-x: hidden; }
 .sector.playing .sector-glow::before { animation: sgSpin 5s linear infinite; }
 @keyframes sgSpin { to { --sg-a: 360deg; } }
 .sector > .sector-field, .sector > .sector-panel { position: relative; z-index: 1; }
-.sector-rot { display: flex; align-items: center; justify-content: center; }
+
 .sector-field {
   position: relative; width: 100%; max-width: 360px; display: flex; justify-content: center;
   touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
@@ -659,6 +659,9 @@ html.sector-on .bottom-nav, html.sector-on nav.tabs, html.sector-on header .me, 
 .sector-score.bump { animation: bumpSoft 0.22s ease-out; }
 .sector-hint { font: 500 13px var(--font-mono); color: var(--muted); min-height: 16px; margin-top: 4px; }
 .sector.over .sector-score { color: var(--err); }
+/* В Секторе счёт рисуется на холсте (ровно по центру и крутится с кругом); этот текст — только для экранного диктора */
+.sector-score.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.sector-hint.low { position: absolute; left: 0; right: 0; top: 50%; margin: 30px 0 0; text-align: center; }
 .sector-pop {
   position: absolute; left: 0; right: 0; top: 50%; margin-top: 46px; text-align: center; pointer-events: none;
   font: 600 13px var(--font-mono); letter-spacing: 0.08em; color: var(--accent); opacity: 0;
