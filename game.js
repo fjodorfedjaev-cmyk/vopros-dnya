@@ -10,7 +10,7 @@
    * лаймовый — раздвоение: появляется вторая стрелка, зеркальная; сектор ставится туда, где стрелки встретятся;
      следующий лаймовый — снова одна (вторая плавно гаснет);
    * сектор мягко светится своим цветом (сильнее с уровнем), у него слегка скруглённые углы, и появляется он плавно (0,1 с);
-   * рамка, кружок вокруг счёта и деления циферблата разгораются к 40-му сектору и вспыхивают цветом особого сектора при попадании
+   * рамка, кружок вокруг счёта, деления циферблата и сами цифры счёта разгораются (смягчаются) к 40-му сектору и вспыхивают цветом особого сектора при попадании
      (и красным — когда ловушка позади);
    * в дуэли у сектора три зоны: края — 1 очко, ближе к центру — 2, центр — 3.
    Модуль отдаёт window.SectorGame: mount() и функции ядра (для проверок). */
@@ -361,7 +361,14 @@
       var mL = m.actualBoundingBoxLeft || 0, mR = m.actualBoundingBoxRight || m.width;
       var asc = m.actualBoundingBoxAscent || fs * 0.72, desc = m.actualBoundingBoxDescent || 0;
       ctx.fillStyle = color;
-      ctx.fillText(txt, (mL - mR) / 2, (asc - desc) / 2);
+      var tx = (mL - mR) / 2, ty = (asc - desc) / 2;
+      // цифры смягчаются вместе с рамкой: снаружи — оранжевый ореол, у самых краёв — лёгкое размытие их цвета
+      if (glowShow > 0.01 && !reduceMotion) {
+        ctx.shadowColor = rgba(css.accent, 0.55 * glowShow); ctx.shadowBlur = 16 * glowShow;
+        ctx.fillText(txt, tx, ty);
+        ctx.shadowColor = rgba(color, 0.75 * glowShow); ctx.shadowBlur = 5 * glowShow;
+      }
+      ctx.fillText(txt, tx, ty);
       ctx.restore();
     }
 
