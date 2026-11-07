@@ -131,6 +131,35 @@ begin
       and not exists (select 1 from public.duel_state(d1))
     then E'ok   10 отказ, отмена, просрочка — ставка вернулась; чужую дуэль не видно\n' else E'FAIL 10\n' end;
 
+  -- 11. комнаты: открыл → любой может зайти (только один), себе нельзя; не больше 3; отмена и просрочка возвращают
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  b1 := public.coins_of(u1); b2 := public.coins_of(u2);
+  d1 := public.duel_create(null, 40);
+  n := 0;
+  begin perform public.duel_join(d1); exception when others then if sqlerrm = 'duel_gone' then n := n + 1; end if; end;
+  perform set_config('request.jwt.claims', json_build_object('sub', u2, 'role', 'authenticated')::text, true);
+  e := (select count(*)::text from public.duel_list() where id = d1 and joinable and room);
+  perform public.duel_join(d1);
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  begin perform public.duel_join(d1); exception when others then if sqlerrm = 'duel_gone' then n := n + 1; end if; end;
+  perform set_config('request.jwt.claims', json_build_object('sub', u1, 'role', 'authenticated')::text, true);
+  select * into r from public.duel_state(d1);
+  res := res || case when e = '1' and n = 2 and r.status = 'accepted' and r.opp_id = u2
+      and public.coins_of(u1) = b1 - 40 and public.coins_of(u2) = b2 - 40
+    then E'ok   11 комната: в списке у других, зашёл один (−40 у обоих), второй и сам создатель — нельзя\n' else E'FAIL 11 (' || coalesce(e, '-') || ',' || n || E')\n' end;
+  perform public.duel_cancel(d1);
+  b1 := public.coins_of(u1);
+  d2 := public.duel_create(null, 1); d3 := public.duel_create(null, 1); d4 := public.duel_create(null, 1);
+  begin perform public.duel_create(null, 1); e := 'нет ошибки'; exception when others then e := sqlerrm; end;
+  perform public.duel_cancel(d2);
+  update public.sector_duels set created_at = now() - interval '25 hours' where id = d3;
+  perform set_config('request.jwt.claims', json_build_object('sub', u3, 'role', 'authenticated')::text, true);
+  perform public.duel_list();
+  res := res || case when e = 'duel_too_many' and (select status from public.sector_duels where id = d3) = 'expired'
+      and public.coins_of(u1) = b1 - 1
+      and (select r2.opp_name from public.duel_list() r2 where r2.id = d4) is not null
+    then E'ok   12 комнат не больше 3; отмена и просрочка вернули ставки; в чужой комнате видно, чья она\n' else E'FAIL 12 ' || e || E'\n' end;
+
   raise exception E'\n===== РЕЗУЛЬТАТ ТЕСТА «ДУЭЛИ» (всё откатано) =====\n%\nFAIL-строк: %\n',
     res, (length(res) - length(replace(res, 'FAIL', ''))) / 4;
 end

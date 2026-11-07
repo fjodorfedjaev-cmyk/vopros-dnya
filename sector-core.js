@@ -10,7 +10,9 @@
    * Время — миллисекунды от старта игры. Новый сектор появляется ровно через 300 мс после попадания.
    * Пропустил сектор (стрелка проехала его, а нажатия не было) — проигрыш. Чтобы успевать, новый сектор
      появляется не ближе 90° и не ближе, чем стрелка доедет за 0,4 секунды.
-   * Угол стрелки считается относительно круга: в режиме «крутится круг» сближение то же самое. */
+   * Угол стрелки считается относительно круга: в режиме «крутится круг» сближение то же самое.
+   * Очки. Обычная игра: попал — 1, PERFECT (центр) — 2. В дуэли (zones3) сектор делится на 5 равных полос:
+     края — 1 очко, ближе к центру — 2, центр — 3 (центр и есть PERFECT). */
 (function (root) {
   'use strict';
 
@@ -52,6 +54,16 @@
   function judge(angle, center, width) {
     var d = Math.abs(norm(angle - center));
     if (d <= perfectWidth(width) / 2) return 'perfect';
+    if (d <= width / 2) return 'hit';
+    return 'miss';
+  }
+  // Ширина зоны «2 очка» в дуэли (вместе с центром): средние 3 полосы из 5
+  function goodWidth(w) { return Math.max(perfectWidth(w), w * 0.6); }
+  // Дуэль, три зоны: 'perfect' (центр, 3 очка), 'good' (2), 'hit' (края, 1) или 'miss'
+  function judge3(angle, center, width) {
+    var d = Math.abs(norm(angle - center));
+    if (d <= perfectWidth(width) / 2) return 'perfect';
+    if (d <= goodWidth(width) / 2) return 'good';
     if (d <= width / 2) return 'hit';
     return 'miss';
   }
@@ -106,11 +118,12 @@
     return t + Math.max(hits - 1, 0) * CONFIG.transitionMs;
   }
 
-  // Одна партия по зерну. Все t — мс от старта игры.
-  function create(seed) {
+  // Одна партия по зерну. Все t — мс от старта игры. opts.zones3 — очки по трём зонам (дуэль).
+  function create(seed, opts) {
     var rnd = rng(seed);
+    var zones3 = !!(opts && opts.zones3);
     var s = {
-      seed: seed, phase: 'running',            // running | transition | over
+      seed: seed, zones3: zones3, phase: 'running', // running | transition | over
       a0: 0, t0: 0, speed: speedFor(0), dir: 1,
       kind: 'normal', spin: false, untilRev: 0, untilSpin: 0,
       center: 0, width: widthFor(0), exitAt: 0, transitionEnd: 0,
@@ -146,14 +159,14 @@
     // Стрелка уже проехала сектор без нажатия?
     function skipDue(t) { tick(t); return s.phase === 'running' && t > s.exitAt; }
     // Нажатие в момент t. Возвращает null (не считается — пауза между раундами или игра окончена)
-    // или { res: 'perfect' | 'hit' | 'miss' | 'skip', kind }.
+    // или { res: 'perfect' | 'good' | 'hit' | 'miss' | 'skip', kind, points }.
     function press(t) {
       if (s.phase === 'over') return null;
       tick(t);
       if (s.phase !== 'running') return null;
       if (t > s.exitAt) { finish(s.exitAt, 'skip'); return { res: 'skip', kind: s.kind }; }
       if (t < s.t0) t = s.t0;
-      var res = judge(angleAt(t), s.center, s.width);
+      var res = (zones3 ? judge3 : judge)(angleAt(t), s.center, s.width);
       if (res === 'miss') { finish(t, 'miss'); return { res: 'miss', kind: s.kind }; }
       var kind = s.kind;
       s.hits += 1;
@@ -167,10 +180,12 @@
         s.untilSpin = between(s.spin ? CONFIG.spinBackAfter : CONFIG.nextSpin, rnd());
         s.untilRev -= 1;
       } else { s.untilRev -= 1; s.untilSpin -= 1; }
-      if (res === 'perfect') { s.perfects += 1; s.score += 2; } else s.score += 1;
+      var points = res === 'perfect' ? (zones3 ? 3 : 2) : res === 'good' ? 2 : 1;
+      if (res === 'perfect') s.perfects += 1;
+      s.score += points;
       s.phase = 'transition';
       s.transitionEnd = t + CONFIG.transitionMs;
-      return { res: res, kind: kind };
+      return { res: res, kind: kind, points: points };
     }
     return { state: s, angleAt: angleAt, tick: tick, press: press, finish: finish, skipDue: skipDue };
   }
@@ -178,8 +193,8 @@
   // Переиграть партию по зерну и записи нажатий (так проверяет сервер).
   // presses — моменты нажатий (мс от старта, по возрастанию), end — как закончилась: 'miss' | 'skip' | 'win' | 'quit',
   // endT — когда (для 'win' и 'quit'). Результат считается по правилам, а не по словам телефона.
-  function replay(seed, presses, end, endT) {
-    var g = create(seed), s = g.state, last = 0;
+  function replay(seed, presses, end, endT, opts) {
+    var g = create(seed, opts), s = g.state, last = 0;
     for (var i = 0; i < presses.length && s.phase !== 'over'; i++) {
       var t = Number(presses[i]);
       if (!isFinite(t) || t < last) break;   // время нажатий только растёт
@@ -201,7 +216,7 @@
 
   var api = {
     CONFIG: CONFIG, speedFor: speedFor, widthFor: widthFor, perfectWidth: perfectWidth, norm: norm, wrap: wrap,
-    judge: judge, gapFor: gapFor, placeSector: placeSector, between: between, pickKind: pickKind,
+    judge: judge, judge3: judge3, goodWidth: goodWidth, gapFor: gapFor, placeSector: placeSector, between: between, pickKind: pickKind,
     rng: rng, randomSeed: randomSeed, minTimeMs: minTimeMs, create: create, replay: replay
   };
   root.SectorCore = api;

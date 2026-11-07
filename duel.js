@@ -26,6 +26,7 @@
     if (/duel_gone/.test(m)) return 'Эта дуэль уже неактуальна.';
     if (/duel_bad_stake/.test(m)) return 'Ставка — от 1 до 100 000 монет.';
     if (/duel_bad_opponent/.test(m)) return 'Выбери, кого вызвать.';
+    if (/duel_too_many/.test(m)) return 'Открытых комнат может быть не больше 3.';
     if (/failed to fetch|network|load failed/i.test(m)) return 'Нет связи. Попробуй ещё раз.';
     return 'Что-то пошло не так.';
   }
@@ -33,7 +34,8 @@
   function coins(n) { return n + ' 🪙'; }
   function msgEl() { return el('p', { class: 'msg', role: 'status' }); }
   function showMsg(node, text, err) { node.className = 'msg' + (err ? ' err' : ''); setText(node, text || ''); }
-  function oppAv(row, small) { return A.avatar(row.opp_name, row.opp_color, small !== false, row.opp_avatar); }
+  function oppAv(row, small) { return row.opp_id ? A.avatar(row.opp_name, row.opp_color, small !== false, row.opp_avatar) : A.avatar('?', '#4A4542', small !== false, ''); }
+  var RULES = 'Игра одинаковая у обоих. Очки: край сектора — 1, ближе к центру — 2, центр — 3. Промах или пропуск — твоя игра закончилась. Соперник уже закончил, а ты обогнал — победа. Свернул приложение — проигрыш.';
 
   /* ---------- список дуэлей (под игрой) ---------- */
   function section() {
@@ -50,7 +52,7 @@
     sect.replaceChildren();
     var head = el('div', { class: 'duel-head' }, [
       el('h2', { text: 'Дуэли' }),
-      el('button', { type: 'button', class: 'btn' + (D.form ? '' : ' primary'), text: D.form ? 'Закрыть' : 'Вызвать на дуэль',
+      el('button', { type: 'button', class: 'btn' + (D.form ? '' : ' primary'), text: D.form ? 'Закрыть' : 'Новая дуэль',
         onclick: function () { D.form = !D.form; fillList(sect); } })
     ]);
     sect.appendChild(head);
@@ -60,7 +62,7 @@
       return;
     }
     if (!D.list.length) {
-      if (!D.form) sect.appendChild(el('p', { class: 'empty', text: 'Вызови друга: одна и та же игра у обоих, побеждает тот, кто сыграет лучше. Победитель забирает обе ставки.' }));
+      if (!D.form) sect.appendChild(el('p', { class: 'empty', text: 'Вызови друга или открой комнату для любого: одна и та же игра у обоих, побеждает тот, кто сыграет лучше. Победитель забирает обе ставки.' }));
       return;
     }
     sect.appendChild(el('div', { class: 'duel-list' }, D.list.map(function (d) { return duelRow(d, sect); })));
@@ -68,8 +70,16 @@
 
   function duelRow(d, sect) {
     var line, acts = [], msg = msgEl();
-    var incoming = d.status === 'invited' && !d.i_am_p1;
-    if (incoming) {
+    var incoming = (d.status === 'invited' && !d.i_am_p1) || d.joinable;
+    if (d.joinable) {
+      line = 'открытая комната · ставка ' + coins(d.stake);
+      var jb = el('button', { type: 'button', class: 'btn primary' }); setText(jb, 'Войти · ' + coins(d.stake));
+      jb.addEventListener('click', function () { join(d, jb, msg); });
+      acts.push(jb);
+    } else if (d.status === 'open') {
+      line = 'твоя комната · ждём соперника · ставка ' + coins(d.stake);
+      acts.push(el('button', { type: 'button', class: 'btn', text: 'Отменить', onclick: function (ev) { cancel(d, ev.currentTarget, msg); } }));
+    } else if (incoming) {
       line = 'вызывает тебя · ставка ' + coins(d.stake);
       acts.push(el('button', { type: 'button', class: 'btn primary', text: 'Принять', onclick: function (ev) { respond(d, true, ev.currentTarget, msg); } }));
       acts.push(el('button', { type: 'button', class: 'btn', text: 'Отказаться', onclick: function (ev) { respond(d, false, ev.currentTarget, msg); } }));
@@ -86,7 +96,7 @@
     var lineEl = el('span', { class: 'duel-line' }); setText(lineEl, line);
     return el('div', { class: 'duel-row' + (d.outcome ? ' ' + d.outcome : '') + (incoming ? ' incoming' : '') }, [
       oppAv(d, false),
-      el('div', { class: 'duel-info' }, [el('span', { class: 'duel-name', text: d.opp_name || 'Без имени' }), lineEl]),
+      el('div', { class: 'duel-info' }, [el('span', { class: 'duel-name', text: d.opp_id ? (d.opp_name || 'Без имени') : 'Открытая комната' }), lineEl]),
       acts.length ? el('div', { class: 'duel-acts' }, acts) : null,
       msg
     ]);
@@ -101,6 +111,14 @@
       A.toast('Вызов отклонён');
       await loadList();
     } catch (e) { showMsg(msg, errText(e), true); btn.disabled = false; }
+  }
+  async function join(d, btn, msg) {
+    btn.disabled = true;
+    try {
+      await rpc('duel_join', { p_id: d.id });
+      A.loadPoints();
+      openDuel(d.id);
+    } catch (e) { showMsg(msg, errText(e), true); btn.disabled = false; await loadList(); }
   }
   async function cancel(d, btn, msg) {
     btn.disabled = true;
@@ -122,12 +140,14 @@
     function sync() {
       var n = stakeVal();
       var okN = n >= 1 && n <= 100000;
-      setText(go, okN ? 'Вызвать · ставка ' + coins(n) : 'Вызвать');
+      var verb = D.opp === '*' ? 'Открыть комнату' : 'Вызвать';
+      setText(go, okN ? verb + ' · ставка ' + coins(n) : verb);
       go.disabled = !D.opp || !okN || n > A.balance();
       if (okN && n > A.balance()) showMsg(msg, 'Не хватает: у тебя ' + coins(Math.floor(A.balance())), true);
       else if (msg.classList.contains('err')) showMsg(msg, '');
     }
-    var chips = el('div', { class: 'duel-people', role: 'group', 'aria-label': 'Кого вызвать' }, people.map(function (p) {
+    var options = [{ id: '*', display_name: 'Любой — открытая комната', room: true }].concat(people);
+    var chips = el('div', { class: 'duel-people', role: 'group', 'aria-label': 'Кого вызвать' }, options.map(function (p) {
       return el('button', {
         type: 'button', class: 'chip duel-chip', 'aria-pressed': String(D.opp === p.id),
         onclick: function () {
@@ -135,7 +155,7 @@
           chips.querySelectorAll('.duel-chip').forEach(function (b) { b.setAttribute('aria-pressed', String(b === this)); }, this);
           sync();
         }
-      }, [A.avatar(p.display_name, p.color, true, p.avatar), el('span', { text: p.display_name || 'Без имени' })]);
+      }, [p.room ? A.avatar('?', '#4A4542', true, '') : A.avatar(p.display_name, p.color, true, p.avatar), el('span', { text: p.display_name || 'Без имени' })]);
     }));
     var input = el('input', { type: 'text', inputmode: 'numeric', id: 'duel-stake', autocomplete: 'off', placeholder: '0', 'aria-label': 'Ставка' });
     input.value = D.stake;
@@ -153,10 +173,11 @@
       go.disabled = true;
       showMsg(msg, 'Отправляю вызов…');
       try {
-        var id = await rpc('duel_create', { p_opponent: D.opp, p_stake: n });
+        var room = D.opp === '*';
+        var id = await rpc('duel_create', { p_opponent: room ? null : D.opp, p_stake: n });
         A.loadPoints();
         D.form = false; D.opp = null; D.stake = '';
-        A.toast('Вызов отправлен — ставка ' + coins(n) + ' в банке');
+        A.toast((room ? 'Комната открыта' : 'Вызов отправлен') + ' — ставка ' + coins(n) + ' в банке');
         await loadList();
         if (typeof id === 'number') { /* ждём ответа — дуэль видна в списке */ }
       } catch (e) { showMsg(msg, errText(e), true); go.disabled = false; }
@@ -164,10 +185,10 @@
     sync();
     return el('div', { class: 'card duel-form' }, [
       el('p', { class: 'duel-label', text: 'Кого вызвать' }),
-      people.length ? chips : el('p', { class: 'muted', text: 'Пока некого вызвать.' }),
+      chips,
       el('label', { class: 'duel-label', for: 'duel-stake', text: 'Ставка' }),
       el('div', { class: 'duel-stake' }, [el('span', { class: 'duel-stake-in' }, [input, coinEl()]), quick]),
-      el('p', { class: 'muted small', text: 'Ставка сразу уходит в банк. Отказ или отмена — вернётся. Победитель забирает обе ставки.' }),
+      el('p', { class: 'muted small', text: 'Ставка сразу уходит в банк. Отказ, отмена или если за сутки никто не придёт — вернётся. Победитель забирает обе ставки.' }),
       go, msg
     ]);
   }
@@ -240,11 +261,11 @@
     D.headEl.replaceChildren();
     if (!st) { D.headEl.appendChild(el('p', { class: 'muted', text: 'Загружаю дуэль…' })); return; }
     var bank = el('span', { class: 'duel-bank' }); setText(bank, 'ставка ' + coins(st.stake) + ' · банк ' + coins(st.stake * 2));
-    D.headEl.appendChild(el('div', { class: 'duel-vs' }, [
+    D.headEl.appendChild(el('div', { class: 'duel-vs' }, st.opp_id ? [
       el('span', { class: 'duel-vs-l', text: 'Дуэль с' }),
       oppAv(st, false),
       el('span', { class: 'duel-name', text: st.opp_name || 'Без имени' })
-    ]));
+    ] : [oppAv(st, false), el('span', { class: 'duel-name', text: 'Открытая комната' })]));
     D.headEl.appendChild(bank);
 
     var playingOrDone = st.status === 'playing' || (st.status === 'finished' && D.game);
@@ -265,8 +286,13 @@
   function lobby(st) {
     var box = el('div', { class: 'card duel-lobby' }), msg = msgEl();
     var back = el('button', { type: 'button', class: 'btn', text: 'К дуэлям', onclick: closeDuel });
-    var rules = el('p', { class: 'muted small duel-rules', text: 'Игра одинаковая у обоих. Промах или пропуск сектора — твоя игра закончилась. Соперник уже закончил, а ты его обогнал — победа. Свернул приложение — проигрыш.' });
-    if (st.status === 'invited' && !st.i_am_p1) {
+    var rules = el('p', { class: 'muted small duel-rules', text: RULES });
+    if (st.status === 'open') {
+      box.appendChild(el('p', { class: 'duel-big', text: 'Комната открыта — ждём, пока кто-нибудь зайдёт' }));
+      box.appendChild(rules);
+      box.appendChild(el('div', { class: 'duel-acts' }, [
+        el('button', { type: 'button', class: 'btn', text: 'Закрыть комнату', onclick: function (ev) { cancel({ id: st.id }, ev.currentTarget, msg); } }), back]));
+    } else if (st.status === 'invited' && !st.i_am_p1) {
       box.appendChild(el('p', { class: 'duel-big', text: st.opp_name + ' вызывает тебя на дуэль' }));
       var acc = el('button', { type: 'button', class: 'btn primary' }); setText(acc, 'Принять · ставка ' + coins(st.stake));
       acc.addEventListener('click', function () { respond({ id: st.id }, true, acc, msg); });

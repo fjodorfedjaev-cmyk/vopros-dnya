@@ -1,7 +1,7 @@
 // Функция отправки уведомлений «Вопроса дня».
 // Вызывает её только сама база (через pg_net) с секретным заголовком x-hook-secret.
 // Типы вызова: init (создать ключи), test, comment, reminder, sale (купили карточку в лавке), suggest (новое «Свой вопрос» — админу),
-// duel (вызов на дуэль в Секторе и «вызов принят»).
+// duel (вызов на дуэль в Секторе, «вызов принят», новая комната, «соперник найден»).
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { sendPush, vapidKey, b64u } from './webpush.js';
 
@@ -114,6 +114,21 @@ Deno.serve(async (req) => {
     if (d && body.event === 'invite') {
       out.sent = await sendTo(d.p2, {
         title: '⚔️ Вызов на дуэль', body: cut(d.p1_name, 40) + ' вызывает тебя в Сектор · ставка ' + d.stake + ' 🪙',
+        url: SITE + '?tab=duel', tag: 'duel' + body.duel_id
+      });
+    } else if (d && body.event === 'room') {
+      const list = ((await db.rpc('push_room_targets', { p_id: body.duel_id })).data || []) as { user_id: string }[];
+      let sent = 0;
+      for (const t of list) {
+        sent += await sendTo(t.user_id, {
+          title: '⚔️ Новая комната в Секторе', body: cut(d.p1_name, 40) + ' ждёт соперника · ставка ' + d.stake + ' 🪙',
+          url: SITE + '?tab=duel', tag: 'room' + body.duel_id
+        });
+      }
+      out.sent = sent;
+    } else if (d && body.event === 'join') {
+      out.sent = await sendTo(d.p1, {
+        title: '⚔️ Соперник найден', body: cut(d.p2_name, 40) + ' в твоей комнате — заходи в Сектор и жми «Готов»',
         url: SITE + '?tab=duel', tag: 'duel' + body.duel_id
       });
     } else if (d && body.event === 'accept') {

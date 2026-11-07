@@ -6,7 +6,8 @@
    * стрелка вращается; нажми, когда она внутри выделенного сектора; пропустил сектор — проигрыш;
    * фиолетовый сектор — разворот: стрелка крутится в другую сторону;
    * бирюзовый — «крутится круг»: стрелка замирает, вращается весь круг вместе со счётом;
-   * рамка разгорается к 40-му сектору и вспыхивает цветом особого сектора при попадании.
+   * рамка разгорается к 40-му сектору и вспыхивает цветом особого сектора при попадании;
+   * в дуэли у сектора три зоны: края — 1 очко, ближе к центру — 2, центр — 3.
    Модуль отдаёт window.SectorGame: mount() и функции ядра (для проверок). */
 (function (root) {
   'use strict';
@@ -168,6 +169,12 @@
         ctx.lineWidth = 24;
         ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : css.btn;
         ctx.beginPath(); ctx.arc(c, c, R, rad(center - width / 2), rad(center + width / 2)); ctx.stroke();
+        if (s && s.zones3) {
+          // дуэль: средняя зона «2 очка» — промежуточным цветом
+          var gw = Core.goodWidth(width);
+          ctx.strokeStyle = dead ? css.err : kind === 'rev' ? '#B9A2FF' : kind === 'spin' ? '#6FD9CE' : '#E8803A';
+          ctx.beginPath(); ctx.arc(c, c, R, rad(center - gw / 2), rad(center + gw / 2)); ctx.stroke();
+        }
         var pw = Core.perfectWidth(width);
         ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : '#FFB37A';
         ctx.beginPath(); ctx.arc(c, c, R, rad(center - pw / 2), rad(center + pw / 2)); ctx.stroke();
@@ -258,7 +265,7 @@
     function setScore(v) { scoreEl.textContent = String(v); }
 
     function resetRound(seed) {
-      g = Core.create(seed);
+      g = Core.create(seed, { zones3: !!duel });
       presses = []; missAt = -1; pulseAt = -1; bumpAt = -1; winAt = -1;
       rot = 0; arrowScreen = 0; paused = false; countdownEnd = 0;
       setScore(0); hint.textContent = ''; pop.textContent = ''; pop.className = 'sector-pop';
@@ -307,7 +314,8 @@
         if (s.spin) arrowScreen = wrap(rel + rot); else rot = wrap(arrowScreen - rel);
         flash(css.turq);
       }
-      if (r.res === 'perfect') { pulseAt = now; showPop('PERFECT +2', 'perfect'); }
+      if (r.res === 'perfect') { pulseAt = now; showPop('PERFECT +' + r.points, 'perfect'); }
+      else if (r.points > 1) showPop('+' + r.points, 'good');
       setScore(s.score);
       bumpAt = now;
       setGlow(s.hits / GLOW_FULL);

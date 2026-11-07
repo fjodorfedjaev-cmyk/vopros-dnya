@@ -48,7 +48,8 @@ Deno.serve(async (req) => {
   if (sec.status !== 'playing' || sec.my_end) return json({ status: sec.status, outcome: null, already: true });
 
   // переигрываем партию и записываем то, что насчитал сервер
-  const r = Core.replay(sec.seed, presses as number[], end, endT);
+  // в дуэли очки по трём зонам сектора (края 1, ближе к центру 2, центр 3)
+  const r = Core.replay(sec.seed, presses as number[], end, endT, { zones3: true });
   const used = (presses as number[]).filter((t) => t <= r.endAt);
   const st = await db.rpc('duel_store_result', {
     p_id: id, p_user: user.id, p_score: r.score, p_hits: r.hits, p_perfects: r.perfects,
