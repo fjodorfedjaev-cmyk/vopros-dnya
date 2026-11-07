@@ -1202,6 +1202,20 @@ body.kc-lock { overflow: hidden; }
 .kc-actions .btn { width: 100%; }
 .kc-note { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
 .kc-sheet .msg:empty { display: none; }
+/* переплавка: предупреждение и кнопка «зажми на 5 секунд» */
+/* предупреждение всплывает над кнопкой (поверх «Продать»/«На витрину»), чтобы кнопка не прыгала под пальцем */
+.kc-melt { position: relative; width: 100%; }
+.kc-warn { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 2; margin: 0; padding: 10px 12px; border-radius: 8px; background: #3A1812; border: 1px solid rgba(232, 54, 79, 0.6); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5); color: #FFC9BF; font-size: 14px; line-height: 1.35; text-align: center; animation: fadeIn 0.2s ease-out; }
+.btn.kc-hold { position: relative; overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+.btn.kc-hold.danger { touch-action: none; }
+.kc-hold-bar { position: absolute; inset: 0; background: #E8364F; transform: scaleX(0); transform-origin: left center; pointer-events: none; transition: transform 0.25s ease-out; }
+.kc-hold.holding .kc-hold-bar { transition: none; }
+.kc-hold-label { position: relative; pointer-events: none; }
+.kc-hold.nudge { animation: kcNudge 0.35s ease-in-out; }
+@keyframes kcNudge { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); } }
+.kc-warn-hint { display: block; margin-top: 6px; color: #fff; font-weight: 600; }
+.kc-warn-hint:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { .kc-hold.nudge { animation: none; } .kc-warn { animation: none; } }
 .kc-friend { padding: 22px 16px 18px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); }
 .kc-friend .shelves { width: 100%; }
 .kc-friend-name { margin: 0; font: 600 22px/1.2 var(--font-display); }

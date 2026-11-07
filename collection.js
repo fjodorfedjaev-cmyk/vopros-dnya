@@ -277,24 +277,12 @@
     } else {
       acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'Продать', onclick: function () { openSell(cardId, sel); } }));
     }
-    // переплавка: в два нажатия, чтобы не промахнуться
+    // переплавка: первое нажатие — предупреждение, подтвердить — зажать кнопку на 5 секунд
     if (sel.slot) {
       // подсказка уже выше
     } else if (c.melt_value) {
       if (sel.can_melt) {
-        var melt = el('button', { type: 'button', class: 'btn' });
-        setText(melt, 'Переплавить за ' + c.melt_value + ' 🪙');
-        var armed = false, t = null;
-        melt.addEventListener('click', function () {
-          if (!armed) {
-            armed = true; melt.classList.add('danger'); setText(melt, 'Точно? Копия №' + sel.serial + ' исчезнет');
-            t = setTimeout(function () { armed = false; melt.classList.remove('danger'); setText(melt, 'Переплавить за ' + c.melt_value + ' 🪙'); }, 3000);
-            return;
-          }
-          clearTimeout(t);
-          doMelt(c, sel, melt, msg);
-        });
-        acts.appendChild(melt);
+        acts.appendChild(meltHold(c, sel, msg));
       } else {
         acts.appendChild(el('p', { class: 'kc-note', text: 'Последняя копия в игре — её не переплавить.' }));
       }
@@ -348,6 +336,129 @@
       setText(msg, errText(e));
       try { await load(); draw(); } catch (e2) { /* ничего */ }
     }
+  }
+
+  // Кнопка «Переплавить» с защитой от случайного нажатия.
+  // 1) Первое нажатие — над кнопкой всплывает красное предупреждение, что копия уникальная и пропадёт навсегда.
+  // 2) Подтвердить — зажать кнопку и держать 5 секунд: полоска заполняется, идёт обратный отсчёт.
+  //    Отпустили раньше (или просто нажали) — подсказка «держи 5 секунд», ничего не происходит.
+  // 3) 10 секунд ничего не трогали — кнопка возвращается в обычный вид.
+  // Сама переплавка (и защита от двойного списания) — по-прежнему в базе (cards_melt).
+  var HOLD_MS = 5000, ARM_IDLE_MS = 10000;
+  function meltHold(c, sel, msg) {
+    var box = el('div', { class: 'kc-melt' });
+    var warn = el('p', { class: 'kc-warn', role: 'alert' });
+    var warnText = el('span');
+    var hint = el('span', { class: 'kc-warn-hint' });   // «держи 5 секунд» — тоже в всплывающем окошке, чтобы ничего не прыгало
+    warn.appendChild(warnText); warn.appendChild(hint);
+    var bar = el('span', { class: 'kc-hold-bar', 'aria-hidden': 'true' });
+    var label = el('span', { class: 'kc-hold-label' });
+    var btn = el('button', { type: 'button', class: 'btn kc-hold' }, [bar, label]);
+    box.appendChild(btn);
+    var idleText = 'Переплавить за ' + c.melt_value + ' 🪙';
+    var armText = 'Зажми и держи 5 секунд';
+    setText(label, idleText);
+
+    var armed = false, holding = false, t0 = 0, raf = 0, idle = null, done = false;
+    function alive() { return btn.isConnected; }   // окно закрыли — ничего не делаем
+    function restartIdle() { clearTimeout(idle); idle = setTimeout(disarm, ARM_IDLE_MS); }
+    function arm() {
+      armed = true;
+      btn.classList.add('danger');
+      setText(hint, '');
+      setText(warnText, 'Точно? Копия №' + sel.serial + ' «' + c.name + '» уникальная — после переплавки она пропадёт навсегда.');
+      box.appendChild(warn);          // всплывает над кнопкой и ничего не сдвигает
+      setText(label, armText);
+      setText(msg, '');
+      restartIdle();
+    }
+    function disarm() {
+      if (holding || done) return;
+      armed = false;
+      clearTimeout(idle);
+      btn.classList.remove('danger');
+      if (warn.parentNode) warn.parentNode.removeChild(warn);
+      setText(label, idleText);
+    }
+    function setBar(f) { bar.style.transform = 'scaleX(' + f + ')'; }
+    function startHold() {
+      if (!armed || holding || done || btn.disabled) return;
+      holding = true;
+      t0 = performance.now();
+      clearTimeout(idle);
+      btn.classList.add('holding');
+      setText(msg, '');
+      setText(hint, '');
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) { /* не важно */ } }
+      raf = requestAnimationFrame(step);
+    }
+    function step(now) {
+      if (!holding) return;
+      if (!alive()) { holding = false; return; }
+      var f = Math.min(1, (now - t0) / HOLD_MS);
+      setBar(f);
+      label.textContent = 'Держи… ' + Math.max(1, Math.ceil((HOLD_MS - (now - t0)) / 1000));
+      if (f >= 1) { finish(); return; }
+      raf = requestAnimationFrame(step);
+    }
+    // отпустили: раньше 5 секунд — подсказка; quiet — без подсказки (палец увели с кнопки)
+    function endHold(quiet) {
+      if (!holding) return;
+      var held = performance.now() - t0;
+      holding = false;
+      cancelAnimationFrame(raf);
+      btn.classList.remove('holding');
+      setBar(0);
+      setText(label, armText);
+      if (!quiet) {
+        setText(hint, held < 600
+          ? 'Одного нажатия мало — зажми и держи 5 секунд.'
+          : 'Не хватило — держи все 5 секунд, пока полоска не заполнится.');
+        btn.classList.remove('nudge'); void btn.offsetWidth; btn.classList.add('nudge');
+      }
+      restartIdle();
+    }
+    function finish() {
+      holding = false; done = true;
+      btn.classList.remove('holding');
+      if (navigator.vibrate) { try { navigator.vibrate(40); } catch (e) { /* не важно */ } }
+      doMelt(c, sel, btn, msg).then(function () {
+        if (!alive()) return;            // получилось — окно уже перерисовано
+        done = false; setBar(0); disarm();  // не получилось — ошибка в msg, кнопка снова обычная
+      });
+    }
+
+    // Первое нажатие (палец, мышь, Enter/пробел) — предупреждение. Дальше click ничего не делает.
+    btn.addEventListener('click', function (ev) { if (!armed) arm(); else ev.preventDefault(); });
+    // Удержание пальцем или мышью
+    btn.addEventListener('pointerdown', function (ev) {
+      if (!armed || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      ev.preventDefault();
+      try { btn.setPointerCapture(ev.pointerId); } catch (e) { /* не важно */ }
+      startHold();
+    });
+    btn.addEventListener('pointerup', function () { endHold(false); });
+    btn.addEventListener('pointercancel', function () { endHold(true); });
+    btn.addEventListener('lostpointercapture', function () { endHold(false); });
+    // палец увели далеко от кнопки — значит передумали
+    btn.addEventListener('pointermove', function (ev) {
+      if (!holding) return;
+      var r = btn.getBoundingClientRect(), pad = 32;
+      if (ev.clientX < r.left - pad || ev.clientX > r.right + pad || ev.clientY < r.top - pad || ev.clientY > r.bottom + pad) endHold(true);
+    });
+    // Удержание с клавиатуры: Enter или пробел
+    btn.addEventListener('keydown', function (ev) {
+      if (!armed || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+      ev.preventDefault();
+      if (!ev.repeat) startHold();
+    });
+    btn.addEventListener('keyup', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') { if (armed) ev.preventDefault(); endHold(false); }
+    });
+    btn.addEventListener('blur', function () { endHold(true); });
+    // долгое нажатие на телефоне не должно открывать меню или выделять текст
+    btn.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+    return box;
   }
 
   async function doMelt(c, sel, btn, msg) {
