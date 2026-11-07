@@ -4,9 +4,10 @@
 
    Что видно игроку:
    * стрелка вращается; нажми, когда она внутри выделенного сектора; пропустил сектор — проигрыш;
+   * красный сектор в полоску — ловушка: нажимать нельзя, стрелка должна его проехать;
    * фиолетовый сектор — разворот: стрелка крутится в другую сторону;
    * бирюзовый — «крутится круг»: стрелка замирает, вращается весь круг вместе со счётом;
-   * рамка разгорается к 40-му сектору и вспыхивает цветом особого сектора при попадании;
+   * рамка разгорается к 40-му сектору и вспыхивает цветом особого сектора при попадании (и красным — когда ловушка позади);
    * в дуэли у сектора три зоны: края — 1 очко, ближе к центру — 2, центр — 3.
    Модуль отдаёт window.SectorGame: mount() и функции ядра (для проверок). */
 (function (root) {
@@ -52,6 +53,7 @@
         tile: v('--tile', '#262422'), err: v('--err', '#FF7A6B'),
         special: v('--special', '#9B7BFF'), specialHi: v('--special-hi', '#CDBEFF'),
         turq: v('--turq', '#2EC4B6'), turqHi: v('--turq-hi', '#A6EEE6'),
+        trap: v('--trap', '#E8364F'), trapDark: v('--trap-dark', '#5C1220'),
         mono: v('--font-mono', 'ui-monospace, monospace')
       };
     }
@@ -91,6 +93,7 @@
     var base = 0;           // performance.now() в момент «0 мс» партии (паузы сдвигают его вперёд)
     var presses = [];       // моменты нажатий, мс от старта — по ним сервер переигрывает дуэль
     var sectorFadeFrom = 0, pulseAt = -1, missAt = -1, bumpAt = -1;
+    var trapsShown = 0;     // сколько пройденных ловушек уже показали (вспышка, счёт)
     var rot = 0, arrowScreen = 0;   // поворот круга на экране и место стрелки, пока крутится круг
     var winAt = -1, winA = 0, winV = 0;
     var oppShown = '';
@@ -167,17 +170,25 @@
         ctx.globalAlpha = alpha;
         ctx.lineCap = 'butt';
         ctx.lineWidth = 24;
-        ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : css.btn;
+        ctx.strokeStyle = dead ? css.err : kind === 'trap' ? css.trap : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : css.btn;
         ctx.beginPath(); ctx.arc(c, c, R, rad(center - width / 2), rad(center + width / 2)); ctx.stroke();
-        if (s && s.zones3) {
+        if (kind === 'trap') {
+          // ловушка: тёмные поперечные полосы, как на шлагбауме; центра (PERFECT) у неё нет
+          ctx.strokeStyle = css.trapDark;
+          ctx.setLineDash([3, 6]);
+          ctx.beginPath(); ctx.arc(c, c, R, rad(center - width / 2), rad(center + width / 2)); ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (s && s.zones3) {
           // дуэль: средняя зона «2 очка» — промежуточным цветом
           var gw = Core.goodWidth(width);
           ctx.strokeStyle = dead ? css.err : kind === 'rev' ? '#B9A2FF' : kind === 'spin' ? '#6FD9CE' : '#E8803A';
           ctx.beginPath(); ctx.arc(c, c, R, rad(center - gw / 2), rad(center + gw / 2)); ctx.stroke();
         }
-        var pw = Core.perfectWidth(width);
-        ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : '#FFB37A';
-        ctx.beginPath(); ctx.arc(c, c, R, rad(center - pw / 2), rad(center + pw / 2)); ctx.stroke();
+        if (kind !== 'trap') {
+          var pw = Core.perfectWidth(width);
+          ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : '#FFB37A';
+          ctx.beginPath(); ctx.arc(c, c, R, rad(center - pw / 2), rad(center + pw / 2)); ctx.stroke();
+        }
         ctx.globalAlpha = 1;
       }
       // мягкое кольцо при PERFECT
@@ -243,10 +254,13 @@
           }
         } else {
           var t = et(now), s = st();
-          g.tick(t);
+          // ловушку засчитываем с той же задержкой, что и пропуск: вдруг нажатие ещё в пути
+          // (сервер учтёт его по времени — значит, и телефон должен успеть его учесть)
+          if (!(s.phase === 'running' && s.kind === 'trap' && t - SKIP_GRACE_MS <= s.exitAt)) g.tick(t);
+          syncTraps(now);
           // пропуск: стрелка проехала сектор без нажатия
           if (s.phase === 'over') { /* уже закончилась — ждём экрана итога */ }
-          else if (s.phase === 'running' && t - SKIP_GRACE_MS > s.exitAt) {
+          else if (s.phase === 'running' && s.kind !== 'trap' && t - SKIP_GRACE_MS > s.exitAt) {
             g.finish(s.exitAt, 'skip');
             lose('skip');
           } else if (duel) {
@@ -266,7 +280,7 @@
 
     function resetRound(seed) {
       g = Core.create(seed, { zones3: !!duel });
-      presses = []; missAt = -1; pulseAt = -1; bumpAt = -1; winAt = -1;
+      presses = []; missAt = -1; pulseAt = -1; bumpAt = -1; winAt = -1; trapsShown = 0;
       rot = 0; arrowScreen = 0; paused = false; countdownEnd = 0;
       setScore(0); hint.textContent = ''; pop.textContent = ''; pop.className = 'sector-pop';
       setGlow(0);
@@ -303,9 +317,10 @@
       var t = Math.round(et(at) * 1000) / 1000;
       if (t < 0) return;
       var r = g.press(t);
+      syncTraps(now);                        // ловушка могла остаться позади как раз к этому нажатию
       if (!r) return;                        // во время перехода между секторами нажатие не считается
       presses.push(t);
-      if (r.res === 'skip' || r.res === 'miss') { lose(r.res); return; }
+      if (r.res === 'skip' || r.res === 'miss' || r.res === 'trap') { lose(r.res); return; }
       var s = st();
       if (r.kind === 'rev') flash(css.special);
       else if (r.kind === 'spin') {
@@ -316,6 +331,20 @@
       }
       if (r.res === 'perfect') { pulseAt = now; showPop('PERFECT +' + r.points, 'perfect'); }
       else if (r.points > 1) showPop('+' + r.points, 'good');
+      setScore(s.score);
+      bumpAt = now;
+      setGlow(s.hits / GLOW_FULL);
+      sectorFadeFrom = now;
+      if (duel && duel.onProgress) duel.onProgress({ score: s.score, hits: s.hits });
+      loop();
+    }
+
+    // Стрелка проехала ловушку: +1 очко, рамка вспыхивает красным — как при попадании в особый сектор.
+    function syncTraps(now) {
+      var s = st();
+      if (!s || s.traps <= trapsShown) return;
+      trapsShown = s.traps;
+      flash(css.trap);
       setScore(s.score);
       bumpAt = now;
       setGlow(s.hits / GLOW_FULL);
@@ -529,7 +558,7 @@
         var s = st(), now = performance.now(), rel = relAngle(now);
         if (!s) return { screen: screen };
         return { screen: screen, phase: s.phase, hits: s.hits, perfects: s.perfects, score: s.score, center: s.center, width: s.width,
-          speed: s.speed, dir: s.dir, kind: s.kind, special: s.kind === 'rev', spin: s.spin, untilRev: s.untilRev, untilSpin: s.untilSpin,
+          speed: s.speed, dir: s.dir, kind: s.kind, spin: s.spin, untilSpin: s.untilSpin, traps: s.traps,
           exitAt: s.exitAt, t: et(now), angle: rel, rot: dialRot(rel), arrowScreen: wrap(rel + dialRot(rel)), end: s.end, presses: presses.slice(), seed: s.seed };
       },
       _press: press

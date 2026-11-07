@@ -18,6 +18,8 @@
   --special-hi: #CDBEFF;  /* светлый фиолетовый: PERFECT-зона особого сектора */
   --turq: #2EC4B6;        /* бирюзовый: «крутится круг» в Секторе (можно использовать и в других местах) */
   --turq-hi: #A6EEE6;     /* светлый бирюзовый: PERFECT-зона бирюзового сектора */
+  --trap: #E8364F;        /* красный: ловушка в Секторе (нажимать нельзя) */
+  --trap-dark: #5C1220;   /* тёмно-красные полосы на ловушке */
   --font-display: 'Literata', Georgia, 'Times New Roman', serif;
   --font-body: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
