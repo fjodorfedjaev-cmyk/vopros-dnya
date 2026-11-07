@@ -7,6 +7,7 @@
    * красный сектор в полоску — ловушка: нажимать нельзя, стрелка должна его проехать;
    * фиолетовый сектор — разворот: стрелка крутится в другую сторону;
    * бирюзовый — «крутится круг»: стрелка замирает, вращается весь круг вместе со счётом;
+   * сектор мягко светится своим цветом (сильнее с уровнем), у него слегка скруглённые углы, и появляется он плавно (0,1 с);
    * рамка, кружок вокруг счёта и деления циферблата разгораются к 40-му сектору и вспыхивают цветом особого сектора при попадании
      (и красным — когда ловушка позади);
    * в дуэли у сектора три зоны: края — 1 очко, ближе к центру — 2, центр — 3.
@@ -20,6 +21,9 @@
   var COUNTDOWN_MS = 600;    // один шаг обратного отсчёта после возврата на вкладку
   var SKIP_GRACE_MS = 120;   // пропуск объявляем чуть позже: вдруг нажатие ещё в пути
   var WIN_STOP_MS = 1400;    // при победе в дуэли стрелка плавно останавливается за это время
+  var SECTOR_W = 24;         // толщина дуги сектора, px
+  var CORNER = 4;            // скругление углов сектора, px (края остаются ровно на границе попадания)
+  var FADE_IN_MS = 100;      // новый сектор проявляется за 0,1 с
   var wrap = Core.wrap;
 
   var reduceMotion = !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -147,6 +151,32 @@
     }
 
     function rad(deg) { return (deg - 90) * Math.PI / 180; }
+    // '#RRGGBB' (или '#RGB') → 'rgba(r,g,b,a)': нужно, чтобы менять силу свечения
+    function rgba(hex, a) {
+      var m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex).trim());
+      if (!m) return hex;
+      var h = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1];
+      return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16) + ',' + a + ')';
+    }
+    // Контур кусочка кольца (сектора) от угла d0 до d1 (градусы) толщиной w со скруглёнными углами радиуса r.
+    // Скругление «внутрь»: крайние линии остаются ровно на границе попадания.
+    function bandPath(c, R, w, d0, d1, r) {
+      var ro = R + w / 2, ri = R - w / 2, a0 = rad(d0), a1 = rad(d1);
+      r = Math.max(0, Math.min(r, w / 2, (a1 - a0) * ri / 2));   // узкий кусочек — скругление меньше
+      var dO = r / ro, dI = r / ri;
+      function pt(rr, a) { return [c + Math.cos(a) * rr, c + Math.sin(a) * rr]; }
+      var p;
+      ctx.beginPath();
+      ctx.arc(c, c, ro, a0 + dO, a1 - dO);
+      p = pt(ro, a1); var q = pt(ro - r, a1); ctx.quadraticCurveTo(p[0], p[1], q[0], q[1]);
+      q = pt(ri + r, a1); ctx.lineTo(q[0], q[1]);
+      p = pt(ri, a1); q = pt(ri, a1 - dI); ctx.quadraticCurveTo(p[0], p[1], q[0], q[1]);
+      ctx.arc(c, c, ri, a1 - dI, a0 + dI, true);
+      p = pt(ri, a0); q = pt(ri + r, a0); ctx.quadraticCurveTo(p[0], p[1], q[0], q[1]);
+      q = pt(ro - r, a0); ctx.lineTo(q[0], q[1]);
+      p = pt(ro, a0); q = pt(ro, a0 + dO); ctx.quadraticCurveTo(p[0], p[1], q[0], q[1]);
+      ctx.closePath();
+    }
 
     // Сила вспышки сейчас (0…1) — по тем же шагам, что у вспышки рамки: ярко → слабее → снова ярко → гаснет за 1,2 с.
     function flashLevel(now) {
@@ -225,34 +255,46 @@
       // сектор
       var center = s ? s.center : 120, width = s ? s.width : CONFIG.startWidth, kind = s ? s.kind : 'normal';
       var alpha = 1;
+      // новый сектор проявляется плавно (возраст сектора — время партии с его появления)
+      if (s && s.phase === 'running' && screen === 'play' && !reduceMotion) {
+        var age = (paused ? et(pauseAt) : et(now)) - s.t0;
+        if (age < FADE_IN_MS) { var fk = Math.max(0, age / FADE_IN_MS); alpha = fk * (2 - fk); }  // ease-out
+      }
       if (s && s.phase === 'transition') alpha = Math.max(0, 1 - (now - sectorFadeFrom) / (CONFIG.transitionMs * 0.6));
       if (screen === 'start' || screen === 'wait') alpha = 0.9;
       if (winAt >= 0) alpha = Math.max(0, 1 - (now - winAt) / 500);   // победа: сектор тает
       if (alpha > 0) {
         var dead = missAt >= 0;
+        var col = dead ? css.err : kind === 'trap' ? css.trap : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : css.btn;
+        var d0 = center - width / 2, d1 = center + width / 2;
+        ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.lineCap = 'butt';
-        ctx.lineWidth = 24;
-        ctx.strokeStyle = dead ? css.err : kind === 'trap' ? css.trap : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : css.btn;
-        ctx.beginPath(); ctx.arc(c, c, R, rad(center - width / 2), rad(center + width / 2)); ctx.stroke();
+        // сам сектор + мягкое свечение его цвета: немного всегда, сильнее — по мере разгорания рамки
+        ctx.shadowColor = rgba(col, 0.35 + 0.55 * glowShow);
+        ctx.shadowBlur = 8 + 14 * glowShow;
+        ctx.fillStyle = col;
+        bandPath(c, R, SECTOR_W, d0, d1, CORNER); ctx.fill();
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
         if (kind === 'trap') {
-          // ловушка: тёмные поперечные полосы, как на шлагбауме; центра (PERFECT) у неё нет
-          ctx.strokeStyle = css.trapDark;
+          // ловушка: тёмные поперечные полосы, как на шлагбауме (внутри контура); центра (PERFECT) у неё нет
+          ctx.save();
+          bandPath(c, R, SECTOR_W, d0, d1, CORNER); ctx.clip();
+          ctx.strokeStyle = css.trapDark; ctx.lineWidth = SECTOR_W + 2; ctx.lineCap = 'butt';
           ctx.setLineDash([3, 6]);
-          ctx.beginPath(); ctx.arc(c, c, R, rad(center - width / 2), rad(center + width / 2)); ctx.stroke();
-          ctx.setLineDash([]);
+          ctx.beginPath(); ctx.arc(c, c, R, rad(d0), rad(d1)); ctx.stroke();
+          ctx.restore();
         } else if (s && s.zones3) {
           // дуэль: средняя зона «2 очка» — промежуточным цветом
           var gw = Core.goodWidth(width);
-          ctx.strokeStyle = dead ? css.err : kind === 'rev' ? '#B9A2FF' : kind === 'spin' ? '#6FD9CE' : '#E8803A';
-          ctx.beginPath(); ctx.arc(c, c, R, rad(center - gw / 2), rad(center + gw / 2)); ctx.stroke();
+          ctx.fillStyle = dead ? css.err : kind === 'rev' ? '#B9A2FF' : kind === 'spin' ? '#6FD9CE' : '#E8803A';
+          bandPath(c, R, SECTOR_W, center - gw / 2, center + gw / 2, CORNER / 2); ctx.fill();
         }
         if (kind !== 'trap') {
           var pw = Core.perfectWidth(width);
-          ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : '#FFB37A';
-          ctx.beginPath(); ctx.arc(c, c, R, rad(center - pw / 2), rad(center + pw / 2)); ctx.stroke();
+          ctx.fillStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : '#FFB37A';
+          bandPath(c, R, SECTOR_W, center - pw / 2, center + pw / 2, CORNER / 2); ctx.fill();
         }
-        ctx.globalAlpha = 1;
+        ctx.restore();
       }
       // мягкое кольцо при PERFECT
       if (pulseAt >= 0 && !reduceMotion) {
