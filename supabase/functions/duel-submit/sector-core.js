@@ -7,7 +7,9 @@
    * Всё случайное (где появится сектор, какого он цвета) берётся из «зерна» —
      одно зерно даёт одну и ту же игру. Сектор ставится относительно стрелки, поэтому у всех игроков
      каждый сектор на том же расстоянии впереди, той же ширины и того же цвета.
-   * Время — миллисекунды от старта игры. Новый сектор появляется ровно через 300 мс после попадания.
+   * Время — миллисекунды от старта игры. Новый сектор появляется сразу в момент попадания (после ловушки — через
+     150 мс после того, как стрелка её проехала). Первые 100 мс после попадания нажатия не считаются — защита от
+     случайного двойного касания (честно попасть так быстро нельзя: сектор всегда дальше).
    * Пропустил сектор (стрелка проехала его, а нажатия не было) — проигрыш. Чтобы успевать, новый сектор
      появляется не ближе 90° и не ближе, чем стрелка доедет за 0,4 секунды — в начале игры. С каждым попаданием
      этот запас уменьшается: к 80-му сектору — 60° и 0,27 с.
@@ -23,14 +25,13 @@
      Чаще — через полкруга (место встречи видно заранее, поэтому запас на реакцию вдвое меньше), реже — через целый круг. Следующий лаймовый (сразу или через один сектор) — снова одна стрелка;
      сектор после этого появляется дальше обычного (есть время понять, куда идёт стрелка). С «крутится круг» не пересекается.
    * Ловушка: любое нажатие, пока она на круге, — проигрыш. Стрелка проехала её — засчитывается как
-     попадание (+1 очко), через 300 мс появляется следующий сектор.
+     попадание (+1 очко), через 150 мс появляется следующий сектор.
    * Очки. Обычная игра: попал — 1, PERFECT (центр) — 2. В дуэли (zones3) сектор делится на 5 равных полос:
      края — 1 очко, ближе к центру — 2, центр — 3 (центр и есть PERFECT). */
 (function (root) {
   'use strict';
 
-  // Все параметры игры в одном месте. База (game_min_ms) считает минимум по 90° и скорости до 360 —
-  // это не строже настоящей игры, поэтому честные результаты всегда проходят.
+  // Все параметры игры в одном месте. База (game_min_ms) считает минимальное время игры — см. minTimeMs.
   var CONFIG = {
     startSpeed: 110,      // градусов в секунду
     speedStep: 6,         // прибавка скорости за каждое попадание
@@ -50,7 +51,9 @@
     farEnd: 200,          // …и не дальше 200° к fullAt-му сектору (между — плавно)
     fullAt: 80,           // к этому сектору запас на реакцию и дальний край доходят до конечных значений
     nearBias: 1,          // место выбирается как r^(1 + nearBias·доля пути к fullAt): чем дальше, тем чаще ближе
-    transitionMs: 300,    // пауза между раундами
+    transitionMs: 0,      // новый сектор — сразу после попадания
+    afterTrapMs: 150,     // после ловушки — через 150 мс (телефон ждёт 120 мс, вдруг нажатие ещё в пути)
+    pressLockMs: 100,     // 100 мс после попадания нажатия не считаются (двойное касание)
     // Первое появление особых секторов (числа — сколько попаданий до него): строго по порядку.
     firstTrap: [4, 7],    // красный — 5-й…8-й сектор игры
     firstReverse: [9, 12],// фиолетовый — 10-й…13-й
@@ -127,17 +130,18 @@
     var span = Math.max(0, far - gap - width) * (near || 1);
     return wrap(arrow + (dir === -1 ? -1 : 1) * (gap + width / 2 + Math.pow(r, 1 + CONFIG.nearBias * k) * span));
   }
-  // Пока стрелок две (раздвоение): центр сектора — в точке, где стрелки встретятся. axis — точка раздвоения;
+  // Пока стрелок две (раздвоение): сектор — в точке, где стрелки встретятся. axis — точка раздвоения;
   // стрелки встречаются в axis и axis + 180°, то есть каждые полкруга. Ближайшая встреча (через полкруга) —
-  // если до неё не меньше половины обычного запаса; в splitFullChance случаев (r) — следующая, через целый круг,
-  // если сектор не заходит за стрелку сзади.
+  // если до неё не меньше половины обычного запаса; в splitFullChance случаев (r) — следующая, через целый круг
+  // (сектор появляется прямо под стрелками, они расходятся и встречаются в нём снова).
+  // Возвращает путь стрелки до центра сектора в градусах (может быть чуть больше 360 — целый круг).
   function placeMirror(arrow, width, dir, speed, axis, hits, r) {
     var sign = dir === -1 ? -1 : 1;
     var gap = gapFor(speed || CONFIG.startSpeed, hits) * CONFIG.splitGapShare + width / 2;
     var d = wrap(sign * (axis - arrow)) % 180;
     while (d < gap) d += 180;
-    if (r < CONFIG.splitFullChance && d + 180 + width / 2 <= 360 - CONFIG.gapBehind) d += 180;
-    return wrap(arrow + sign * d);
+    if (r < CONFIG.splitFullChance && d + 180 <= 360 + width / 2) d += 180;
+    return d;
   }
   // Случайное целое от a до b включительно. r — случайное число от 0 до 1.
   function between(range, r) { return range[0] + Math.min(range[1] - range[0], Math.floor(r * (range[1] - range[0] + 1))); }
@@ -194,11 +198,13 @@
   }
   function randomSeed() { return 1 + Math.floor(Math.random() * 2147483646); }
 
-  // Минимально возможное время игры с таким числом попаданий (как считает база — по 90°).
+  // Минимально возможное время игры с таким числом попаданий — так же считает база (game_min_ms): по 45° на сектор
+  // при скорости до 360. Это не строже настоящей игры (даже при двух стрелках запас не меньше ~45°), поэтому
+  // честные результаты всегда проходят (база ещё и даёт запас 25%).
   function minTimeMs(hits) {
     var t = 0;
-    for (var i = 0; i < hits; i++) t += CONFIG.gapAhead / Math.min(360, CONFIG.startSpeed + i * CONFIG.speedStep) * 1000;
-    return t + Math.max(hits - 1, 0) * CONFIG.transitionMs;
+    for (var i = 0; i < hits; i++) t += 45 / Math.min(360, CONFIG.startSpeed + i * CONFIG.speedStep) * 1000;
+    return t;
   }
 
   // Одна партия по зерну. Все t — мс от старта игры. opts.zones3 — очки по трём зонам (дуэль).
@@ -212,21 +218,19 @@
       split: false, axis: 0, untilSplit: 0, sinceSplit: 0, wide: false, // раздвоение: axis — где раздвоилась стрелка
       firstAt: { trap: 0, rev: 0, spin: 0, split: 0 },                 // на каком попадании впервые появится каждый вид
       seen: { trap: false, rev: false, spin: false, split: false },    // какие виды уже были в этой игре
-      center: 0, width: widthFor(0), exitAt: 0, transitionEnd: 0,
+      center: 0, width: widthFor(0), dist: 0, exitAt: 0, transitionEnd: 0, lockUntil: 0, // dist — путь стрелки до центра
       hits: 0, perfects: 0, score: 0, end: null, endAt: 0
     };
     function angleAt(t) { return wrap(s.a0 + s.dir * s.speed * Math.max(0, t - s.t0) / 1000); }
     function rebase(t) { s.a0 = angleAt(t); s.t0 = t; }
-    // Когда стрелка проедет дальний край сектора (после этого — пропуск)
-    function exitTime() {
-      var far = s.center + s.dir * s.width / 2;
-      return s.t0 + wrap(s.dir * (far - s.a0)) / s.speed * 1000;
-    }
+    // Когда стрелка проедет дальний край сектора (после этого — пропуск). dist — путь до центра от точки появления.
+    function exitTime() { return s.t0 + (s.dist + s.width / 2) / s.speed * 1000; }
     s.firstAt.trap = between(CONFIG.firstTrap, rnd());
     s.firstAt.rev = between(CONFIG.firstReverse, rnd());
     s.firstAt.spin = between(CONFIG.firstSpin, rnd());
     s.firstAt.split = between(CONFIG.firstSplit, rnd());
     s.center = placeSector(0, s.width, rnd(), 1, s.speed);
+    s.dist = wrap(s.center);
     s.exitAt = exitTime();
 
     function nextRound(t) {
@@ -236,8 +240,16 @@
       s.kind = pickKind(s, rnd());
       s.trapRow = s.kind === 'trap' ? s.trapRow + 1 : 0;
       var r = rnd(), arrow = angleAt(t);
-      if (s.split) s.center = placeMirror(arrow, s.width, s.dir, s.speed, s.axis, s.hits, r);   // две стрелки — точка их встречи
-      else s.center = placeSector(arrow, s.width, r, s.dir, s.speed, s.kind === 'trap' ? CONFIG.trapNear : 1, s.wide, s.hits);
+      if (s.split) {                                     // две стрелки — точка их встречи
+        s.dist = placeMirror(arrow, s.width, s.dir, s.speed, s.axis, s.hits, r);
+        s.center = wrap(arrow + s.dir * s.dist);
+        // целый круг: стрелки сначала выходят из сектора — пока не выйдут, нажатия не считаются
+        var firstPass = s.dist - 360 + s.width / 2;
+        if (firstPass > 0) s.lockUntil = Math.max(s.lockUntil, t + firstPass / s.speed * 1000 + 1);
+      } else {
+        s.center = placeSector(arrow, s.width, r, s.dir, s.speed, s.kind === 'trap' ? CONFIG.trapNear : 1, s.wide, s.hits);
+        s.dist = wrap(s.dir * (s.center - arrow));
+      }
       s.wide = false;
       s.exitAt = exitTime();
       s.phase = 'running';
@@ -261,7 +273,8 @@
       if (kind !== 'normal') s.seen[kind] = true;
       s.score += points;
       s.phase = 'transition';
-      s.transitionEnd = t + CONFIG.transitionMs;
+      s.transitionEnd = t + (kind === 'trap' ? CONFIG.afterTrapMs : CONFIG.transitionMs);
+      s.lockUntil = t + CONFIG.pressLockMs;
     }
     // Довести игру до момента t: стрелка проехала ловушку — она пройдена (ровно в момент выезда);
     // пауза между раундами закончилась — новый сектор (ровно в её конце).
@@ -284,7 +297,7 @@
     function press(t) {
       if (s.phase === 'over') return null;
       tick(t);
-      if (s.phase !== 'running') return null;
+      if (s.phase !== 'running' || t < s.lockUntil) return null;   // пауза или защита от двойного касания
       if (s.kind === 'trap') { finish(Math.max(t, s.t0), 'miss'); return { res: 'trap', kind: 'trap' }; }
       if (t > s.exitAt) { finish(s.exitAt, 'skip'); return { res: 'skip', kind: s.kind }; }
       if (t < s.t0) t = s.t0;

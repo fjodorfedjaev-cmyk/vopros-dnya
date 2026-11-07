@@ -25,7 +25,8 @@
   var WIN_STOP_MS = 1400;    // при победе в дуэли стрелка плавно останавливается за это время
   var SECTOR_W = 24;         // толщина дуги сектора, px
   var CORNER = 4;            // скругление углов сектора, px (края остаются ровно на границе попадания)
-  var FADE_IN_MS = 100;      // новый сектор проявляется за 0,1 с
+  var FADE_IN_MS = 60;       // новый сектор появляется сразу ярким (с 40%) и за 0,06 с доходит до полной яркости
+  var FADE_OUT_MS = 180;     // пройденный сектор гаснет за 0,18 с (уже рядом с новым)
   var wrap = Core.wrap;
 
   var reduceMotion = !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -101,6 +102,7 @@
     var base = 0;           // performance.now() в момент «0 мс» партии (паузы сдвигают его вперёд)
     var presses = [];       // моменты нажатий, мс от старта — по ним сервер переигрывает дуэль
     var sectorFadeFrom = 0, pulseAt = -1, missAt = -1, bumpAt = -1;
+    var prevSec = null;     // пройденный сектор, который ещё гаснет: { center, width, kind, at }
     var trapsShown = 0;     // сколько пройденных ловушек уже показали (вспышка, счёт)
     // свечение кружка вокруг счёта — то же, что у рамки: glowV — сколько должно гореть, glowShow — сколько горит сейчас
     // (догоняет плавно, как рамка в CSS), вспышка — цветом особого сектора
@@ -198,6 +200,39 @@
       }
       return 0;
     }
+    // Нарисовать сектор (центр и ширина в градусах на круге). dead — проигрыш (всё красное), zones3 — три зоны дуэли.
+    function drawSector(c, R, center, width, kind, alpha, dead, zones3) {
+      var col = dead ? css.err : kind === 'trap' ? css.trap : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : kind === 'split' ? css.split : css.btn;
+      var d0 = center - width / 2, d1 = center + width / 2;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      // сам сектор + мягкое свечение его цвета: немного всегда, сильнее — по мере разгорания рамки
+      ctx.shadowColor = rgba(col, 0.35 + 0.55 * glowShow);
+      ctx.shadowBlur = 8 + 14 * glowShow;
+      ctx.fillStyle = col;
+      bandPath(c, R, SECTOR_W, d0, d1, CORNER); ctx.fill();
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+      if (kind === 'trap') {
+        // ловушка: тёмные поперечные полосы, как на шлагбауме (внутри контура); центра (PERFECT) у неё нет
+        ctx.save();
+        bandPath(c, R, SECTOR_W, d0, d1, CORNER); ctx.clip();
+        ctx.strokeStyle = css.trapDark; ctx.lineWidth = SECTOR_W + 2; ctx.lineCap = 'butt';
+        ctx.setLineDash([3, 6]);
+        ctx.beginPath(); ctx.arc(c, c, R, rad(d0), rad(d1)); ctx.stroke();
+        ctx.restore();
+      } else if (zones3) {
+        // дуэль: средняя зона «2 очка» — промежуточным цветом
+        var gw = Core.goodWidth(width);
+        ctx.fillStyle = dead ? css.err : kind === 'rev' ? '#B9A2FF' : kind === 'spin' ? '#6FD9CE' : kind === 'split' ? '#DCEF8A' : '#E8803A';
+        bandPath(c, R, SECTOR_W, center - gw / 2, center + gw / 2, CORNER / 2); ctx.fill();
+      }
+      if (kind !== 'trap') {
+        var pw = Core.perfectWidth(width);
+        ctx.fillStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : kind === 'split' ? css.splitHi : '#FFB37A';
+        bandPath(c, R, SECTOR_W, center - pw / 2, center + pw / 2, CORNER / 2); ctx.fill();
+      }
+      ctx.restore();
+    }
     // Деления циферблата (12 палочек между внутренним и внешним кругом). color/alpha/blur — для свечения поверх обычных.
     function ticks(c, R, color, alpha, blur) {
       if (alpha <= 0.01) return;
@@ -256,50 +291,24 @@
       ticks(c, R, css.line, 1, 0);
       ticks(c, R, css.accent, glowShow, 10);
       ticks(c, R, flashColor, fl, 12);
+      // пройденный сектор гаснет (новый уже на своём месте)
+      if (prevSec) {
+        var pk = (now - prevSec.at) / FADE_OUT_MS;
+        if (pk >= 1 || reduceMotion) prevSec = null;
+        else drawSector(c, R, prevSec.center, prevSec.width, prevSec.kind, 1 - pk, false, s && s.zones3);
+      }
       // сектор
       var center = s ? s.center : 120, width = s ? s.width : CONFIG.startWidth, kind = s ? s.kind : 'normal';
       var alpha = 1;
-      // новый сектор проявляется плавно (возраст сектора — время партии с его появления)
+      // новый сектор: сразу ярко, за 0,06 с — на полную (возраст сектора — время партии с его появления)
       if (s && s.phase === 'running' && screen === 'play' && !reduceMotion) {
         var age = (paused ? et(pauseAt) : et(now)) - s.t0;
-        if (age < FADE_IN_MS) { var fk = Math.max(0, age / FADE_IN_MS); alpha = fk * (2 - fk); }  // ease-out
+        if (age < FADE_IN_MS) { var fk = Math.max(0, age / FADE_IN_MS); alpha = 0.4 + 0.6 * fk * (2 - fk); }
       }
-      if (s && s.phase === 'transition') alpha = Math.max(0, 1 - (now - sectorFadeFrom) / (CONFIG.transitionMs * 0.6));
+      if (s && s.phase === 'transition') alpha = 0;          // ловушка позади, следующий сектор ещё не появился
       if (screen === 'start' || screen === 'wait') alpha = 0.9;
       if (winAt >= 0) alpha = Math.max(0, 1 - (now - winAt) / 500);   // победа: сектор тает
-      if (alpha > 0) {
-        var dead = missAt >= 0;
-        var col = dead ? css.err : kind === 'trap' ? css.trap : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : kind === 'split' ? css.split : css.btn;
-        var d0 = center - width / 2, d1 = center + width / 2;
-        ctx.save();
-        ctx.globalAlpha = alpha;
-        // сам сектор + мягкое свечение его цвета: немного всегда, сильнее — по мере разгорания рамки
-        ctx.shadowColor = rgba(col, 0.35 + 0.55 * glowShow);
-        ctx.shadowBlur = 8 + 14 * glowShow;
-        ctx.fillStyle = col;
-        bandPath(c, R, SECTOR_W, d0, d1, CORNER); ctx.fill();
-        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-        if (kind === 'trap') {
-          // ловушка: тёмные поперечные полосы, как на шлагбауме (внутри контура); центра (PERFECT) у неё нет
-          ctx.save();
-          bandPath(c, R, SECTOR_W, d0, d1, CORNER); ctx.clip();
-          ctx.strokeStyle = css.trapDark; ctx.lineWidth = SECTOR_W + 2; ctx.lineCap = 'butt';
-          ctx.setLineDash([3, 6]);
-          ctx.beginPath(); ctx.arc(c, c, R, rad(d0), rad(d1)); ctx.stroke();
-          ctx.restore();
-        } else if (s && s.zones3) {
-          // дуэль: средняя зона «2 очка» — промежуточным цветом
-          var gw = Core.goodWidth(width);
-          ctx.fillStyle = dead ? css.err : kind === 'rev' ? '#B9A2FF' : kind === 'spin' ? '#6FD9CE' : kind === 'split' ? '#DCEF8A' : '#E8803A';
-          bandPath(c, R, SECTOR_W, center - gw / 2, center + gw / 2, CORNER / 2); ctx.fill();
-        }
-        if (kind !== 'trap') {
-          var pw = Core.perfectWidth(width);
-          ctx.fillStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : kind === 'split' ? css.splitHi : '#FFB37A';
-          bandPath(c, R, SECTOR_W, center - pw / 2, center + pw / 2, CORNER / 2); ctx.fill();
-        }
-        ctx.restore();
-      }
+      if (alpha > 0) drawSector(c, R, center, width, kind, alpha, missAt >= 0, s && s.zones3);
       // мягкое кольцо при PERFECT
       if (pulseAt >= 0 && !reduceMotion) {
         var k = (now - pulseAt) / 450;
@@ -387,8 +396,9 @@
           var t = et(now), s = st();
           // ловушку засчитываем с той же задержкой, что и пропуск: вдруг нажатие ещё в пути
           // (сервер учтёт его по времени — значит, и телефон должен успеть его учесть)
+          var snap = trapSnap();
           if (!(s.phase === 'running' && s.kind === 'trap' && t - SKIP_GRACE_MS <= s.exitAt)) g.tick(t);
-          syncTraps(now);
+          syncTraps(now, snap);
           // пропуск: стрелка проехала сектор без нажатия
           if (s.phase === 'over') { /* уже закончилась — ждём экрана итога */ }
           else if (s.phase === 'running' && s.kind !== 'trap' && t - SKIP_GRACE_MS > s.exitAt) {
@@ -411,7 +421,7 @@
 
     function resetRound(seed) {
       g = Core.create(seed, { zones3: !!duel });
-      presses = []; missAt = -1; pulseAt = -1; bumpAt = -1; winAt = -1; trapsShown = 0;
+      presses = []; missAt = -1; pulseAt = -1; bumpAt = -1; winAt = -1; trapsShown = 0; prevSec = null;
       rot = 0; arrowScreen = 0; paused = false; countdownEnd = 0;
       setScore(0); hint.textContent = ''; pop.textContent = ''; pop.className = 'sector-pop';
       setGlow(0); glowShow = 0; flashAt = -1; ghostEndAt = -1;
@@ -447,12 +457,16 @@
       // время нажатия округляем до тысячной миллисекунды — ровно это число уйдёт на сервер для проверки
       var t = Math.round(et(at) * 1000) / 1000;
       if (t < 0) return;
+      var snap = trapSnap();
       var r = g.press(t);
-      syncTraps(now);                        // ловушка могла остаться позади как раз к этому нажатию
-      if (!r) return;                        // во время перехода между секторами нажатие не считается
+      syncTraps(now, snap);                  // ловушка могла остаться позади как раз к этому нажатию
+      if (!r) return;                        // пауза после ловушки или защита от двойного касания — не считается
       presses.push(t);
       if (r.res === 'skip' || r.res === 'miss' || r.res === 'trap') { lose(r.res); return; }
       var s = st();
+      // попал: пройденный сектор гаснет, а новый появляется тут же (ядро ставит его в момент нажатия)
+      prevSec = { center: s.center, width: s.width, kind: r.kind, at: now };
+      g.tick(t);
       if (r.kind === 'rev') flash(css.special);
       else if (r.kind === 'spin') {
         // «крутится круг»: стрелка на экране замирает (или снова едет), круг продолжает без рывка
@@ -473,11 +487,14 @@
       loop();
     }
 
+    // Ловушка на круге сейчас (запоминаем, чтобы она плавно погасла, когда останется позади).
+    function trapSnap() { var s = st(); return s && s.phase === 'running' && s.kind === 'trap' ? { center: s.center, width: s.width } : null; }
     // Стрелка проехала ловушку: +1 очко, рамка вспыхивает красным — как при попадании в особый сектор.
-    function syncTraps(now) {
+    function syncTraps(now, snap) {
       var s = st();
       if (!s || s.traps <= trapsShown) return;
       trapsShown = s.traps;
+      if (snap) prevSec = { center: snap.center, width: snap.width, kind: 'trap', at: now };
       flash(css.trap);
       setScore(s.score);
       bumpAt = now;
