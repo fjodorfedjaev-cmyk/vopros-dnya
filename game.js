@@ -7,7 +7,8 @@
    * красный сектор в полоску — ловушка: нажимать нельзя, стрелка должна его проехать;
    * фиолетовый сектор — разворот: стрелка крутится в другую сторону;
    * бирюзовый — «крутится круг»: стрелка замирает, вращается весь круг вместе со счётом;
-   * рамка разгорается к 40-му сектору и вспыхивает цветом особого сектора при попадании (и красным — когда ловушка позади);
+   * рамка и кружок вокруг счёта разгораются к 40-му сектору и вспыхивают цветом особого сектора при попадании
+     (и красным — когда ловушка позади);
    * в дуэли у сектора три зоны: края — 1 очко, ближе к центру — 2, центр — 3.
    Модуль отдаёт window.SectorGame: mount() и функции ядра (для проверок). */
 (function (root) {
@@ -94,6 +95,9 @@
     var presses = [];       // моменты нажатий, мс от старта — по ним сервер переигрывает дуэль
     var sectorFadeFrom = 0, pulseAt = -1, missAt = -1, bumpAt = -1;
     var trapsShown = 0;     // сколько пройденных ловушек уже показали (вспышка, счёт)
+    // свечение кружка вокруг счёта — то же, что у рамки: glowV — сколько должно гореть, glowShow — сколько горит сейчас
+    // (догоняет плавно, как рамка в CSS), вспышка — цветом особого сектора
+    var glowV = 0, glowShow = 0, lastDrawAt = 0, flashColor = '', flashAt = -1, flashK = 0;
     var rot = 0, arrowScreen = 0;   // поворот круга на экране и место стрелки, пока крутится круг
     var winAt = -1, winA = 0, winV = 0;
     var oppShown = '';
@@ -114,11 +118,15 @@
       return 0;
     }
     function dialRot(rel) { var s = st(); return s && s.spin ? wrap(arrowScreen - rel) : rot; }
-    function setGlow(v) { wrapEl.style.setProperty('--glow', String(Math.max(0, Math.min(1, v)))); }
+    function setGlow(v) {
+      glowV = Math.max(0, Math.min(1, v));
+      wrapEl.style.setProperty('--glow', String(glowV));
+    }
     // Вспышка цветом особого сектора — такой же силы, как сейчас разгорелась рамка (совсем слабой не бывает).
     function flash(color) {
       if (!flashEl.animate) return;
       var k = Math.max(0.3, Math.min(1, st().hits / GLOW_FULL));
+      flashColor = color; flashAt = performance.now(); flashK = k;   // та же вспышка — на кружке вокруг счёта
       flashEl.style.setProperty('--fc', color);
       flashEl.animate(reduceMotion
         ? [{ opacity: k }, { opacity: 0 }]
@@ -139,6 +147,45 @@
     }
 
     function rad(deg) { return (deg - 90) * Math.PI / 180; }
+
+    // Сила вспышки сейчас (0…1) — по тем же шагам, что у вспышки рамки: ярко → слабее → снова ярко → гаснет за 1,2 с.
+    function flashLevel(now) {
+      if (flashAt < 0) return 0;
+      var x = (now - flashAt) / 1200;
+      if (x >= 1) { flashAt = -1; return 0; }
+      var p = 1 - (1 - x) * (1 - x);                         // ease-out, как у рамки
+      if (reduceMotion) return flashK * (1 - p);
+      var pts = [[0, 0], [0.08, 1], [0.2, 0.35], [0.32, 1], [1, 0]];
+      for (var i = 1; i < pts.length; i++) {
+        if (p <= pts[i][0]) {
+          var a = pts[i - 1], b = pts[i];
+          return flashK * (a[1] + (b[1] - a[1]) * (p - a[0]) / (b[0] - a[0]));
+        }
+      }
+      return 0;
+    }
+    // Светящийся кружок вокруг счёта: оранжевый градиент крутится, как на рамке (пока идёт игра), плюс мягкое свечение.
+    function hubRing(now, c, r, color, alpha) {
+      if (alpha <= 0.01) return;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, alpha);
+      ctx.shadowColor = color; ctx.shadowBlur = 18;
+      var stroke = color;
+      if (ctx.createConicGradient && !reduceMotion) {
+        var spin = screen === 'play' ? (now / 5000) * Math.PI * 2 : 0;
+        var gr = ctx.createConicGradient(spin, c, c);
+        gr.addColorStop(0, color); gr.addColorStop(0.22, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, color);
+        gr.addColorStop(0.72, 'rgba(0,0,0,0)'); gr.addColorStop(1, color);
+        // сначала ровное мягкое свечение, поверх — яркий бегущий градиент
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = Math.min(1, alpha) * 0.55;
+        ctx.beginPath(); ctx.arc(c, c, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = Math.min(1, alpha);
+        stroke = gr;
+      }
+      ctx.strokeStyle = stroke; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(c, c, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
 
     function draw(now) {
       var c = size / 2, R = size / 2 - 18, s = st();
@@ -215,6 +262,12 @@
       ctx.beginPath(); ctx.arc(c, c, hubR, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = css.line; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(c, c, hubR, 0, Math.PI * 2); ctx.stroke();
+      // свечение кружка: догоняет нужную силу примерно за 0,6 с (как рамка), сверху — вспышка
+      var dt = lastDrawAt ? Math.max(0, Math.min(100, now - lastDrawAt)) : 0;
+      lastDrawAt = now;
+      glowShow = glowV + (glowShow - glowV) * Math.exp(-dt / 200);
+      hubRing(now, c, hubR, css.accent, glowShow);
+      hubRing(now, c, hubR, flashColor, flashLevel(now));
       // в центре — счёт (или отсчёт перед дуэлью): центр самих цифр ровно в центре круга
       var txt = String(s ? s.score : 0), color = missAt >= 0 ? css.err : css.ink;
       if (screen === 'wait') {
@@ -283,7 +336,7 @@
       presses = []; missAt = -1; pulseAt = -1; bumpAt = -1; winAt = -1; trapsShown = 0;
       rot = 0; arrowScreen = 0; paused = false; countdownEnd = 0;
       setScore(0); hint.textContent = ''; pop.textContent = ''; pop.className = 'sector-pop';
-      setGlow(0);
+      setGlow(0); glowShow = 0; flashAt = -1;
     }
     // одиночная игра: «Играть»
     function start() {
@@ -398,6 +451,7 @@
       winA = g.angleAt(t); winV = s.dir * s.speed;
       g.finish(t, 'win');
       winAt = now;
+      glowV = 1;                             // как рамка при победе — кружок горит на полную
       endScreen();
       var res = result();
       if (duel && duel.onEnd) duel.onEnd(res);

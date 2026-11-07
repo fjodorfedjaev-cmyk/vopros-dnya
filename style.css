@@ -629,7 +629,7 @@ html, body { overflow-x: hidden; }
 .sector-glow, .sector-flash { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0; }
 .sector-glow { --gc: var(--accent); opacity: var(--glow, 0); transition: opacity 0.6s ease; }
 .sector-flash { --gc: var(--fc, var(--special)); opacity: 0; }
-.sector-glow, .sector-flash { box-shadow: 0 0 22px -4px var(--gc), inset 0 0 18px -8px var(--gc); }
+.sector-glow, .sector-flash { box-shadow: 0 0 30px -3px var(--gc), inset 0 0 22px -7px var(--gc); }
 .sector-glow::before, .sector-flash::before {
   content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 2px;
   background: conic-gradient(from var(--sg-a), var(--gc), transparent 22%, var(--gc) 50%, transparent 72%, var(--gc));
