@@ -10,6 +10,8 @@
    * Время — миллисекунды от старта игры. Новый сектор появляется ровно через 300 мс после попадания.
    * Пропустил сектор (стрелка проехала его, а нажатия не было) — проигрыш. Чтобы успевать, новый сектор
      появляется не ближе 90° и не ближе, чем стрелка доедет за 0,4 секунды.
+   * Чем дальше, тем ближе в среднем новый сектор и тем меньше самое дальнее место, где он может быть —
+     игра всё больше на реакцию (нижний предел выше не меняется).
    * Угол стрелки считается относительно круга: в режиме «крутится круг» сближение то же самое.
    * Виды секторов: обычный (оранжевый), ловушка (красный, нажимать нельзя), разворот (фиолетовый),
      «крутится круг» (бирюзовый), раздвоение (лаймовый). Впервые появляются по порядку:
@@ -41,6 +43,10 @@
     gapAhead: 90,         // новый сектор начинается не ближе 90° впереди стрелки…
     reactMs: 400,         // …и не ближе, чем стрелка доедет за 0,4 с (на большой скорости это больше 90°)
     gapBehind: 40,        // и заканчивается не ближе 40° позади неё
+    farStart: 290,        // дальний край сектора — не дальше 290° впереди стрелки в начале игры…
+    farEnd: 200,          // …и не дальше 200° к farFull-му сектору (между — плавно)
+    farFull: 80,
+    nearBias: 1,          // место выбирается как r^(1 + nearBias·доля пути к farFull): чем дальше, тем чаще ближе
     transitionMs: 300,    // пауза между раундами
     // Первое появление особых секторов (числа — сколько попаданий до него): строго по порядку.
     firstTrap: [4, 7],    // красный — 5-й…8-й сектор игры
@@ -100,11 +106,14 @@
   // r — случайное число от 0 до 1, dir — 1 по часовой или -1 против.
   // near — какую часть круга использовать (1 — весь, 0.5 — только ближнюю половину).
   // wide — сектор сразу после раздвоения: запас на реакцию больше обычного.
-  function placeSector(arrow, width, r, dir, speed, near, wide) {
+  // hits — сколько попаданий уже было: с ними дальний предел приближается, а место чаще выпадает ближе к стрелке.
+  function placeSector(arrow, width, r, dir, speed, near, wide, hits) {
     var gap = wide ? Math.max(CONFIG.afterSplitGap, (speed || CONFIG.startSpeed) * CONFIG.afterSplitReactMs / 1000)
                    : gapFor(speed || CONFIG.startSpeed);
-    var span = Math.max(0, 360 - gap - CONFIG.gapBehind - width) * (near || 1);
-    return wrap(arrow + (dir === -1 ? -1 : 1) * (gap + width / 2 + r * span));
+    var k = Math.min(1, (hits || 0) / CONFIG.farFull);
+    var far = Math.min(360 - CONFIG.gapBehind, CONFIG.farStart + (CONFIG.farEnd - CONFIG.farStart) * k);
+    var span = Math.max(0, far - gap - width) * (near || 1);
+    return wrap(arrow + (dir === -1 ? -1 : 1) * (gap + width / 2 + Math.pow(r, 1 + CONFIG.nearBias * k) * span));
   }
   // Пока стрелок две (раздвоение): центр сектора — в ближайшей точке, где стрелки встретятся, но не ближе
   // обычного запаса на реакцию. axis — точка раздвоения; стрелки встречаются в axis и axis + 180°.
@@ -212,7 +221,7 @@
       s.trapRow = s.kind === 'trap' ? s.trapRow + 1 : 0;
       var r = rnd(), arrow = angleAt(t);
       if (s.split) s.center = placeMirror(arrow, s.width, s.dir, s.speed, s.axis);   // две стрелки — точка их встречи
-      else s.center = placeSector(arrow, s.width, r, s.dir, s.speed, s.kind === 'trap' ? CONFIG.trapNear : 1, s.wide);
+      else s.center = placeSector(arrow, s.width, r, s.dir, s.speed, s.kind === 'trap' ? CONFIG.trapNear : 1, s.wide, s.hits);
       s.wide = false;
       s.exitAt = exitTime();
       s.phase = 'running';
