@@ -1438,7 +1438,7 @@
     if (view === 'game') {
       render();
       if (S.gameMode === 'farm') { if (window.Farm) window.Farm.enter(); }
-      else if (S.gameMode === 'sector') loadBoard().then(function () { if (S.view === 'game') fillBoard(); });
+      else if (S.gameMode === 'sector') { loadBoard().then(function () { if (S.view === 'game') fillBoard(); }); if (window.Duels) window.Duels.enter(); }
       else loadZzBoard().then(zzBoardLoaded);
       return;
     }
@@ -1458,7 +1458,7 @@
 
   function screenApp() {
     var body;
-    if (S.view !== 'game') { stopGame(); stopZigzag(); }
+    if (S.view !== 'game') { stopGame(); stopZigzag(); if (window.Duels) window.Duels.leave(); }
     if ((S.view !== 'game' || S.gameMode !== 'farm') && window.Farm) window.Farm.leave();
     if (S.view !== 'casino' && window.Casino) window.Casino.leave();
     if (S.view !== 'cards' && window.Collection) window.Collection.leave();
@@ -2117,8 +2117,9 @@
     if (mode !== 'zigzag') stopZigzag();
     render();
     if (mode === 'farm') { if (window.Farm) window.Farm.enter(); }
-    else if (mode === 'sector') loadBoard().then(function () { if (S.view === 'game' && S.gameMode === 'sector') fillBoard(); });
+    else if (mode === 'sector') { loadBoard().then(function () { if (S.view === 'game' && S.gameMode === 'sector') fillBoard(); }); if (window.Duels) window.Duels.enter(); }
     else if (mode === 'zigzag') loadZzBoard().then(zzBoardLoaded);
+    if (mode !== 'sector' && window.Duels) window.Duels.leave();
   }
 
   /* ----- «Зигзаг» ----- */
@@ -2211,10 +2212,11 @@
         onStateChange: function (st) { if (st !== 'gone') S.gameState = st; }
       });
     }
+    if (window.Duels && window.Duels.isOpen()) return [gameSwitch(), window.Duels.screen()];
     var game = S.gameBox || el('p', { class: 'empty', text: 'Игра не загрузилась. Обнови страницу.' });
     var board = el('section', { class: 'sect', id: 'board' });
     fillBoard(board);
-    return [gameSwitch(), game, board];
+    return [gameSwitch(), game, window.Duels ? window.Duels.section() : null, board];
   }
 
   // Рейтинг: kind 'zz' — «Зигзаг», иначе «Сектор». Таблица одинаковая, отличается только последняя колонка.
@@ -3113,6 +3115,11 @@
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ничего */ }
     if (tab === 'market') { if (window.Collection && window.Collection.setMode) window.Collection.setMode('market'); tab = 'cards'; }
     if (tab === 'suggest') { S.sug.from = 'today'; if (tab !== S.view) go('suggest'); return; }
+    if (tab === 'duel') {
+      S.gameMode = 'sector'; try { localStorage.setItem('game-mode', 'sector'); } catch (e) { /* ничего */ }
+      if (S.view === 'game') { render(); if (window.Duels) window.Duels.enter(); return; }
+      tab = 'game';
+    }
     var ok = tab === 'fill' || TABS.some(function (t) { return t[0] === tab; });
     if (ok && tab !== S.view) go(tab);
   }
@@ -3159,7 +3166,10 @@
     // Помощники для казино (casino.js).
     window.AppAPI = {
       sb: function () { return sb; }, el: el, toast: toast, plural: plural, fmt: fmt,
-      balance: balance, setBalance: setBalance, loadPoints: loadPoints, avatar: avatar
+      balance: balance, setBalance: setBalance, loadPoints: loadPoints, avatar: avatar,
+      // для дуэлей
+      me: function () { return S.userId; }, members: function () { return S.members || []; },
+      setGameState: function (st) { S.gameState = st; }, rerender: function () { render(); }
     };
 
     // Реакция на вход или выход в другой вкладке. Внутри обработчика нельзя ждать запросы к Supabase, поэтому setTimeout.

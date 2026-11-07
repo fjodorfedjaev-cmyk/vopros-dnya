@@ -1,6 +1,7 @@
 // Функция отправки уведомлений «Вопроса дня».
 // Вызывает её только сама база (через pg_net) с секретным заголовком x-hook-secret.
-// Типы вызова: init (создать ключи), test, comment, reminder, sale (купили карточку в лавке), suggest (новое «Свой вопрос» — админу).
+// Типы вызова: init (создать ключи), test, comment, reminder, sale (купили карточку в лавке), suggest (новое «Свой вопрос» — админу),
+// duel (вызов на дуэль в Секторе и «вызов принят»).
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { sendPush, vapidKey, b64u } from './webpush.js';
 
@@ -107,6 +108,20 @@ Deno.serve(async (req) => {
       });
     }
     out.sent = sent;
+  } else if (body.type === 'duel') {
+    const d = one((await db.rpc('push_duel_info', { p_id: body.duel_id })).data) as
+      { p1: string; p2: string; p1_name: string; p2_name: string; stake: number } | undefined;
+    if (d && body.event === 'invite') {
+      out.sent = await sendTo(d.p2, {
+        title: '⚔️ Вызов на дуэль', body: cut(d.p1_name, 40) + ' вызывает тебя в Сектор · ставка ' + d.stake + ' 🪙',
+        url: SITE + '?tab=duel', tag: 'duel' + body.duel_id
+      });
+    } else if (d && body.event === 'accept') {
+      out.sent = await sendTo(d.p1, {
+        title: '⚔️ Вызов принят', body: cut(d.p2_name, 40) + ' готовится к дуэли — заходи в Сектор и жми «Готов»',
+        url: SITE + '?tab=duel', tag: 'duel' + body.duel_id
+      });
+    }
   } else {
     return new Response('unknown type', { status: 400 });
   }
