@@ -166,7 +166,7 @@
     if (m.indexOf('bad_code') >= 0) text = 'Код приглашения не подошёл. Проверь его и попробуй ещё раз.';
     else if (m.indexOf('bad_name') >= 0) text = 'Введи имя, под которым тебя увидят друзья.';
     else if (m.indexOf('not_member') >= 0) text = 'Сначала нужно ввести код приглашения.';
-    else if (m.indexOf('sug_not_enough') >= 0) text = 'Не хватает монет: нужно 300 🪙.';
+    else if (m.indexOf('sug_not_enough') >= 0) text = 'Не хватает монет: нужно 100 🪙.';
     else if (m.indexOf('sug_need_blank') >= 0) text = 'Нужен ровно один пропуск ___ — туда друзья впишут слово.';
     else if (m.indexOf('sug_bad_text') >= 0) text = 'Текст должен быть от 5 до 200 символов.';
     else if (m.indexOf('sug_same_options') >= 0) text = 'Варианты не должны повторяться.';
@@ -2357,10 +2357,10 @@
     return d;
   }
 
-  /* ----- «Свой вопрос»: предложить вопрос, фразу для «Слова» или «Выбор» за 300 монет ----- */
+  /* ----- «Свой вопрос»: предложить вопрос, фразу для «Слова» или «Выбор» за 100 монет ----- */
   // Предложение уходит на проверку админу. Одобрил — выйдет одним из следующих (раньше обычных), автора никто не увидит.
   // Не подошло — монеты вернутся. Списывает и возвращает монеты только база, сайт лишь показывает.
-  var SUG_PRICE = 300;
+  var SUG_PRICE = 100;   // как в базе (suggest_question)
   var SUG_KINDS = [['question', 'Вопрос'], ['fill', 'Слово'], ['poll', 'Выбор']];
   var SUG_STATUS = { pending: 'На проверке', approved: 'Одобрено', rejected: 'Не подошло' };
   function sugKindName(k) { return k === 'fill' ? 'Слово' : k === 'poll' ? 'Выбор' : 'Вопрос'; }
@@ -2557,7 +2557,7 @@
     sect.appendChild(form);
     sect.appendChild(el('ul', { class: 'sug-rules' }, [
       el('li', { text: 'Одобренное выйдет одним из следующих. Автора никто не увидит.' }),
-      el('li', { text: 'Не подошло — 300 🪙 вернутся.' })
+      el('li', { text: 'Не подошло — ' + SUG_PRICE + ' 🪙 вернутся.' })
     ]));
   }
 
@@ -2580,7 +2580,7 @@
         ]),
         s.s_kind === 'fill' ? fillSentence(s.s_text, '', 'sug-text') : el('p', { class: 'sug-text', text: s.s_text }),
         s.s_kind === 'poll' && Array.isArray(s.s_options) ? el('p', { class: 'sug-optline', text: s.s_options.join(' · ') }) : null,
-        s.s_status === 'rejected' ? el('p', { class: 'sug-note', text: SUG_PRICE + ' 🪙 вернулись на баланс' }) : null
+        s.s_status === 'rejected' ? el('p', { class: 'sug-note', text: 'Монеты вернулись на баланс' }) : null
       ]);
     })));
   }
