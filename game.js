@@ -1,95 +1,23 @@
-/* «Сектор» — аркада на реакцию, точность и опыт.
-   Стрелка вращается по часовой стрелке; нажми, когда она внутри выделенного сектора.
-   Иногда сектор фиолетовый — это разворот: попал в него, и стрелка крутится в другую сторону.
-   Следующий фиолетовый (возврат по часовой) может быть сразу или через 1–4 попадания.
-   С 16-го сектора бывает бирюзовый — «крутится круг»: стрелка замирает, а вращается весь круг
-   вместе с делениями, сектором и счётом. Следующий бирюзовый снова запускает стрелку, а круг
-   останавливается где был (счёт может остаться вверх ногами). До 30 попаданий режимы идут по одному,
-   с 30 — могут идти одновременно.
-   Внутри игра считает угол стрелки ОТНОСИТЕЛЬНО круга — он меняется с той же скоростью в любом режиме,
-   поэтому проверка честности в базе (game_min_ms) не меняется.
-   Углы считаются в градусах по часовой стрелке от 12 часов.
-   Модуль отдаёт window.SectorGame: настройки, чистые функции (их удобно проверять) и mount() для экрана игры. */
+/* «Сектор» — экран игры: рисует круг, стрелку и сектор, ловит нажатия.
+   Правила (где сектор, попал ли, пропуск, развороты, «крутится круг») — в sector-core.js:
+   тот же файл переигрывает дуэли на сервере, поэтому игра на телефоне и проверка совпадают.
+
+   Что видно игроку:
+   * стрелка вращается; нажми, когда она внутри выделенного сектора; пропустил сектор — проигрыш;
+   * фиолетовый сектор — разворот: стрелка крутится в другую сторону;
+   * бирюзовый — «крутится круг»: стрелка замирает, вращается весь круг вместе со счётом;
+   * рамка разгорается к 40-му сектору и вспыхивает цветом особого сектора при попадании.
+   Модуль отдаёт window.SectorGame: mount() и функции ядра (для проверок). */
 (function (root) {
   'use strict';
 
-  // Все параметры игры в одном месте. Если меняешь скорость, шаг или переход —
-  // поменяй те же числа в функции базы game_min_ms, иначе честные результаты могут не засчитаться.
-  var CONFIG = {
-    startSpeed: 110,      // градусов в секунду
-    speedStep: 6,         // прибавка скорости за каждое попадание
-    maxSpeed: 320,        // было 360. База проверяет по 360 — это мягче, честные результаты проходят
-    startWidth: 64,       // ширина сектора, градусы
-    widthStep: 1.0,       // уменьшение ширины за каждое попадание (было 1.6 — сужался быстрее)
-    widthStopAt: 35,      // после 35 попаданий сектор больше не сужается: 64 − 35 = 29°
-    minWidth: 16,
-    perfectShare: 0.2,    // центральные 20% сектора — PERFECT
-    minPerfect: 4,        // но PERFECT-зона не уже 4°
-    gapAhead: 90,         // новый сектор начинается не ближе 90° впереди стрелки
-    gapBehind: 40,        // и заканчивается не ближе 40° позади неё
-    transitionMs: 300,    // пауза между раундами
-    // Развороты (фиолетовые сектора). Числа — сколько обычных попаданий до следующего разворота.
-    firstReverse: [4, 7], // первый разворот — 5-й…8-й сектор игры
-    backAfter: [0, 4],    // возврат по часовой — сразу (0) или через 1–4 попадания после разворота
-    nextReverse: [5, 9],  // следующий разворот — через 5–9 попаданий после возврата
-    // «Крутится круг» (бирюзовые сектора). Числа — сколько попаданий до следующего бирюзового.
-    firstSpin: [15, 19],  // первый — 16-й…20-й сектор игры
-    spinBackAfter: [0, 1],// стрелка снова крутится — следующий сектор или через один
-    nextSpin: [6, 10],    // следующий «крутится круг» — через 6–10 попаданий
-    mixFrom: 30,          // с 30 попаданий разворот и «крутится круг» могут идти одновременно
-    glowFull: 40,         // рамка разгорается на полную к 40-му сектору
-    countdownMs: 600      // один шаг обратного отсчёта после возврата на вкладку
-  };
-
-  function speedFor(hits) { return Math.min(CONFIG.maxSpeed, CONFIG.startSpeed + hits * CONFIG.speedStep); }
-  function widthFor(hits) { return Math.max(CONFIG.minWidth, CONFIG.startWidth - Math.min(hits, CONFIG.widthStopAt) * CONFIG.widthStep); }
-  function perfectWidth(w) { return Math.max(CONFIG.minPerfect, w * CONFIG.perfectShare); }
-  // Разница углов в диапазоне (-180, 180] — правильно работает и на переходе 359° → 0°.
-  function norm(d) { d = ((d % 360) + 360) % 360; return d > 180 ? d - 360 : d; }
-  function wrap(a) { return ((a % 360) + 360) % 360; }
-
-  // Попал ли угол стрелки в сектор: 'perfect', 'hit' или 'miss'.
-  function judge(angle, center, width) {
-    var d = Math.abs(norm(angle - center));
-    if (d <= perfectWidth(width) / 2) return 'perfect';
-    if (d <= width / 2) return 'hit';
-    return 'miss';
-  }
-
-  // Центр нового сектора: впереди стрелки с запасом на реакцию. r — случайное число от 0 до 1.
-  // dir — куда крутится стрелка: 1 — по часовой, -1 — против. «Впереди» считается по направлению движения,
-  // поэтому запас на реакцию и проверка базы (game_min_ms) одинаковые в обе стороны.
-  function placeSector(arrow, width, r, dir) {
-    var span = Math.max(0, 360 - CONFIG.gapAhead - CONFIG.gapBehind - width);
-    return wrap(arrow + (dir === -1 ? -1 : 1) * (CONFIG.gapAhead + width / 2 + r * span));
-  }
-  // Случайное целое от a до b включительно. r — случайное число от 0 до 1.
-  function between(range, r) { return range[0] + Math.min(range[1] - range[0], Math.floor(r * (range[1] - range[0] + 1))); }
-
-  // Какой будет следующий сектор: 'normal', 'rev' (разворот) или 'spin' (крутится круг).
-  // st = { hits, dir, spin, untilRev, untilSpin }. До CONFIG.mixFrom режимы не пересекаются:
-  // разворот не начинается, пока крутится круг, и круг не начинает крутиться во время разворота.
-  // Если оба «созрели» сразу — первым идёт тот, что возвращает к обычной игре; второй — в следующий раз.
-  function pickKind(st) {
-    var revOk = st.untilRev <= 0, spinOk = st.untilSpin <= 0;
-    if (st.hits < CONFIG.mixFrom) {
-      if (revOk && st.dir === 1 && st.spin) revOk = false;
-      if (spinOk && !st.spin && st.dir === -1) spinOk = false;
-    }
-    if (revOk && spinOk) {
-      if (st.dir === -1) return 'rev';
-      if (st.spin) return 'spin';
-      return 'rev';
-    }
-    return revOk ? 'rev' : spinOk ? 'spin' : 'normal';
-  }
-
-  // Минимально возможное время игры с таким числом попаданий (так же считает база).
-  function minTimeMs(hits) {
-    var t = 0;
-    for (var i = 0; i < hits; i++) t += CONFIG.gapAhead / speedFor(i) * 1000;
-    return t + Math.max(hits - 1, 0) * CONFIG.transitionMs;
-  }
+  var Core = root.SectorCore;
+  var CONFIG = Core.CONFIG;
+  var GLOW_FULL = 40;        // рамка разгорается на полную к 40-му сектору
+  var COUNTDOWN_MS = 600;    // один шаг обратного отсчёта после возврата на вкладку
+  var SKIP_GRACE_MS = 120;   // пропуск объявляем чуть позже: вдруг нажатие ещё в пути
+  var WIN_STOP_MS = 1400;    // при победе в дуэли стрелка плавно останавливается за это время
+  var wrap = Core.wrap;
 
   var reduceMotion = !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -102,12 +30,17 @@
 
   /* Экран игры. container — пустой элемент. opts:
      best()                — текущий личный рекорд (число);
-     onStart()             — вызывается в начале игры;
+     onStart()             — вызывается в начале одиночной игры;
      onOver(result)        — result = { score, hits, perfects }; может вернуть Promise<{ best, newRecord }>;
      onStateChange(state)  — 'start' | 'play' | 'over', чтобы сайт знал, что идёт игра.
-     Возвращает { destroy } — останавливает анимацию и снимает обработчики. */
+     duel — для дуэли (тогда кнопки «Играть» нет, игра стартует сама):
+       { seed, startAt — performance.now() момента старта (у обоих одинаковый по часам базы),
+         opponent() — { name, score, done, forfeit } для показа и победы,
+         onProgress({ score, hits }), onEnd(result), overPanel(panel, result) — чем заполнить низ после конца }
+     Возвращает { destroy, win? } — останавливает анимацию и снимает обработчики. */
   function mount(container, opts) {
     opts = opts || {};
+    var duel = opts.duel || null;
     var css = {}; // цвета берём из CSS-переменных сайта
     function readColors() {
       var s = getComputedStyle(document.documentElement);
@@ -122,19 +55,14 @@
       };
     }
     readColors();
-    // счёт рисуется на холсте нашим шрифтом — когда шрифт загрузится, перерисуем
-    if (document.fonts && document.fonts.load) {
-      document.fonts.load('600 44px ' + css.mono).then(function () { if (!destroyed) draw(performance.now()); }, function () {});
-    }
 
-    var wrapEl = h('div', 'sector');
+    var wrapEl = h('div', 'sector' + (duel ? ' sector-duel' : ''));
     var field = h('div', 'sector-field');
     field.setAttribute('role', 'button');
     field.setAttribute('aria-label', 'Игровое поле: нажми в любом месте экрана, когда стрелка в секторе');
     var canvas = h('canvas', 'sector-canvas');
     var hub = h('div', 'sector-hub');
-    // Счёт видно на холсте (точно по центру круга и поворачивается вместе с ним);
-    // этот элемент — для экранного диктора, на экране он скрыт.
+    // Счёт видно на холсте (точно по центру круга и поворачивается вместе с ним); этот элемент — для экранного диктора.
     var scoreEl = h('div', 'sector-score sr', '0');
     var hint = h('div', 'sector-hint low', '');
     hub.appendChild(scoreEl); hub.appendChild(hint);
@@ -151,45 +79,42 @@
 
     var ctx = canvas.getContext('2d');
     var size = 300, dpr = 1;
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load('600 44px ' + css.mono).then(function () { if (!destroyed) draw(performance.now()); }, function () {});
+    }
 
-    // Состояние одной игры.
-    var screen = 'start';   // start | play | over
-    var phase = 'idle';     // running | transition | paused | countdown | dead
-    var a0 = 0, t0 = 0, speed = CONFIG.startSpeed;
-    var dir = 1;            // 1 — по часовой, -1 — против (после фиолетового сектора)
-    var kind = 'normal';    // текущий сектор: normal | rev (фиолетовый разворот) | spin (бирюзовый «крутится круг»)
-    var untilRev = 0;       // сколько попаданий до следующего разворота
-    var untilSpin = 0;      // сколько попаданий до следующего бирюзового
-    var spin = false;       // сейчас крутится круг, а стрелка стоит
-    var rot = 0;            // на сколько градусов повёрнут круг на экране (когда он не крутится)
-    var arrowScreen = 0;    // где стоит стрелка на экране, пока крутится круг
-    var bumpAt = -1;        // когда счёт «подпрыгнул» (после попадания)
-    var center = 120, width = CONFIG.startWidth;
-    var hits = 0, perfects = 0, score = 0;
-    var transitionEnd = 0, sectorFadeFrom = 0;
-    var pauseAt = 0, pauseAngle = 0, countdownEnd = 0, transitionLeft = 0;
-    var pulseAt = -1, missAt = -1;
+    // Состояние экрана
+    var screen = 'start';   // start | wait (дуэль: ждём старта) | play | over
+    var paused = false, countdownEnd = 0, pauseAt = 0;
+    var g = null;           // партия (ядро)
+    var base = 0;           // performance.now() в момент «0 мс» партии (паузы сдвигают его вперёд)
+    var presses = [];       // моменты нажатий, мс от старта — по ним сервер переигрывает дуэль
+    var sectorFadeFrom = 0, pulseAt = -1, missAt = -1, bumpAt = -1;
+    var rot = 0, arrowScreen = 0;   // поворот круга на экране и место стрелки, пока крутится круг
+    var winAt = -1, winA = 0, winV = 0;
+    var oppShown = '';
     var raf = 0, destroyed = false;
 
-    // Угол стрелки относительно круга (по нему и считается попадание).
-    function angleAt(t) { return wrap(a0 + dir * speed * Math.max(0, t - t0) / 1000); }
-    function rebase(t) { a0 = angleAt(t); t0 = t; }
-    // Поворот круга на экране при таком относительном угле стрелки:
-    // пока крутится круг, стрелка на экране стоит, значит круг повёрнут на (где стрелка − её угол на круге).
-    function dialRot(rel) { return spin ? wrap(arrowScreen - rel) : rot; }
-    // Переключить «крутится круг» в момент t (стрелка и круг продолжают движение без рывка)
-    function toggleSpin(t) {
-      var rel = angleAt(t);
-      if (!spin) { arrowScreen = wrap(rel + rot); spin = true; }
-      else { rot = wrap(arrowScreen - rel); spin = false; }
+    function et(now) { return now - base; }                  // время партии
+    function st() { return g ? g.state : null; }
+    // угол стрелки относительно круга сейчас
+    function relAngle(now) {
+      var s = st();
+      if (!s) return 0;
+      if (winAt >= 0) {                                       // победа: плавная остановка
+        var tau = Math.min(WIN_STOP_MS, now - winAt) / 1000, T = WIN_STOP_MS / 1000;
+        return wrap(winA + winV * (tau - tau * tau / (2 * T)));
+      }
+      if (screen === 'play' && paused) return g.angleAt(et(pauseAt));
+      if (screen === 'play' || screen === 'over') return g.angleAt(et(now));
+      return 0;
     }
-    // Рамка: чем дальше в игре, тем ярче (0 — нет, 1 — на полную)
+    function dialRot(rel) { var s = st(); return s && s.spin ? wrap(arrowScreen - rel) : rot; }
     function setGlow(v) { wrapEl.style.setProperty('--glow', String(Math.max(0, Math.min(1, v)))); }
-    // Вспышка цветом особого сектора — такой же силы, как сейчас разгорелась рамка
-    // (в начале игры слабая, к 40-му сектору — на полную; совсем слабой не бывает).
+    // Вспышка цветом особого сектора — такой же силы, как сейчас разгорелась рамка (совсем слабой не бывает).
     function flash(color) {
       if (!flashEl.animate) return;
-      var k = Math.max(0.3, Math.min(1, hits / CONFIG.glowFull));
+      var k = Math.max(0.3, Math.min(1, st().hits / GLOW_FULL));
       flashEl.style.setProperty('--fc', color);
       flashEl.animate(reduceMotion
         ? [{ opacity: k }, { opacity: 0 }]
@@ -212,12 +137,10 @@
     function rad(deg) { return (deg - 90) * Math.PI / 180; }
 
     function draw(now) {
-      var c = size / 2, R = size / 2 - 18;
+      var c = size / 2, R = size / 2 - 18, s = st();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, size, size);
-      // угол стрелки относительно круга и поворот круга на экране
-      var ang = (screen === 'play' && (phase === 'running' || phase === 'transition')) ? angleAt(now)
-        : (phase === 'paused' || phase === 'countdown') ? pauseAngle : a0;
+      var ang = relAngle(now);
       var turn = dialRot(ang);
       if (turn) { ctx.translate(c, c); ctx.rotate(turn * Math.PI / 180); ctx.translate(-c, -c); }
       // дорожка
@@ -233,9 +156,11 @@
         ctx.stroke();
       }
       // сектор
+      var center = s ? s.center : 120, width = s ? s.width : CONFIG.startWidth, kind = s ? s.kind : 'normal';
       var alpha = 1;
-      if (phase === 'transition') alpha = Math.max(0, 1 - (now - sectorFadeFrom) / (CONFIG.transitionMs * 0.6));
-      if (screen !== 'play' && screen !== 'over') alpha = 0.9;
+      if (s && s.phase === 'transition') alpha = Math.max(0, 1 - (now - sectorFadeFrom) / (CONFIG.transitionMs * 0.6));
+      if (screen === 'start' || screen === 'wait') alpha = 0.9;
+      if (winAt >= 0) alpha = Math.max(0, 1 - (now - winAt) / 500);   // победа: сектор тает
       if (alpha > 0) {
         var dead = missAt >= 0;
         ctx.globalAlpha = alpha;
@@ -243,7 +168,7 @@
         ctx.lineWidth = 24;
         ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.special : kind === 'spin' ? css.turq : css.btn;
         ctx.beginPath(); ctx.arc(c, c, R, rad(center - width / 2), rad(center + width / 2)); ctx.stroke();
-        var pw = perfectWidth(width);
+        var pw = Core.perfectWidth(width);
         ctx.strokeStyle = dead ? css.err : kind === 'rev' ? css.specialHi : kind === 'spin' ? css.turqHi : '#FFB37A';
         ctx.beginPath(); ctx.arc(c, c, R, rad(center - pw / 2), rad(center + pw / 2)); ctx.stroke();
         ctx.globalAlpha = 1;
@@ -258,7 +183,7 @@
           ctx.globalAlpha = 1;
         } else pulseAt = -1;
       }
-      // стрелка (рисуем в повёрнутом круге по её углу на круге — на экране она там, где нужно)
+      // стрелка (в повёрнутом круге — по её углу на круге)
       var hubR = size * 0.17;
       var ar = rad(ang);
       ctx.strokeStyle = missAt >= 0 ? css.err : css.ink;
@@ -267,13 +192,18 @@
       ctx.moveTo(c + Math.cos(ar) * (hubR - 2), c + Math.sin(ar) * (hubR - 2));
       ctx.lineTo(c + Math.cos(ar) * (R + 8), c + Math.sin(ar) * (R + 8));
       ctx.stroke();
-      // центр (в нём счёт)
+      // центр
       ctx.fillStyle = css.surface;
       ctx.beginPath(); ctx.arc(c, c, hubR, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = css.line; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(c, c, hubR, 0, Math.PI * 2); ctx.stroke();
-      // счёт: центр самих цифр (а не строки текста) — ровно в центре круга, поэтому при повороте не съезжает
-      var txt = String(score);
+      // в центре — счёт (или отсчёт перед дуэлью): центр самих цифр ровно в центре круга
+      var txt = String(s ? s.score : 0), color = missAt >= 0 ? css.err : css.ink;
+      if (screen === 'wait') {
+        var left = base - now;
+        txt = left > 0 ? String(Math.min(9, Math.ceil(left / 1000))) : '0';
+        color = css.accent;
+      }
       var fs = Math.min(44, Math.round(hubR * 0.86));
       var sc = 1;
       if (bumpAt >= 0) {
@@ -286,60 +216,69 @@
       ctx.font = '600 ' + fs + 'px ' + css.mono;
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       var m = ctx.measureText(txt);
-      var left = m.actualBoundingBoxLeft || 0, right = m.actualBoundingBoxRight || m.width;
+      var mL = m.actualBoundingBoxLeft || 0, mR = m.actualBoundingBoxRight || m.width;
       var asc = m.actualBoundingBoxAscent || fs * 0.72, desc = m.actualBoundingBoxDescent || 0;
-      ctx.fillStyle = missAt >= 0 ? css.err : css.ink;
-      ctx.fillText(txt, (left - right) / 2, (asc - desc) / 2);
+      ctx.fillStyle = color;
+      ctx.fillText(txt, (mL - mR) / 2, (asc - desc) / 2);
       ctx.restore();
     }
 
     function frame(now) {
       raf = 0;
       if (destroyed) return;
+      if (screen === 'wait' && now >= base) beginPlay();
       if (screen === 'play') {
-        if (phase === 'transition' && now >= transitionEnd) nextRound(now);
-        if (phase === 'countdown') {
-          var left = countdownEnd - now;
-          if (left <= 0) resume(now);
-          else hint.textContent = String(Math.ceil(left / CONFIG.countdownMs));
+        if (paused) {
+          if (countdownEnd) {
+            var left = countdownEnd - now;
+            if (left <= 0) resume(now);
+            else hint.textContent = String(Math.ceil(left / COUNTDOWN_MS));
+          }
+        } else {
+          var t = et(now), s = st();
+          g.tick(t);
+          // пропуск: стрелка проехала сектор без нажатия
+          if (s.phase === 'over') { /* уже закончилась — ждём экрана итога */ }
+          else if (s.phase === 'running' && t - SKIP_GRACE_MS > s.exitAt) {
+            g.finish(s.exitAt, 'skip');
+            lose('skip');
+          } else if (duel) {
+            showOpponent();
+            var o = duel.opponent && duel.opponent();
+            if (o && o.done && (o.forfeit || s.score > o.score)) win(now);
+          }
         }
       }
       draw(now);
-      if (screen === 'play' && phase !== 'dead' && phase !== 'paused') loop();
-      else if (pulseAt >= 0 || missAt >= 0) loop();
+      if (screen === 'wait' || (screen === 'play' && !paused) || (screen === 'play' && countdownEnd)) loop();
+      else if (pulseAt >= 0 || bumpAt >= 0 || (missAt >= 0 && now - missAt < 1000) || (winAt >= 0 && now - winAt < WIN_STOP_MS + 50)) loop();
     }
     function loop() { if (!raf && !destroyed) raf = requestAnimationFrame(frame); }
 
     function setScore(v) { scoreEl.textContent = String(v); }
 
-    function start() {
-      screen = 'play'; phase = 'running';
-      hits = 0; perfects = 0; score = 0; missAt = -1; pulseAt = -1;
-      speed = speedFor(0); width = widthFor(0);
-      var now = performance.now();
-      a0 = 0; t0 = now;
-      dir = 1; kind = 'normal'; spin = false; rot = 0; arrowScreen = 0;
-      untilRev = between(CONFIG.firstReverse, Math.random());
-      untilSpin = between(CONFIG.firstSpin, Math.random());
-      setGlow(0);
-      center = placeSector(0, width, Math.random(), 1);
+    function resetRound(seed) {
+      g = Core.create(seed);
+      presses = []; missAt = -1; pulseAt = -1; bumpAt = -1; winAt = -1;
+      rot = 0; arrowScreen = 0; paused = false; countdownEnd = 0;
       setScore(0); hint.textContent = ''; pop.textContent = ''; pop.className = 'sector-pop';
+      setGlow(0);
+    }
+    // одиночная игра: «Играть»
+    function start() {
+      resetRound(Core.randomSeed());
+      base = performance.now();
+      beginPlay();
+      if (opts.onStart) { try { opts.onStart(); } catch (e) { /* игра идёт и без базы */ } }
+    }
+    function beginPlay() {
+      screen = 'play';
       wrapEl.classList.add('playing'); wrapEl.classList.remove('over');
       document.documentElement.classList.add('sector-on');
       renderPanel();
       if (opts.onStateChange) opts.onStateChange('play');
-      if (opts.onStart) { try { opts.onStart(); } catch (e) { /* игра идёт и без базы */ } }
       field.focus({ preventScroll: true });
       loop();
-    }
-
-    function nextRound(now) {
-      rebase(now);
-      speed = speedFor(hits);
-      width = widthFor(hits);
-      kind = pickKind({ hits: hits, dir: dir, spin: spin, untilRev: untilRev, untilSpin: untilSpin });
-      center = placeSector(angleAt(now), width, Math.random(), dir);
-      phase = 'running';
     }
 
     function showPop(text, cls) {
@@ -350,92 +289,141 @@
     }
 
     function press(ts) {
-      if (screen !== 'play' || phase !== 'running') return; // во время перехода, паузы и отсчёта нажатия не считаются
+      if (screen !== 'play' || paused) return; // во время паузы и отсчёта нажатия не считаются
       var now = performance.now();
-      var t = (typeof ts === 'number' && ts > 0 && Math.abs(ts - now) < 1000) ? ts : now;
-      if (t < t0) t = t0;
-      var res = judge(angleAt(t), center, width);
-      if (res === 'miss') { lose(t); return; }
-      hits += 1;
-      if (kind === 'rev') {
-        // разворот: стрелка (или круг) сразу крутится в другую сторону
-        rebase(t);
-        dir = -dir;
-        untilRev = between(dir === -1 ? CONFIG.backAfter : CONFIG.nextReverse, Math.random());
-        untilSpin -= 1;
-        flash(css.special);
-      } else if (kind === 'spin') {
-        // «крутится круг»: стрелка замирает и крутится круг — или наоборот
-        rebase(t);
-        toggleSpin(t);
-        untilSpin = between(spin ? CONFIG.spinBackAfter : CONFIG.nextSpin, Math.random());
-        untilRev -= 1;
+      var at = (typeof ts === 'number' && ts > 0 && Math.abs(ts - now) < 1000) ? ts : now;
+      // время нажатия округляем до тысячной миллисекунды — ровно это число уйдёт на сервер для проверки
+      var t = Math.round(et(at) * 1000) / 1000;
+      if (t < 0) return;
+      var r = g.press(t);
+      if (!r) return;                        // во время перехода между секторами нажатие не считается
+      presses.push(t);
+      if (r.res === 'skip' || r.res === 'miss') { lose(r.res); return; }
+      var s = st();
+      if (r.kind === 'rev') flash(css.special);
+      else if (r.kind === 'spin') {
+        // «крутится круг»: стрелка на экране замирает (или снова едет), круг продолжает без рывка
+        var rel = g.angleAt(t);
+        if (s.spin) arrowScreen = wrap(rel + rot); else rot = wrap(arrowScreen - rel);
         flash(css.turq);
-      } else { untilRev -= 1; untilSpin -= 1; }
-      setGlow(hits / CONFIG.glowFull);
-      if (res === 'perfect') { perfects += 1; score += 2; pulseAt = now; showPop('PERFECT +2', 'perfect'); }
-      else { score += 1; }
-      setScore(score);
+      }
+      if (r.res === 'perfect') { pulseAt = now; showPop('PERFECT +2', 'perfect'); }
+      setScore(s.score);
       bumpAt = now;
-      phase = 'transition';
+      setGlow(s.hits / GLOW_FULL);
       sectorFadeFrom = now;
-      transitionEnd = now + CONFIG.transitionMs;
+      if (duel && duel.onProgress) duel.onProgress({ score: s.score, hits: s.hits });
       loop();
     }
 
-    function lose(t) {
-      rebase(t);
-      speed = 0; // стрелка замирает там, где было нажатие
-      phase = 'dead';
-      missAt = performance.now();
-      setGlow(0);
+    function result() {
+      var s = st();
+      return { score: s.score, hits: s.hits, perfects: s.perfects, presses: presses.slice(), end: s.end, endT: s.endAt, seed: s.seed };
+    }
+
+    function endScreen() {
       wrapEl.classList.remove('playing');
       document.documentElement.classList.remove('sector-on');
-      draw(performance.now());
-      var result = { score: score, hits: hits, perfects: perfects };
+    }
+
+    function lose(reason) {
+      missAt = performance.now();
+      setGlow(0);
+      endScreen();
+      if (reason === 'skip') showPop('ПРОПУСК', 'miss');
+      draw(missAt);
+      loop();
+      var res = result();
+      if (duel) {
+        if (duel.onEnd) duel.onEnd(res);
+        setTimeout(function () { if (destroyed) return; screen = 'over'; wrapEl.classList.add('over'); renderPanel(res); if (opts.onStateChange) opts.onStateChange('over'); }, reduceMotion ? 150 : 450);
+        return;
+      }
       var prevBest = opts.best ? (opts.best() || 0) : 0;
       setTimeout(function () {
         if (destroyed) return;
         screen = 'over';
         wrapEl.classList.add('over');
-        renderPanel(result, prevBest, null);
+        renderPanel(res, prevBest, null);
         if (opts.onStateChange) opts.onStateChange('over');
-        var p = opts.onOver ? opts.onOver(result) : null;
+        var p = opts.onOver ? opts.onOver(res) : null;
         if (p && typeof p.then === 'function') {
-          p.then(function (info) { if (!destroyed && screen === 'over') renderPanel(result, prevBest, info || null); })
+          p.then(function (info) { if (!destroyed && screen === 'over') renderPanel(res, prevBest, info || null); })
             .catch(function () { /* показали локальный результат */ });
         }
       }, reduceMotion ? 150 : 450);
     }
 
+    // Дуэль выиграна (соперник уже закончил, а ты его обогнал): сектор тает, стрелка плавно останавливается.
+    function win(now) {
+      if (screen !== 'play' || winAt >= 0) return;
+      var s = st(), t = Math.round(et(now) * 1000) / 1000;
+      winA = g.angleAt(t); winV = s.dir * s.speed;
+      g.finish(t, 'win');
+      winAt = now;
+      endScreen();
+      var res = result();
+      if (duel && duel.onEnd) duel.onEnd(res);
+      loop();
+      setTimeout(function () {
+        if (destroyed) return;
+        screen = 'over';
+        wrapEl.classList.add('over', 'won');
+        renderPanel(res);
+        if (opts.onStateChange) opts.onStateChange('over');
+      }, reduceMotion ? 200 : WIN_STOP_MS);
+    }
+
+    // Пауза — только в одиночной игре. В дуэли свернул приложение — проигрыш.
     function pause() {
-      if (screen !== 'play' || (phase !== 'running' && phase !== 'transition' && phase !== 'countdown')) return;
-      var now = performance.now();
-      if (phase !== 'countdown') {
-        pauseAngle = angleAt(now);
-        transitionLeft = phase === 'transition' ? Math.max(0, transitionEnd - now) : -1;
-      }
-      pauseAt = now;
-      phase = 'paused';
+      if (screen !== 'play' || paused) return;
+      if (duel) { if (st().phase !== 'over') quitDuel(); return; }
+      pauseAt = performance.now();
+      paused = true; countdownEnd = 0;
       hint.textContent = '❚❚';
     }
-
     function startCountdown() {
-      if (screen !== 'play' || phase !== 'paused') return;
-      phase = 'countdown';
-      countdownEnd = performance.now() + CONFIG.countdownMs * 3;
+      if (screen !== 'play' || !paused || countdownEnd) return;
+      countdownEnd = performance.now() + COUNTDOWN_MS * 3;
       loop();
     }
-
     function resume(now) {
-      a0 = pauseAngle; t0 = now;
+      base += now - pauseAt;                 // время партии продолжается с места паузы
+      paused = false; countdownEnd = 0;
       hint.textContent = '';
-      if (transitionLeft >= 0) { phase = 'transition'; transitionEnd = now + transitionLeft; sectorFadeFrom = now - CONFIG.transitionMs; }
-      else phase = 'running';
+    }
+    function quitDuel() {
+      var now = performance.now();
+      g.finish(Math.max(0, Math.round(et(now) * 1000) / 1000), 'quit');
+      lose('quit');
     }
 
-    function renderPanel(result, prevBest, info) {
+    function showOpponent() {
+      var o = duel.opponent && duel.opponent();
+      var text = !o ? '' : o.done
+        ? (o.forfeit ? 'Соперник вышел из игры' : o.name + ': ' + o.score + ' · игра окончена — обгони!')
+        : o.name + ': ' + (o.score || 0);
+      if (text === oppShown) return;
+      oppShown = text;
+      var line = panel.querySelector('.sector-opp');
+      if (line) line.textContent = text;
+    }
+
+    function renderPanel(res, prevBest, info) {
       panel.replaceChildren();
+      if (duel) {
+        if (screen === 'wait') {
+          panel.appendChild(h('p', 'sector-lead', 'Дуэль начинается'));
+          if (duel.title) panel.appendChild(h('p', 'sector-best', duel.title));
+        } else if (screen === 'play') {
+          oppShown = '';
+          panel.appendChild(h('p', 'sector-opp', ''));
+          showOpponent();
+        } else if (screen === 'over' && duel.overPanel) {
+          duel.overPanel(panel, res);
+        }
+        return;
+      }
       if (screen === 'start') {
         panel.appendChild(h('p', 'sector-lead', 'Останови стрелку в выделенном секторе'));
         var b = opts.best ? (opts.best() || 0) : 0;
@@ -445,14 +433,14 @@
         btn.addEventListener('click', function (ev) { ev.stopPropagation(); start(); });
         panel.appendChild(btn);
       } else if (screen === 'over') {
-        var best = Math.max(prevBest || 0, result.score, info && info.best ? info.best : 0);
-        var isNew = result.score > 0 && result.score > (prevBest || 0);
+        var best = Math.max(prevBest || 0, res.score, info && info.best ? info.best : 0);
+        var isNew = res.score > 0 && res.score > (prevBest || 0);
         panel.appendChild(h('p', 'sector-over', 'GAME OVER'));
         if (isNew) panel.appendChild(h('p', 'sector-new', 'NEW RECORD!'));
         var row = h('div', 'sector-stats');
-        function stat(n, l) { var s = h('div', 'sector-stat'); s.appendChild(h('span', 'n', String(n))); s.appendChild(h('span', 'l', l)); return s; }
-        row.appendChild(stat(result.score, 'очки'));
-        row.appendChild(stat(result.perfects, 'perfect'));
+        function stat(n, l) { var x = h('div', 'sector-stat'); x.appendChild(h('span', 'n', String(n))); x.appendChild(h('span', 'l', l)); return x; }
+        row.appendChild(stat(res.score, 'очки'));
+        row.appendChild(stat(res.perfects, 'perfect'));
         row.appendChild(stat(best, 'рекорд'));
         panel.appendChild(row);
         if (info && info.valid === false) panel.appendChild(h('p', 'sector-warn', 'Этот результат не прошёл проверку и не попадёт в рейтинг.'));
@@ -489,7 +477,7 @@
       }
     }
     function onVisibility() { if (document.hidden) pause(); else startCountdown(); }
-    function onBlur() { pause(); }
+    function onBlur() { if (!duel) pause(); }   // в дуэли проигрыш только если приложение свернули
     function onFocus() { if (!document.hidden) startCountdown(); }
 
     field.tabIndex = 0;
@@ -500,12 +488,20 @@
     root.addEventListener('focus', onFocus);
     root.addEventListener('resize', resize);
 
-    renderPanel();
+    if (duel) {
+      // дуэль: та же партия по зерну, старт в назначенный базой момент
+      resetRound(duel.seed);
+      base = duel.startAt;
+      if (performance.now() >= base) beginPlay();
+      else { screen = 'wait'; renderPanel(); if (opts.onStateChange) opts.onStateChange('wait'); loop(); }
+    } else renderPanel();
     // Размер считаем, когда элемент уже на странице.
     requestAnimationFrame(function () { if (!destroyed) resize(); });
 
     return {
       destroy: function () {
+        // ушли с экрана посреди дуэли — это выход из игры (проигрыш)
+        if (duel && screen === 'play' && !paused && st() && st().phase !== 'over') { try { quitDuel(); } catch (e) { /* ничего */ } }
         destroyed = true;
         if (raf) cancelAnimationFrame(raf);
         raf = 0;
@@ -518,19 +514,24 @@
         root.removeEventListener('resize', resize);
         if (opts.onStateChange) opts.onStateChange('gone');
       },
+      // перерисовать низ после конца дуэли (когда стал известен итог)
+      refreshPanel: function () { if (screen === 'over') renderPanel(result()); },
       // для проверок
       _state: function () {
-        var now = performance.now(), rel = angleAt(now);
-        return { screen: screen, phase: phase, hits: hits, perfects: perfects, score: score, center: center, width: width, speed: speed, dir: dir,
-          kind: kind, special: kind === 'rev', spin: spin, untilRev: untilRev, untilSpin: untilSpin, angle: rel, rot: dialRot(rel), arrowScreen: wrap(rel + dialRot(rel)) };
+        var s = st(), now = performance.now(), rel = relAngle(now);
+        if (!s) return { screen: screen };
+        return { screen: screen, phase: s.phase, hits: s.hits, perfects: s.perfects, score: s.score, center: s.center, width: s.width,
+          speed: s.speed, dir: s.dir, kind: s.kind, special: s.kind === 'rev', spin: s.spin, untilRev: s.untilRev, untilSpin: s.untilSpin,
+          exitAt: s.exitAt, t: et(now), angle: rel, rot: dialRot(rel), arrowScreen: wrap(rel + dialRot(rel)), end: s.end, presses: presses.slice(), seed: s.seed };
       },
       _press: press
     };
   }
 
   var api = {
-    CONFIG: CONFIG, speedFor: speedFor, widthFor: widthFor, perfectWidth: perfectWidth,
-    norm: norm, judge: judge, placeSector: placeSector, between: between, pickKind: pickKind, minTimeMs: minTimeMs, mount: mount
+    CONFIG: CONFIG, speedFor: Core.speedFor, widthFor: Core.widthFor, perfectWidth: Core.perfectWidth,
+    norm: Core.norm, judge: Core.judge, placeSector: Core.placeSector, between: Core.between, pickKind: Core.pickKind,
+    minTimeMs: Core.minTimeMs, mount: mount
   };
   root.SectorGame = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
