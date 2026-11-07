@@ -3171,6 +3171,7 @@
       me: function () { return S.userId; }, members: function () { return S.members || []; },
       setGameState: function (st) { S.gameState = st; }, rerender: function () { render(); }
     };
+    if (window.Duels) window.Duels.init();
 
     // Реакция на вход или выход в другой вкладке. Внутри обработчика нельзя ждать запросы к Supabase, поэтому setTimeout.
     sb.auth.onAuthStateChange(function (event, session) {

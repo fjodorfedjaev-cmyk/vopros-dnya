@@ -432,5 +432,7 @@
     if (D.open && !(D.game && !D.ended)) { stopPoll(); }
   }
 
-  window.Duels = { section: section, screen: screen, isOpen: isOpen, enter: enter, leave: leave, open: openDuel, init: function () { A = window.AppAPI; } };
+  // Помощники сайта (window.AppAPI) берём при первом же вызове: вкладка рисуется раньше, чем вызывается enter().
+  function withApi(f) { return function () { if (!A) A = window.AppAPI; return f.apply(null, arguments); }; }
+  window.Duels = { section: withApi(section), screen: withApi(screen), isOpen: isOpen, enter: enter, leave: leave, open: withApi(openDuel), init: function () { A = window.AppAPI; } };
 })();
