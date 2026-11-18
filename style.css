@@ -1480,3 +1480,7 @@ button.dk-card { cursor: pointer; }
 .dk-pl-money.plus { color: var(--ok, #3FB97F); }
 .dk-pl-money.minus { color: var(--err); }
 @media (prefers-reduced-motion: reduce) { .dk-card, .dk-bar > i { transition: none; } }
+/* «Дурак»: тестовая комната с ботами (только админ) */
+.dk-test-row { display: flex; flex-direction: column; gap: 6px; }
+.dk-test-chip { align-self: flex-start; padding: 6px 14px; }
+.dk-seat-x { width: 24px; height: 24px; font-size: 17px; margin-right: -4px; }

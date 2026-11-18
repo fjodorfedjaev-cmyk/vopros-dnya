@@ -1,3 +1,4 @@
 schema.sql
 *.sql
 .DS_Store
+tools/local-test/shots/

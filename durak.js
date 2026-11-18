@@ -8,7 +8,8 @@
   var K = {
     list: null, listErr: null, form: false, stake: '', listPoll: null,
     open: null, st: null, offset: 0, rtt: 1e9, poll: null, timer: null,
-    rootEl: null, sig: '', sel: [], pick: [], busy: false, msg: '', msgErr: false
+    rootEl: null, sig: '', sel: [], pick: [], busy: false, msg: '', msgErr: false,
+    admin: false, test: false   // админ может открыть тестовую комнату с ботами
   };
 
   /* ---------- карты ---------- */
@@ -42,6 +43,7 @@
     if (/durak_bad_move/.test(m)) return 'Так положить нельзя.';
     if (/durak_can_play/.test(m)) return 'Есть чем ходить — забрать стопку нельзя.';
     if (/durak_gone/.test(m)) return 'Эта комната уже неактуальна.';
+    if (/not_admin/.test(m)) return 'Это может только админ.';
     if (/failed to fetch|network|load failed/i.test(m)) return 'Нет связи. Попробуй ещё раз.';
     return 'Что-то пошло не так.';
   }
@@ -107,11 +109,11 @@
       var net = Number(r.my_payout || 0) - Number(r.stake || 0);
       var fool = r.my_place === n;
       title = fool ? 'Дурак' : r.my_place + ' место из ' + n;
-      line = r.stake ? (net > 0 ? '+' : net < 0 ? '−' : '') + coins(Math.abs(net)) : 'без ставки';
+      line = r.test ? 'тестовая, с ботами' : r.stake ? (net > 0 ? '+' : net < 0 ? '−' : '') + coins(Math.abs(net)) : 'без ставки';
       cls = fool ? ' lose' : r.my_place === 1 ? ' win' : '';
     } else if (r.mine) {
-      title = r.status === 'choose' || r.status === 'play' ? 'Идёт игра' : r.status === 'ready' ? 'Сейчас начнётся' : 'Твоя комната';
-      line = n + ' из 5 · ' + stakeTxt;
+      title = r.status === 'choose' || r.status === 'play' ? 'Идёт игра' : r.status === 'ready' ? 'Сейчас начнётся' : r.test ? 'Тестовая комната' : 'Твоя комната';
+      line = n + ' из 5 · ' + (r.test ? 'с ботами' : stakeTxt);
       cls = ' incoming';
       acts.push(el('button', { type: 'button', class: 'btn primary', text: r.status === 'choose' || r.status === 'play' ? 'Вернуться' : 'Открыть',
         onclick: function () { openRoom(r.id); } }));
@@ -147,6 +149,8 @@
     function sync() {
       var n = val();
       var ok = n !== null && n >= 0 && n <= 100000;
+      stakeBox.hidden = K.test;
+      if (K.test) { setText(go, 'Открыть тестовую комнату'); go.disabled = false; if (msg.classList.contains('err')) { msg.className = 'msg'; msg.textContent = ''; } return; }
       setText(go, !ok ? 'Открыть комнату' : n ? 'Открыть комнату · ставка ' + coins(n) : 'Открыть комнату · без ставки');
       go.disabled = !ok || n > A.balance();
       if (ok && n > A.balance()) { msg.className = 'msg err'; setText(msg, 'Не хватает: у тебя ' + coins(Math.floor(A.balance()))); }
@@ -164,23 +168,32 @@
     }));
     var coin = el('span', { class: 'duel-coin', 'aria-hidden': 'true' }); setText(coin, '🪙');
     go.addEventListener('click', async function () {
-      var n = val();
+      var n = K.test ? 0 : val();
       if (n === null) return;
       go.disabled = true;
       try {
-        var id = await rpc('durak_create', { p_stake: n });
+        var id = await rpc('durak_create', K.test ? { p_stake: 0, p_test: true } : { p_stake: n });
         A.loadPoints();
         K.form = false; K.stake = '';
         openRoom(typeof id === 'number' ? id : Number(id));
       } catch (e) { msg.className = 'msg err'; msg.textContent = errText(e); go.disabled = false; }
     });
-    sync();
-    return el('div', { class: 'card duel-form' }, [
+    var stakeBox = el('div', { class: 'dk-stake-box' }, [
       el('label', { class: 'duel-label', for: 'dk-stake', text: 'Ставка с каждого' }),
       el('div', { class: 'duel-stake' }, [el('span', { class: 'duel-stake-in' }, [input, coin]), quick]),
-      el('p', { class: 'muted small', text: 'Ставка уходит в банк при входе. Выйти до начала — вернётся. Банк делят по местам: первый удваивает ставку, дурак не получает ничего.' }),
-      go, msg
+      el('p', { class: 'muted small', text: 'Ставка уходит в банк при входе. Выйти до начала — вернётся. Банк делят по местам: первый удваивает ставку, дурак не получает ничего.' })
     ]);
+    // Только админу: тестовая комната с ботами — видна только ему, без ставки и уведомлений
+    var testRow = null;
+    if (K.admin) {
+      var tb = el('button', { type: 'button', class: 'chip duel-chip dk-test-chip', 'aria-pressed': String(K.test) }, [el('span', { text: 'Тестовая, с ботами' })]);
+      tb.addEventListener('click', function () { K.test = !K.test; tb.setAttribute('aria-pressed', String(K.test)); testNote.hidden = !K.test; sync(); });
+      var testNote = el('p', { class: 'muted small', text: 'Видна только тебе, без ставки и уведомлений. За стол садятся боты — они ходят сами.' });
+      testNote.hidden = !K.test;
+      testRow = el('div', { class: 'dk-test-row' }, [tb, testNote]);
+    }
+    sync();
+    return el('div', { class: 'card duel-form' }, [testRow, stakeBox, go, msg]);
   }
 
   function rulesBlock() {
@@ -295,7 +308,7 @@
 
   function head(st) {
     var b = el('span', { class: 'duel-bank' });
-    setText(b, st.stake ? 'ставка ' + coins(st.stake) + ' · банк ' + coins(bank(st)) : 'без ставки');
+    setText(b, st.test ? 'тестовая комната · с ботами' : st.stake ? 'ставка ' + coins(st.stake) + ' · банк ' + coins(bank(st)) : 'без ставки');
     var back = el('button', { type: 'button', class: 'link quiet dk-back', text: '← Комнаты', onclick: closeRoom });
     return el('div', { class: 'card dk-top' }, [el('div', { class: 'dk-top-row' }, [el('span', { class: 'dk-title', text: 'Дурак' }), back]), b]);
   }
@@ -312,7 +325,9 @@
       return el('div', { class: 'dk-seat' + (tag.on ? ' on' : '') }, [
         A.avatar(p.name, p.color, true, p.avatar),
         el('span', { class: 'dk-seat-name', text: p.me ? p.name + ' (ты)' : p.name }),
-        tag.text ? el('span', { class: 'dk-seat-tag', text: tag.text }) : null
+        tag.text ? el('span', { class: 'dk-seat-tag', text: tag.text }) : null,
+        tag.remove ? el('button', { type: 'button', class: 'x dk-seat-x', 'aria-label': 'Убрать ' + p.name, text: '×', disabled: K.busy,
+          onclick: function () { act('durak_remove_bot', { p_bot: tag.remove }); } }) : null
       ]);
     }));
   }
@@ -322,7 +337,14 @@
     var box = el('div', { class: 'card duel-lobby' });
     var n = playersBySeat().length;
     var acts = [];
-    if (st.status === 'open') {
+    if (st.status === 'open' && st.test) {
+      box.appendChild(el('p', { class: 'duel-big', text: 'Тестовая комната · ' + n + ' из 5' }));
+      box.appendChild(seatsList(st, function (p) { return { text: p.bot ? 'бот' : 'ты', on: false, remove: p.bot ? p.id : null }; }));
+      box.appendChild(el('p', { class: 'muted small', text: 'Её видишь только ты: без ставки и уведомлений. Боты ходят сами через секунду-две после начала своего хода.' }));
+      if (n < 5) acts.push(el('button', { type: 'button', class: 'btn', text: 'Добавить бота', disabled: K.busy, onclick: function () { act('durak_add_bot'); } }));
+      acts.unshift(el('button', { type: 'button', class: 'btn primary', text: 'Начать', disabled: n < 2 || K.busy, onclick: function () { act('durak_start'); } }));
+      acts.push(el('button', { type: 'button', class: 'btn', text: 'Закрыть', disabled: K.busy, onclick: function () { act('durak_leave'); } }));
+    } else if (st.status === 'open') {
       box.appendChild(el('p', { class: 'duel-big', text: n < 2 ? 'Ждём игроков' : 'В комнате ' + n + ' из 5' }));
       box.appendChild(seatsList(st, function (p) { return { text: p.creator ? 'создатель' : '', on: false }; }));
       box.appendChild(el('p', { class: 'muted small', text: st.creator
@@ -599,8 +621,15 @@
   /* ---------- вход и выход ---------- */
   function startListPoll() { stopListPoll(); K.listPoll = setInterval(function () { if (!document.hidden && !K.open) loadList(); }, 5000); }
   function stopListPoll() { if (K.listPoll) { clearInterval(K.listPoll); K.listPoll = null; } }
+  var adminAsked = false;
+  function askAdmin() {
+    if (adminAsked) return;
+    adminAsked = true;
+    A.sb().rpc('is_admin').then(function (r) { K.admin = !r.error && r.data === true; if (K.admin && K.form && !K.open) paint(true); }, function () {});
+  }
   function enter() {
     A = window.AppAPI;
+    askAdmin();
     if (K.open) { if (!K.poll) startPoll(); return; }
     loadList();
     startListPoll();
