@@ -439,16 +439,16 @@
     paint(true);
   }
 
-  // Сколько карт в руке у соперника: маленький веер рубашек и число
+  // Рука соперника: веер рубашек (это карты, которыми он сейчас играет), число — прямо на веере
   function fanEl(n) {
     var k = Math.min(n, 5);
     var pic = el('span', { class: 'dk-fan-pic', 'aria-hidden': 'true' });
     for (var i = 0; i < k; i++) {
       var b = el('i');
-      b.style.transform = 'rotate(' + ((i - (k - 1) / 2) * 14) + 'deg)';
+      b.style.transform = 'rotate(' + ((i - (k - 1) / 2) * 13) + 'deg)';
       pic.appendChild(b);
     }
-    return el('span', { class: 'dk-fan', title: 'Карт в руке: ' + n, 'aria-label': 'Карт в руке: ' + n }, [pic, el('b', { text: String(n) })]);
+    return el('span', { class: 'dk-fan', role: 'img', 'aria-label': 'Карт в руке: ' + n }, [pic, el('b', { text: String(n) })]);
   }
   function outText(p) { return p.out === 'afk' || p.out === 'left' ? 'вне игры' : p.place + ' место'; }
 
@@ -471,6 +471,8 @@
     ]);
   }
 
+  // Бита лежит вразнобой: сдвиги и углы рубашек (постоянные — при перерисовке не дёргаются)
+  var BITA_R = [-28, 14, -6, 37, -41, 22, 3], BITA_X = [-3, 4, 1, -5, 3, -2, 5], BITA_Y = [2, -3, 4, 0, -4, 3, -1];
   // Середина: колода (с числом), стопка, бита (без числа). Стрелки по кругу — игра идёт по часовой.
   function midEl(st) {
     var top = st.pile_top || [];
@@ -485,8 +487,13 @@
     if (!st.pile_n) pileKids.push(el('span', { class: 'dk-card ghost' }));
     var deck = el('div', { class: 'dk-deck' + (st.deck_n ? '' : ' empty'), 'aria-label': st.deck_n ? 'Колода: ' + st.deck_n : 'Колода пустая' },
       st.deck_n ? [backEl({ small: true, cls: 'l2' }), backEl({ small: true, cls: 'l1' }), backEl({ small: true, n: st.deck_n, label: 'Колода' })] : []);
-    var bita = el('div', { class: 'dk-bita' + (st.bita ? '' : ' empty'), 'aria-label': 'Бита' },
-      st.bita ? [backEl({ small: true, cls: 'b2' }), backEl({ small: true, cls: 'b1' }), backEl({ small: true, label: 'Бита' })] : []);
+    var bitaKids = [];
+    for (var b = 0, nb = st.bita ? Math.min(7, 2 + Math.floor(st.bita / 6)) : 0; b < nb; b++) {
+      var bk = backEl({ small: true, label: b === nb - 1 ? 'Бита' : null });
+      bk.style.transform = 'translate(' + BITA_X[b] + 'px,' + BITA_Y[b] + 'px) rotate(' + BITA_R[b] + 'deg)';
+      bitaKids.push(bk);
+    }
+    var bita = el('div', { class: 'dk-bita' + (st.bita ? '' : ' empty'), 'aria-label': 'Бита' }, bitaKids);
     var ring = '<svg class="dk-ring-arrows" viewBox="0 0 200 120" aria-hidden="true"><ellipse cx="100" cy="60" rx="94" ry="54" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 7"/>'
       + '<path d="M18 38 l-2 -9 l9 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
       + '<path d="M182 82 l2 9 l-9 -3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -658,7 +665,7 @@
     if (!box || !pile) return;
     var mine = box.classList.contains('dk-me');
     var sm = mine ? 1 : 0.6;                                        // у соперников карты мельче
-    var toActor = (mine && root.querySelector('.dk-hand')) || box;  // куда летят карты игроку
+    var toActor = (mine && root.querySelector('.dk-hand')) || (!mine && box.querySelector('.dk-fan')) || box;  // куда летят карты игроку
     var cards = e.cards || [];
     if (e.kind === 'play' && e.from === 'closed' || e.kind === 'flip_take') {
       var slot = box.querySelector('.dk-slot[data-pos="' + (e.pos || 1) + '"]') || box;
