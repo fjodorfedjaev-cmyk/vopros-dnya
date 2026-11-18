@@ -1433,7 +1433,7 @@ button.dk-card { cursor: pointer; }
   display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px 7px; max-width: 100%; min-width: 0;
   border-radius: 12px; border: 1px solid transparent; transition: border-color 0.2s, opacity 0.2s;
 }
-.dk-opp.turn { border-color: var(--accent); animation: dkGlow 1.6s ease-in-out infinite; }
+.dk-opp.turn { border-color: var(--accent); box-shadow: 0 0 12px rgba(242, 120, 44, 0.3); }
 .dk-opp.out { opacity: 0.5; }
 .dk-opp-head { display: flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0; }
 .dk-opp-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -1476,14 +1476,17 @@ button.dk-card { cursor: pointer; }
 .dk-pile .dk-card.landed { transform: rotate(4deg); }
 
 .dk-me { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
-.dk-me.turn { border-color: var(--accent); box-shadow: 0 0 22px rgba(242, 120, 44, 0.16); }
-.dk-turn {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-radius: 12px;
-  background: var(--accent); color: #1A0D04; animation: dkTurn 1.8s ease-in-out infinite;
-}
-.dk-turn.pop { animation: dkPop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1), dkTurn 1.8s ease-in-out 0.45s infinite; }
-.dk-turn-t { font: 700 21px var(--font-display); letter-spacing: 0.01em; }
-.dk-turn-left { font: 600 15px var(--font-mono); }
+/* свой ход: рамка светится ровно (без пульса), над рамкой — оранжевая надпись; место под надпись есть всегда */
+.dk-me.turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(242, 120, 44, 0.28); }
+.dk-me.turn.pop { animation: dkGlowIn 0.4s ease-out; }
+.dk-me-wrap { display: flex; flex-direction: column; gap: 4px; }
+.dk-turn-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-height: 22px; padding: 0 6px; visibility: hidden; }
+.dk-turn-line.on { visibility: visible; }
+.dk-turn-line.pop { animation: dkIn 0.35s ease-out; }
+.dk-turn-t { font: 700 18px var(--font-display); color: var(--accent); letter-spacing: 0.01em; }
+.dk-turn-left { font: 500 13px var(--font-mono); color: var(--accent); opacity: 0.8; }
+.dk-bar.off { visibility: hidden; }
+.dk-acts .btn.ghost { visibility: hidden; }
 .dk-me-done { text-align: center; font: 600 17px var(--font-display); color: var(--accent); padding: 2px 0; }
 .dk-me.out .dk-slots.mine { display: none; }
 .dk-left { font: 500 13px var(--font-mono); color: var(--muted); }
@@ -1496,7 +1499,7 @@ button.dk-card { cursor: pointer; }
 .dk-acts .btn.primary { flex: 1; }
 .dk-me .msg:empty, .dk-choose .msg:empty, .duel-lobby .msg:empty, .dk-result .msg:empty { display: none; }
 
-.dk-anim .dk-turn, .dk-anim .dk-me .dk-acts { visibility: hidden; }
+.dk-anim .dk-turn-line, .dk-anim .dk-me .dk-acts { visibility: hidden; }
 .dk-anim .dk-me button { pointer-events: none; }
 /* летящие карты, переворот, «Бита!» — слой поверх страницы */
 .dk-fx { position: fixed; inset: 0; pointer-events: none; z-index: 80; }
@@ -1506,9 +1509,6 @@ button.dk-card { cursor: pointer; }
 .dk-flip-in > .dk-card { position: absolute; inset: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
 .dk-flip-face { transform: rotateY(180deg); }
 .dk-flash { position: absolute; font: 800 28px var(--font-display); color: var(--accent); text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7); white-space: nowrap; }
-@keyframes dkPop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-@keyframes dkTurn { 0%, 100% { box-shadow: 0 0 0 0 rgba(242, 120, 44, 0.45); } 50% { box-shadow: 0 0 0 6px rgba(242, 120, 44, 0); } }
-@keyframes dkGlow { 0%, 100% { box-shadow: 0 0 4px rgba(242, 120, 44, 0.25); } 50% { box-shadow: 0 0 16px rgba(242, 120, 44, 0.55); } }
 
 /* итог */
 .dk-result { display: flex; flex-direction: column; gap: 12px; }
@@ -1523,7 +1523,9 @@ button.dk-card { cursor: pointer; }
 .dk-pl-money { font: 600 14px var(--font-mono); }
 .dk-pl-money.plus { color: var(--ok, #3FB97F); }
 .dk-pl-money.minus { color: var(--err); }
-@media (prefers-reduced-motion: reduce) { .dk-card, .dk-bar > i { transition: none; } .dk-turn, .dk-opp.turn { animation: none; } }
+@keyframes dkIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes dkGlowIn { from { box-shadow: 0 0 0 0 rgba(242, 120, 44, 0); border-color: var(--line); } }
+@media (prefers-reduced-motion: reduce) { .dk-card, .dk-bar > i { transition: none; } .dk-turn-line, .dk-me.turn { animation: none; } }
 /* «Дурак»: тестовая комната с ботами (только админ) */
 .dk-test-row { display: flex; flex-direction: column; gap: 6px; }
 .dk-test-chip { align-self: flex-start; padding: 6px 14px; }

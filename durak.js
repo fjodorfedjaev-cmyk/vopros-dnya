@@ -453,7 +453,7 @@
       ]),
       tableSlots(p, false),
       tag ? el('span', { class: 'dk-opp-tag', text: tag }) : null,
-      turn ? el('div', { class: 'dk-bar sm', 'aria-hidden': 'true' }, [el('i')]) : null
+      el('div', { class: 'dk-bar sm' + (turn ? '' : ' off'), 'aria-hidden': 'true' }, [el('i')])   // есть всегда — рамка не прыгает
     ]);
   }
 
@@ -482,17 +482,23 @@
   }
 
   // Я: «Твой ход», мои карты на столе (в тени, пока есть рука), рука, кнопки
+  // Я: рамка меняет размер только от числа карт. В свой ход рамка светится, а над ней — оранжевая надпись «Твой ход».
+  // Полоска времени и кнопки есть всегда (вне своего хода — невидимые), чтобы ничего не прыгало.
   function meBox(st) {
     var me = st.my || {};
     var myP = playerAt(me.seat) || {};
     var turn = !!me.turn;
+    var fresh = turn && !K.wasTurn;
     var dim = me.src === 'hand';
-    var box = el('div', { class: 'dk-me' + (turn ? ' turn' : '') + (myP.place != null ? ' out' : ''), 'data-seat': String(me.seat) });
+    var line = el('div', { class: 'dk-turn-line' + (turn ? ' on' : '') + (fresh ? ' pop' : '') }, [
+      el('span', { class: 'dk-turn-t', text: 'Твой ход' }),
+      el('span', { class: 'dk-turn-left', 'data-left': '1' })
+    ]);
+    var box = el('div', { class: 'dk-me' + (turn ? ' turn' : '') + (fresh ? ' pop' : '') + (myP.place != null ? ' out' : ''), 'data-seat': String(me.seat) });
     if (myP.place != null) {
       box.appendChild(el('div', { class: 'dk-me-done', text: myP.out === 'afk' ? 'Вне игры' : myP.place + ' место' }));
-    } else if (turn) {
-      box.appendChild(el('div', { class: 'dk-turn' + (K.wasTurn ? '' : ' pop') }, [el('span', { class: 'dk-turn-t', text: 'Твой ход' }), el('span', { class: 'dk-turn-left', 'data-left': '1' })]));
-      box.appendChild(el('div', { class: 'dk-bar', 'aria-hidden': 'true' }, [el('i')]));
+    } else {
+      box.appendChild(el('div', { class: 'dk-bar' + (turn ? '' : ' off'), 'aria-hidden': 'true' }, [el('i')]));
     }
     box.appendChild(tableSlots(myP, true, me.src, turn, dim));
     var hand = me.hand || [];
@@ -505,18 +511,16 @@
           onclick: active ? function () { tapCard(c); } : null });
       })));
     }
-    if (turn) {
-      var acts = [];
-      if (me.src !== 'closed') {
-        acts.push(el('button', { type: 'button', class: 'btn primary', text: 'Положить', disabled: !K.sel.length || K.busy,
-          onclick: function () { if (!K.anim) act('durak_play', { p_cards: K.sel.slice() }); } }));
-      }
-      if (me.can_take) acts.push(el('button', { type: 'button', class: 'btn', text: 'Забрать стопку', disabled: K.busy, onclick: function () { if (!K.anim) act('durak_take'); } }));
-      if (acts.length) box.appendChild(el('div', { class: 'dk-acts' }, acts));
+    if (myP.place == null) {
+      var canPut = turn && me.src !== 'closed';
+      var acts = [el('button', { type: 'button', class: 'btn primary' + (canPut ? '' : ' ghost'), text: 'Положить', disabled: !canPut || !K.sel.length || K.busy,
+        onclick: function () { if (!K.anim) act('durak_play', { p_cards: K.sel.slice() }); } })];
+      if (turn && me.can_take) acts.push(el('button', { type: 'button', class: 'btn', text: 'Забрать стопку', disabled: K.busy, onclick: function () { if (!K.anim) act('durak_take'); } }));
+      box.appendChild(el('div', { class: 'dk-acts' }, acts));
     }
     if (K.msg) box.appendChild(msgLine());
     K.wasTurn = turn;
-    return box;
+    return el('div', { class: 'dk-me-wrap' }, [line, box]);
   }
 
   function playBox(st) {
