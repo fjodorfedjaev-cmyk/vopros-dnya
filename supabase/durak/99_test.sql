@@ -87,11 +87,16 @@ begin
   e := v->>'status';
   perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
   me := public.durak_view(rid)->'my';
+  -- пока u1 выбирает: открытые карты u2 (уже выбрал) видны, свои ещё нет
+  v := public.durak_view(rid);
+  if (select count(*) from jsonb_array_elements(v->'players') x
+       where not (x->>'me')::boolean and case when jsonb_typeof(x->'open') = 'array' then jsonb_array_length(x->'open') else 0 end = 3) = 1
+     and (select x->'open' from jsonb_array_elements(v->'players') x where (x->>'me')::boolean) = 'null'::jsonb then n := n + 1; end if;
   perform public.durak_choose(rid, array[(me->'pick'->>3)::int, (me->'pick'->>4)::int, (me->'pick'->>5)::int]);
   v := public.durak_view(rid);
-  res := res || case when n = 2 and e = 'choose' and v->>'status' = 'play' and jsonb_array_length(v->'my'->'hand') = 3
+  res := res || case when n = 3 and e = 'choose' and v->>'status' = 'play' and jsonb_array_length(v->'my'->'hand') = 3
                       and jsonb_array_length(v->'players'->0->'open') = 3 and v->>'turn' is not null
-    then E'ok   4 выбор открытых: не 3 или чужая карта — отказ; выбрали оба — игра, рука 3, открытые видны всем\n'
+    then E'ok   4 выбор открытых: не 3 или чужая карта — отказ; выбравший сразу показывает открытые; выбрали оба — игра, рука 3\n'
     else E'FAIL 4 (' || n || ',' || e || E')\n' end;
 
   -- ===== 4. Ходы на разложенных вручную картах (двое: место 0 — u1, место 1 — u2) =====

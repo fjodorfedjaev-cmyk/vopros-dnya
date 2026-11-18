@@ -401,37 +401,6 @@
     return box;
   }
 
-  // Выбор трёх открытых карт из шести
-  function chooseBox(st) {
-    var me = st.my || {};
-    var box = el('div', { class: 'card dk-choose' });
-    if (me.chosen) {
-      box.appendChild(el('p', { class: 'duel-big', text: 'Ждём, пока выберут остальные' }));
-      box.appendChild(el('div', { class: 'dk-bar', 'aria-hidden': 'true' }, [el('i')]));
-      box.appendChild(seatsList(st, function (p) { return { text: p.chosen ? 'готово' : 'выбирает', on: p.chosen }; }));
-      box.appendChild(el('div', { class: 'dk-row' }, (me.open || []).map(function (c) { return cardEl(c); })));
-      box.appendChild(el('div', { class: 'dk-row' }, (me.hand || []).map(function (c) { return cardEl(c); })));
-      return box;
-    }
-    box.appendChild(el('div', { class: 'dk-choose-head' }, [el('p', { class: 'duel-big', text: 'Выбери 3 карты на стол' }), el('span', { class: 'dk-left', 'data-left': '1' })]));
-    box.appendChild(el('div', { class: 'dk-bar', 'aria-hidden': 'true' }, [el('i')]));
-    box.appendChild(el('div', { class: 'dk-row dk-pick' }, (me.pick || []).map(function (c) {
-      var on = K.pick.indexOf(c) >= 0;
-      return cardEl(c, { button: true, pressed: on, cls: on ? 'sel' : '', onclick: function () {
-        var i = K.pick.indexOf(c);
-        if (i >= 0) K.pick.splice(i, 1);
-        else if (K.pick.length < 3) K.pick.push(c);
-        else { K.pick.shift(); K.pick.push(c); }
-        paint(true);
-      } });
-    })));
-    box.appendChild(el('button', { type: 'button', class: 'btn primary', disabled: K.pick.length !== 3 || K.busy,
-      text: 'Положить · ' + K.pick.length + ' из 3',
-      onclick: function () { act('durak_choose', { p_cards: K.pick.slice() }); } }));
-    box.appendChild(msgLine());
-    return box;
-  }
-
   /* ---------- стол ---------- */
   // Три места на столе: открытая поверх закрытой. dim — карты на столе «в тени», пока в руке есть карты.
   function tableSlots(p, mine, src, turn, dim) {
@@ -472,28 +441,32 @@
 
   // Сколько карт в руке у соперника: маленький веер рубашек и число
   function fanEl(n) {
-    var k = Math.min(n, 4);
+    var k = Math.min(n, 5);
     var pic = el('span', { class: 'dk-fan-pic', 'aria-hidden': 'true' });
     for (var i = 0; i < k; i++) {
       var b = el('i');
-      b.style.transform = 'rotate(' + ((i - (k - 1) / 2) * 18) + 'deg)';
+      b.style.transform = 'rotate(' + ((i - (k - 1) / 2) * 14) + 'deg)';
       pic.appendChild(b);
     }
     return el('span', { class: 'dk-fan', title: 'Карт в руке: ' + n, 'aria-label': 'Карт в руке: ' + n }, [pic, el('b', { text: String(n) })]);
   }
   function outText(p) { return p.out === 'afk' || p.out === 'left' ? 'вне игры' : p.place + ' место'; }
 
-  // Соперник: имя, сколько карт в руке (веер) и карты на столе
+  // Соперник: имя, сверху веер (сколько карт в руке), под ним карты на столе —
+  // мелкие, пока в руке есть карты; рука кончилась — крупные (на них теперь и играют)
   function oppBox(p, st, spot) {
     var turn = st.status === 'play' && st.turn === p.seat && p.place == null;
-    var tag = p.place != null ? outText(p) : '';
+    var choosing = st.status === 'choose';
+    var tag = p.place != null ? outText(p) : choosing && !p.chosen ? 'выбирает' : '';
+    var dim = p.place == null && (p.hand > 0 || choosing);
     return el('div', { class: 'dk-opp at-' + spot + (turn ? ' turn' : '') + (p.place != null ? ' out' : ''), 'data-seat': String(p.seat), style: 'grid-area:' + spot }, [
       el('div', { class: 'dk-opp-head' }, [
         A.avatar(p.name, p.color, true, p.avatar),
         el('span', { class: 'dk-opp-name', text: p.name })
       ]),
-      tableSlots(p, false),
-      el('div', { class: 'dk-opp-foot' }, [tag ? el('span', { class: 'dk-opp-tag', text: tag }) : p.hand > 0 ? fanEl(p.hand) : null]),
+      p.place == null && p.hand > 0 ? fanEl(p.hand) : null,
+      tableSlots(p, false, null, false, dim),
+      tag ? el('span', { class: 'dk-opp-tag', text: tag }) : null,
       el('div', { class: 'dk-bar sm' + (turn ? '' : ' off'), 'aria-hidden': 'true' }, [el('i')])   // есть всегда — рамка не прыгает
     ]);
   }
@@ -569,6 +542,40 @@
     return el('div', { class: 'dk-me-wrap' }, [line, box]);
   }
 
+  // Выбор открытых карт: стол уже виден, моя рамка — на своём месте внизу
+  function meChooseBox(st) {
+    var me = st.my || {};
+    var myP = playerAt(me.seat) || {};
+    var picking = !me.chosen;
+    var acts = picking ? [el('button', { type: 'button', class: 'btn primary', text: 'Положить',
+      disabled: K.pick.length !== 3 || K.busy, onclick: function () { act('durak_choose', { p_cards: K.pick.slice() }); } })] : [];
+    var line = el('div', { class: 'dk-turn-line on' + (picking ? '' : ' wait') }, [
+      el('span', { class: 'dk-turn-lbl' }, [el('span', { class: 'dk-turn-t', text: picking ? 'Выбери 3 карты' : 'Ждём остальных' }),
+        el('span', { class: 'dk-turn-left', 'data-left': '1' })]),
+      el('div', { class: 'dk-acts' }, acts)
+    ]);
+    var box = el('div', { class: 'dk-me' + (picking ? ' turn' : ''), 'data-seat': String(me.seat) });
+    box.appendChild(el('div', { class: 'dk-bar', 'aria-hidden': 'true' }, [el('i')]));
+    if (picking) {
+      // шесть карт в один ряд; выбранные (на стол, открытыми) приподняты
+      box.appendChild(el('div', { class: 'dk-hand many dk-pick' }, (me.pick || []).map(function (c) {
+        var on = K.pick.indexOf(c) >= 0;
+        return cardEl(c, { button: true, pressed: on, cls: on ? 'sel' : '', onclick: function () {
+          var i = K.pick.indexOf(c);
+          if (i >= 0) K.pick.splice(i, 1);
+          else if (K.pick.length < 3) K.pick.push(c);
+          else { K.pick.shift(); K.pick.push(c); }
+          paint(true);
+        } });
+      })));
+    } else {
+      var slots = tableSlots(Object.assign({}, myP, { open: me.open }), true, null, false, true);
+      box.appendChild(el('div', { class: 'dk-me-row' }, [el('div', { class: 'dk-hand' }, (me.hand || []).map(function (c) { return cardEl(c); })), slots]));
+    }
+    if (K.msg) box.appendChild(msgLine());
+    return el('div', { class: 'dk-me-wrap' }, [line, box]);
+  }
+
   function playBox(st) {
     var mySeat = st.my ? st.my.seat : 0;
     // соперники по часовой стрелке, начиная со следующего после меня: слева → сверху → справа
@@ -577,7 +584,7 @@
     });
     var spots = { 1: ['top'], 2: ['tl', 'tr'], 3: ['l', 'top', 'r'], 4: ['l', 'tl', 'tr', 'r'] }[opps.length] || [];
     var ring = el('div', { class: 'dk-ring n' + opps.length }, opps.map(function (p, i) { return oppBox(p, st, spots[i]); }).concat([midEl(st)]));
-    return el('div', { class: 'dk-table' }, [ring, meBox(st)]);
+    return el('div', { class: 'dk-table' }, [ring, st.status === 'choose' ? meChooseBox(st) : meBox(st)]);
   }
 
   /* ---------- анимации ---------- */
@@ -731,8 +738,7 @@
     if (!st) return [el('p', { class: 'muted', text: 'Загружаю комнату…' })];
     var body;
     if (st.status === 'open' || st.status === 'ready') body = waitBox(st);
-    else if (st.status === 'choose') body = chooseBox(st);
-    else if (st.status === 'play') body = playBox(st);
+    else if (st.status === 'choose' || st.status === 'play') body = playBox(st);
     else if (st.status === 'finished') body = resultBox(st);
     else body = el('div', { class: 'card duel-lobby' }, [
       el('p', { class: 'duel-big', text: 'Комната закрыта — ставки вернулись' }),

@@ -1400,7 +1400,7 @@ html.sector-on #duel-sect { pointer-events: none; opacity: 0.35; }
 .dk-sub { margin: 4px 0 0; font: 500 12px var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .dk-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .dk-choose { display: flex; flex-direction: column; gap: 10px; }
-.dk-pick { gap: 8px; }
+.dk-me .dk-pick { gap: 6px; }
 
 /* карта */
 .dk-card {
@@ -1456,7 +1456,18 @@ button.dk-card { cursor: pointer; }
   background: repeating-linear-gradient(45deg, #C4500B 0 2px, #A9450A 2px 4px); border: 1px solid #F4EFE6;
 }
 .dk-fan b { font: 600 11px var(--font-mono); color: var(--muted); }
-.dk-opp-foot { display: flex; align-items: center; justify-content: center; min-height: 14px; }
+.dk-opp .dk-fan { gap: 5px; margin: 1px 0 2px; }
+.dk-opp .dk-fan-pic { width: 30px; height: 21px; }
+.dk-opp .dk-fan-pic i { left: 9px; width: 12px; height: 18px; border-radius: 3px; }
+.dk-opp .dk-fan b { font-size: 14px; color: var(--text); }
+.dk-opp .dk-slots.dim { opacity: 0.7; gap: 2px; }
+.dk-opp .dk-slots.dim .dk-slot { width: 18px; height: 30px; }
+.dk-opp .dk-slots.dim .dk-card.sm { --w: 18px; --h: 25px; border-radius: 3px; border-width: 1px; }
+.dk-opp .dk-slots.dim .dk-slot .dk-card.top { top: 5px; }
+.dk-opp .dk-slots.dim .dk-card.sm .dk-r { font-size: 8.5px; top: 1px; left: 2px; }
+.dk-opp .dk-slots.dim .dk-card.sm .dk-s { font-size: 10px; margin-top: 6px; }
+.dk-opp .dk-slots.dim .dk-card.sm.sp::after { width: 3px; height: 3px; top: 2px; right: 2px; }
+.dk-opp .dk-slots.dim .dk-slot.vacant::before { inset: 0 0 5px; border-radius: 3px; }
 .dk-opp-tag { font: 500 11px var(--font-mono); color: var(--accent); }
 .dk-opp .dk-bar { width: 100%; }
 .dk-opp .dk-card.sm { --w: 24px; --h: 34px; }
@@ -1496,7 +1507,9 @@ button.dk-card { cursor: pointer; }
 .dk-pile .dk-card.landed { transform: rotate(4deg); }
 
 /* середина стола крупнее и стол занимает свободную высоту экрана (ряды расходятся, а не жмутся) */
-.dk-ring { min-height: clamp(0px, calc(100vh - 440px), 380px); min-height: clamp(0px, calc(100svh - 440px), 380px); align-content: space-evenly; }
+/* стол — во всю высоту экрана до нижнего меню; моя рамка выросла (много карт) — круг сжимается, а не уезжает рамка */
+.dk-table { min-height: min(calc(100vh - 275px), 760px); min-height: min(calc(100svh - 275px), 760px); }
+.dk-ring { flex: 1 1 auto; align-content: space-evenly; }
 .dk-pile { width: 66px; height: 88px; }
 .dk-pile .dk-card { --w: 54px; --h: 76px; }
 .dk-pile .dk-card .dk-s { font-size: 30px; margin-top: 12px; }
@@ -1511,6 +1524,11 @@ button.dk-card { cursor: pointer; }
 .dk-ring.n1 .dk-opp .dk-slot, .dk-ring.n2 .dk-opp .dk-slot { width: 30px; height: 49px; }
 .dk-ring.n1 .dk-opp .dk-slot .dk-card.top, .dk-ring.n2 .dk-opp .dk-slot .dk-card.top { top: 7px; }
 .dk-ring.n1 .dk-opp .dk-card.sm .dk-s, .dk-ring.n2 .dk-opp .dk-card.sm .dk-s { font-size: 16px; margin-top: 8px; }
+.dk-ring.n1 .dk-opp .dk-slots.dim .dk-card.sm, .dk-ring.n2 .dk-opp .dk-slots.dim .dk-card.sm { --w: 22px; --h: 31px; }
+.dk-ring.n1 .dk-opp .dk-slots.dim .dk-slot, .dk-ring.n2 .dk-opp .dk-slots.dim .dk-slot { width: 22px; height: 37px; }
+.dk-ring.n1 .dk-opp .dk-slots.dim .dk-slot .dk-card.top, .dk-ring.n2 .dk-opp .dk-slots.dim .dk-slot .dk-card.top { top: 6px; }
+.dk-ring.n1 .dk-opp .dk-slots.dim .dk-card.sm .dk-r, .dk-ring.n2 .dk-opp .dk-slots.dim .dk-card.sm .dk-r { font-size: 10px; }
+.dk-ring.n1 .dk-opp .dk-slots.dim .dk-card.sm .dk-s, .dk-ring.n2 .dk-opp .dk-slots.dim .dk-card.sm .dk-s { font-size: 12px; margin-top: 7px; }
 
 .dk-me { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
 /* свой ход: рамка светится ровно (без пульса), над рамкой — оранжевая надпись; место под надпись есть всегда */
@@ -1518,12 +1536,13 @@ button.dk-card { cursor: pointer; }
 .dk-me.turn.pop { animation: dkGlowIn 0.4s ease-out; }
 .dk-me-wrap { display: flex; flex-direction: column; gap: 4px; }
 .dk-turn-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 40px; padding: 0 2px 0 6px; visibility: hidden; }
-.dk-turn-lbl { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.dk-turn-lbl { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
 .dk-turn-line .dk-acts { flex-wrap: nowrap; }
 .dk-turn-line .btn { min-height: 0; height: 38px; padding: 0 20px; }
 .dk-turn-line.on { visibility: visible; }
 .dk-turn-line.pop { animation: dkIn 0.35s ease-out; }
 .dk-turn-t { font: 700 18px var(--font-display); color: var(--accent); letter-spacing: 0.01em; }
+.dk-turn-line.wait .dk-turn-t, .dk-turn-line.wait .dk-turn-left { color: var(--muted); }
 .dk-turn-left { font: 500 13px var(--font-mono); color: var(--accent); opacity: 0.8; }
 .dk-bar.off { visibility: hidden; }
 .dk-me-done { text-align: center; font: 600 17px var(--font-display); color: var(--accent); padding: 2px 0; }
