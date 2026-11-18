@@ -19,8 +19,9 @@ const other = q('select id from public.profiles where id not in (select user_id 
   await shot(A, 'bots_form');
   await A.getByRole('button', { name: 'Открыть тестовую комнату' }).click();
   await A.waitForSelector('.dk-top');
-  for (let i = 0; i < BOTS + 1; i++) { await A.getByRole('button', { name: 'Добавить бота' }).click(); await B.sleep(500); }
-  await A.locator('.dk-seat-x').last().click();   // одного бота убираем
+  const extra = BOTS < 4 ? 1 : 0;   // если есть место — сажаем лишнего бота и убираем его (проверка «×»)
+  for (let i = 0; i < BOTS + extra; i++) { await A.getByRole('button', { name: 'Добавить бота' }).click(); await B.sleep(500); }
+  if (extra) await A.locator('.dk-seat-x').last().click();
   await B.sleep(1200);
   await shot(A, 'bots_room');
   await B.sleep(5500);
@@ -30,9 +31,14 @@ const other = q('select id from public.profiles where id not in (select user_id 
   await B.sleep(2500);
   await shot(A, 'bots_table');
   let moves = 0, done = false, t0 = Date.now();
+  let flyShots = 0;
   while (!done && Date.now() - t0 < 600000) {
     if (await A.locator('.dk-result').count()) { done = true; break; }
-    if (await B.moveIfMyTurn(A)) { moves++; if (moves === 10) await shot(A, 'bots_play'); }
+    if (await B.moveIfMyTurn(A)) {
+      moves++;
+      if (moves === 10) await shot(A, 'bots_play');
+      if (flyShots < 3 && moves % 4 === 2) { await B.sleep(1150); flyShots++; await A.screenshot({ path: __dirname + '/shots/bots_fly' + flyShots + '.png' }); }
+    }
     await B.sleep(400);
   }
   await B.sleep(1200);

@@ -1423,48 +1423,92 @@ button.dk-card { cursor: pointer; }
 .dk-card.sel { transform: translateY(-8px); box-shadow: 0 0 0 3px var(--accent), 0 6px 14px rgba(0, 0, 0, 0.45); }
 .dk-card.back.can { box-shadow: 0 0 0 3px var(--accent), 0 2px 6px rgba(0, 0, 0, 0.35); }
 
-/* стол: соперники, центр, я */
-.dk-table { display: flex; flex-direction: column; gap: 10px; }
-.dk-opps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.dk-opps.n1 { grid-template-columns: 1fr; }
-.dk-opp { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
-.dk-opp.turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-.dk-opp.out { opacity: 0.55; }
-.dk-opp-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.dk-opp-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.dk-opp-cards { display: flex; align-items: flex-start; gap: 6px; }
+/* стол: соперники по кругу (игра идёт по часовой), в середине колода · стопка · бита, внизу — я */
+.dk-table { display: flex; flex-direction: column; gap: 12px; }
+.dk-ring {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: "tl top tr" "l mid r"; gap: 10px 8px; align-items: center; justify-items: center;
+}
+.dk-opp {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px 7px; max-width: 100%; min-width: 0;
+  border-radius: 12px; border: 1px solid transparent; transition: border-color 0.2s, opacity 0.2s;
+}
+.dk-opp.turn { border-color: var(--accent); animation: dkGlow 1.6s ease-in-out infinite; }
+.dk-opp.out { opacity: 0.5; }
+.dk-opp-head { display: flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0; }
+.dk-opp-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dk-opp-tag { font: 500 11px var(--font-mono); color: var(--accent); }
+.dk-opp .dk-bar { width: 100%; }
+.dk-opp .dk-card.sm { --w: 24px; --h: 34px; }
+.dk-opp .dk-card.sm .dk-r { font-size: 10px; left: 2px; }
+.dk-opp .dk-card.sm .dk-s { font-size: 13px; margin-top: 7px; }
 .dk-slots { display: flex; gap: 3px; }
 .dk-slots.mine { gap: 8px; }
 .dk-slot { position: relative; width: 28px; height: 46px; }
+.dk-opp .dk-slot { width: 24px; height: 40px; }
 .dk-slot .dk-card { position: absolute; left: 0; top: 0; }
 .dk-slot .dk-card.top { top: 6px; }
 .dk-slots.mine .dk-slot { width: 46px; height: 74px; }
 .dk-slots.mine .dk-slot .dk-card.top { top: 10px; }
+.dk-slots.mine.dim { gap: 4px; opacity: 0.45; }
+.dk-slots.mine.dim .dk-slot { width: 28px; height: 46px; }
+.dk-slots.mine.dim .dk-slot .dk-card.top { top: 6px; }
 .dk-slot.vacant::before { content: ''; position: absolute; inset: 0 0 6px; border: 1px dashed var(--line); border-radius: 5px; }
 .dk-slots.mine .dk-slot.vacant::before { inset: 0 0 10px; border-radius: 7px; }
-.dk-center { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
-.dk-center-row { display: flex; align-items: center; gap: 14px; }
-.dk-pile { display: flex; align-items: center; min-width: 46px; flex: none; padding-right: 4px; }
-.dk-pile .dk-card.over { margin-left: -26px; transform: rotate(6deg); }
-.dk-center-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.dk-need { font-weight: 600; font-size: 14.5px; }
-.dk-counts { font: 400 12px var(--font-mono); color: var(--muted); }
-.dk-log { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line); padding-top: 8px; }
-.dk-log p { margin: 0; font-size: 13.5px; }
-.dk-log p.old { color: var(--muted); font-size: 12.5px; }
-.dk-me { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
-.dk-me.turn { border-color: var(--accent); }
-.dk-me-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.dk-me-status { font-weight: 600; }
-.dk-me.turn .dk-me-status { color: var(--accent); }
+.dk-slots.mine.dim .dk-slot.vacant::before { inset: 0 0 6px; border-radius: 5px; }
+
+.dk-mid { grid-area: mid; position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 4px; }
+.dk-ring-arrows { position: absolute; left: -6px; top: -2px; width: calc(100% + 12px); height: calc(100% + 4px); color: var(--muted); opacity: 0.35; pointer-events: none; }
+.dk-deck, .dk-bita { position: relative; width: 28px; height: 40px; flex: none; }
+.dk-deck .dk-card, .dk-bita .dk-card { position: absolute; left: 0; top: 0; --w: 28px; --h: 40px; border-width: 1.5px; }
+.dk-deck .l1 { transform: translate(-2px, -2px); }
+.dk-deck .l2 { transform: translate(-4px, -4px); }
+.dk-deck .dk-n { font-size: 11.5px; padding: 0 4px; }
+.dk-bita .dk-card { filter: brightness(0.7) saturate(0.6); }
+.dk-bita .b1 { transform: rotate(10deg); }
+.dk-bita .b2 { transform: rotate(-12deg); }
+.dk-deck.empty, .dk-bita.empty { border: 1px dashed var(--line); border-radius: 5px; opacity: 0.45; }
+.dk-pile { position: relative; width: 56px; height: 72px; flex: none; display: flex; align-items: center; justify-content: center; }
+.dk-pile .dk-card { position: absolute; left: 5px; top: 4px; }
+.dk-pile .dk-card.blank { background: #E6DFD3; }
+.dk-pile .dk-card.u1 { transform: rotate(-7deg); }
+.dk-pile .dk-card.u2 { transform: rotate(5deg) translate(1px, 1px); }
+.dk-pile .dk-card.landed { transform: rotate(4deg); }
+
+.dk-me { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.dk-me.turn { border-color: var(--accent); box-shadow: 0 0 22px rgba(242, 120, 44, 0.16); }
+.dk-turn {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-radius: 12px;
+  background: var(--accent); color: #1A0D04; animation: dkTurn 1.8s ease-in-out infinite;
+}
+.dk-turn.pop { animation: dkPop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1), dkTurn 1.8s ease-in-out 0.45s infinite; }
+.dk-turn-t { font: 700 21px var(--font-display); letter-spacing: 0.01em; }
+.dk-turn-left { font: 600 15px var(--font-mono); }
+.dk-me-done { text-align: center; font: 600 17px var(--font-display); color: var(--accent); padding: 2px 0; }
+.dk-me.out .dk-slots.mine { display: none; }
 .dk-left { font: 500 13px var(--font-mono); color: var(--muted); }
-.dk-hand { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; }
+.dk-choose-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.dk-hand { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 6px; }
 .dk-hand.many { gap: 4px; }
 .dk-hand.many .dk-card { --w: 40px; --h: 56px; }
 .dk-hand.many .dk-card .dk-s { font-size: 22px; }
 .dk-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .dk-acts .btn.primary { flex: 1; }
 .dk-me .msg:empty, .dk-choose .msg:empty, .duel-lobby .msg:empty, .dk-result .msg:empty { display: none; }
+
+.dk-anim .dk-turn, .dk-anim .dk-me .dk-acts { visibility: hidden; }
+.dk-anim .dk-me button { pointer-events: none; }
+/* летящие карты, переворот, «Бита!» — слой поверх страницы */
+.dk-fx { position: fixed; inset: 0; pointer-events: none; z-index: 80; }
+.dk-flying { position: absolute; margin: 0; will-change: transform; }
+.dk-flip { width: 46px; height: 64px; perspective: 500px; }
+.dk-flip-in { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+.dk-flip-in > .dk-card { position: absolute; inset: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+.dk-flip-face { transform: rotateY(180deg); }
+.dk-flash { position: absolute; font: 800 28px var(--font-display); color: var(--accent); text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7); white-space: nowrap; }
+@keyframes dkPop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes dkTurn { 0%, 100% { box-shadow: 0 0 0 0 rgba(242, 120, 44, 0.45); } 50% { box-shadow: 0 0 0 6px rgba(242, 120, 44, 0); } }
+@keyframes dkGlow { 0%, 100% { box-shadow: 0 0 4px rgba(242, 120, 44, 0.25); } 50% { box-shadow: 0 0 16px rgba(242, 120, 44, 0.55); } }
 
 /* итог */
 .dk-result { display: flex; flex-direction: column; gap: 12px; }
@@ -1479,7 +1523,7 @@ button.dk-card { cursor: pointer; }
 .dk-pl-money { font: 600 14px var(--font-mono); }
 .dk-pl-money.plus { color: var(--ok, #3FB97F); }
 .dk-pl-money.minus { color: var(--err); }
-@media (prefers-reduced-motion: reduce) { .dk-card, .dk-bar > i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .dk-card, .dk-bar > i { transition: none; } .dk-turn, .dk-opp.turn { animation: none; } }
 /* «Дурак»: тестовая комната с ботами (только админ) */
 .dk-test-row { display: flex; flex-direction: column; gap: 6px; }
 .dk-test-chip { align-self: flex-start; padding: 6px 14px; }

@@ -9,7 +9,7 @@ async function launch() { return chromium.launch({ executablePath: '/usr/bin/goo
 // Одна «вкладка телефона» для участника uid. errors — общий список ошибок страницы.
 async function phone(browser, uid, errors, opts) {
   opts = opts || {};
-  const ctx = await browser.newContext({ viewport: { width: opts.width || 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  const ctx = await browser.newContext({ viewport: { width: opts.width || +process.env.WIDTH || 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
   await ctx.addInitScript(([u, mode]) => {
     localStorage.setItem('mock-user', u);
     localStorage.setItem('install-hint-seen', '1');   // без подсказок «установить» и «уведомления»
@@ -35,15 +35,21 @@ async function openDurak(p) {
   await p.waitForSelector('.dk', { timeout: 5000 });
 }
 
-// Сделать ход, если сейчас мой: открыть закрытую / положить младшую подходящую / забрать стопку
+// Сделать ход, если сейчас мой: открыть закрытую / положить подходящую / забрать стопку
 async function moveIfMyTurn(p) {
   if (!(await p.locator('.dk-me.turn').count())) return false;
   const flip = p.locator('.dk-slots.mine .dk-card.back.can');
   const can = p.locator('.dk-slots.mine .dk-card.top.can, .dk-hand .dk-card.can');
-  if (await flip.count()) { await flip.first().click(); return true; }
-  if (await can.count()) { await can.first().click(); await p.locator('.dk-acts .btn.primary').click(); return true; }
+  if (await flip.count()) { try { await flip.first().click({ timeout: 2000 }); return true; } catch (e) { return false; } }
+  const n = await can.count();
+  if (n) {
+    // обычно младшую; иногда случайную — иначе двое последних могут ходить по кругу бесконечно
+    try { await can.nth(Math.random() < 0.25 ? Math.floor(Math.random() * n) : 0).click({ timeout: 2000 }); } catch (e) { return false; }
+    const put = p.locator('.dk-acts .btn.primary:not([disabled])');
+    try { await put.click({ timeout: 3000 }); return true; } catch (e) { return false; }   // стол успел смениться — попробуем снова
+  }
   const take = p.getByRole('button', { name: 'Забрать стопку' });
-  if (await take.count()) { await take.click(); return true; }
+  if (await take.count()) { try { await take.click({ timeout: 2000 }); return true; } catch (e) { return false; } }
   return false;
 }
 
@@ -52,7 +58,7 @@ async function chooseOpen(p) {
   await p.waitForSelector('.dk-pick button', { timeout: 10000 });
   const b = p.locator('.dk-pick button');
   for (const k of [0, 2, 4]) { await b.nth(k).click(); await p.waitForTimeout(120); }
-  await p.getByRole('button', { name: 'Положить открытыми' }).click();
+  await p.getByRole('button', { name: /^Положить/ }).click();
 }
 
 function shooter(dir) {

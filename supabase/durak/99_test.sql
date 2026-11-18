@@ -1,4 +1,4 @@
--- ДУРАК: самоотменяющийся тест. Запускать одним запросом ВМЕСТЕ с 01_durak.sql.
+-- ДУРАК: самоотменяющийся тест. Запускать одним запросом вместе с новой миграцией «Дурака» (предыдущие уже в базе).
 -- Часть 1 — правила по одному (раскладываем карты вручную), часть 2 — боты играют много партий
 -- случайными, но честными ходами и после каждого хода проверяем, что ни одна карта не потерялась.
 -- В конце тест падает — всё откатывается (и уведомления тоже не уходят).
@@ -12,8 +12,12 @@ declare
   burns integer := 0; takes integer := 0; afks integer := 0; np integer; st integer; sum_pay numeric;
   fail_note text := ''; bots bigint[] := '{}'; forced integer := 0;
 begin
-  -- игроки: до 5 первых участников
-  select array_agg(p.id order by p.created_at) into u from (select * from public.profiles order by created_at limit 5) p;
+  -- игроки: до 5 первых участников, которые сейчас не сидят в другой игре
+  select array_agg(p.id order by p.created_at) into u from (
+    select * from public.profiles x
+     where not exists (select 1 from public.durak_players dp join public.durak_rooms dr on dr.id = dp.room_id
+                        where dp.user_id = x.id and dp.place is null and dr.status not in ('finished', 'cancelled'))
+     order by created_at limit 5) p;
   nu := cardinality(u);
   if nu < 3 then raise exception 'для теста нужно хотя бы 3 участника'; end if;
   for i in 1..nu loop
@@ -32,8 +36,9 @@ begin
   if public.durak_fits(8, 14) and public.durak_fits(10, 13) and not public.durak_fits(8, 7) and not public.durak_fits(10, 7) then n := n + 1; end if;
   if public.durak_fits(5, 7) and public.durak_fits(7, 7) and not public.durak_fits(9, 7) and not public.durak_fits(14, 7) then n := n + 1; end if;
   if public.durak_fits(9, 9) and public.durak_fits(14, 9) and not public.durak_fits(5, 9) then n := n + 1; end if;
-  res := res || case when n = 9 then E'ok   1 правила: 2 на всё, 7 → только 2–7, 8 невидимка (на пустом — обычная), 10 на всё кроме 7\n'
-                     else E'FAIL 1 (' || n || E'/9)\n' end;
+  if public.durak_fits(7, 14) and public.durak_fits(7, 13) and public.durak_fits(7, 8) and public.durak_fits(7, 7) then n := n + 1; end if;
+  res := res || case when n = 10 then E'ok   1 правила: 2 и 7 на всё, после 7 → только 2–7, 8 невидимка (на пустом — обычная), 10 на всё кроме 7\n'
+                     else E'FAIL 1 (' || n || E'/10)\n' end;
 
   -- ===== 2. Комната: ставки, вход, выход, ограничения =====
   b := array(select public.coins_of(x) from unnest(u) x);
@@ -101,7 +106,8 @@ begin
   perform public.durak_play(rid, array[(10-2)*4]);
   v := public.durak_view(rid);
   n := 0;
-  if (v->>'turn')::int = 0 and (v->>'pile_n')::int = 0 and jsonb_array_length(v->'my'->'hand') = 3 and (v->'log'->-1->>'burn') = 'true' then n := n + 1; end if;
+  if (v->>'turn')::int = 0 and (v->>'pile_n')::int = 0 and jsonb_array_length(v->'my'->'hand') = 3 and (v->'log'->-1->>'burn') = 'true'
+     and (v->'log'->-1->>'drew')::int = 1 and (v->'log'->-1->>'i')::int > (v->'log'->-2->>'i')::int then n := n + 1; end if;
   -- две пятёрки за раз, ход переходит к u2
   perform public.durak_play(rid, array[(5-2)*4, (5-2)*4+1]);
   v := public.durak_view(rid);
@@ -112,7 +118,7 @@ begin
   begin perform public.durak_take(rid); exception when others then if sqlerrm = 'durak_can_play' then n := n + 1; end if; end;
   perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
   begin perform public.durak_play(rid, array[(4-2)*4]); exception when others then if sqlerrm = 'durak_not_turn' then n := n + 1; end if; end;
-  res := res || case when n = 5 then E'ok   5 10 → бита и ещё ход; две пятёрки за раз; 3 на 5 — нельзя; забрать, когда есть ход, — нельзя; чужой ход — нельзя\n'
+  res := res || case when n = 5 then E'ok   5 10 → бита и ещё ход (в журнале: добрал 1); две пятёрки за раз; 3 на 5 — нельзя; забрать, когда есть ход, — нельзя; чужой ход — нельзя\n'
                      else E'FAIL 5 (' || n || E'/5)\n' end;
 
   -- 8 — невидимка: u2 кладёт 8 на 5, u1 должен бить пятёрку
@@ -189,7 +195,8 @@ begin
   begin perform public.durak_take(rid); exception when others then if sqlerrm = 'durak_bad_move' then n := n + 1; end if; end;
   perform public.durak_flip(rid, 1);
   v := public.durak_view(rid);
-  if jsonb_array_length(v->'my'->'hand') = 5 and (v->>'pile_n')::int = 0 and v->'log'->-1->>'kind' = 'flip_take' then n := n + 1; end if;
+  if jsonb_array_length(v->'my'->'hand') = 5 and (v->>'pile_n')::int = 0 and v->'log'->-1->>'kind' = 'flip_take'
+     and (v->'log'->-1->>'pos')::int = 1 then n := n + 1; end if;
   res := res || case when n = 5 then E'ok  10 пока есть открытые — закрытую нельзя; две открытые дамы за раз; закрытая 3 на короля — забрал стопку вместе с ней\n'
                      else E'FAIL 10 (' || n || E'/5)\n' end;
 
