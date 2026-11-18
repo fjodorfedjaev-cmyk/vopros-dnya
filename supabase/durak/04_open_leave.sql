@@ -6,6 +6,7 @@
 -- * «Выйти» во время выбора или игры: игрок занимает последнее свободное место (как при двух пропусках по времени),
 --   его карты уходят в биту, игра идёт дальше. Остался один — итог.
 -- * Закрытая карта, которая не подошла и ушла в руку, видна только её хозяину (в журнале для остальных — без карты).
+-- * Вышедший сам всегда теряет ставку: его доля банка (если по месту она есть) достаётся первому месту.
 -- * Вышедший из игры больше не видит эту игру в списке как «Идёт игра».
 
 -- 0. Новый вид выбывания: 'left' — вышел сам
@@ -392,3 +393,27 @@ begin
 end $function$;
 revoke all on function public.durak_list() from public, anon;
 grant execute on function public.durak_list() to authenticated;
+
+-- 8. Итог: вышедший сам — без выплаты, его доля первому месту
+create or replace function public.durak_finish(p_room bigint)
+returns void
+language plpgsql security definer set search_path to ''
+as $function$
+declare
+  g public.durak_rooms%rowtype;
+  v_n integer;
+  v_rest numeric;
+begin
+  select * into g from public.durak_rooms x where x.id = p_room for update;
+  select count(*) into v_n from public.durak_players x where x.room_id = p_room;
+  -- по местам: 2 × ставка × (N − место) / (N − 1); вышедший сам («Выйти») не получает ничего — его доля идёт первому месту
+  update public.durak_players x
+     set payout = case when x.out_kind = 'left' then 0
+                       else floor(2.0 * g.stake * (v_n - x.place) / greatest(v_n - 1, 1) * 100) / 100 end
+   where x.room_id = p_room;
+  v_rest := g.stake * v_n - (select sum(x.payout) from public.durak_players x where x.room_id = p_room);
+  update public.durak_players x set payout = x.payout + v_rest where x.room_id = p_room and x.place = 1;
+  update public.durak_rooms x set status = 'finished', finished_at = now(), deadline = null, turn_seat = null, version = x.version + 1
+   where x.id = p_room;
+end $function$;
+revoke all on function public.durak_finish(bigint) from public, anon, authenticated;

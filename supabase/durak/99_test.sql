@@ -425,12 +425,12 @@ begin
   if total = 52 then n := n + 1; end if;
   begin perform public.durak_leave(rid); exception when others then if sqlerrm = 'durak_gone' then n := n + 1; end if; end;
   if not exists (select 1 from jsonb_array_elements(public.durak_list()) x where (x->>'id')::bigint = rid) then n := n + 1; end if;
-  -- выходит тот, кто ходит: 2-е место, оставшийся — первый, итог
+  -- выходит тот, кто ходит: 2-е место, но вышедший ставку теряет всегда — оставшийся забирает весь банк
   select user_id into cur from public.durak_players where room_id = rid and seat = g.turn_seat;
   perform set_config('request.jwt.claims', json_build_object('sub', cur, 'role', 'authenticated')::text, true);
   perform public.durak_leave(rid);
   if (select status from public.durak_rooms where id = rid) = 'finished'
-     and (select string_agg(x.place || ':' || x.payout, ' ' order by x.place) from public.durak_players x where x.room_id = rid) = '1:200.00 2:100.00 3:0.00'
+     and (select string_agg(x.place || ':' || x.payout, ' ' order by x.place) from public.durak_players x where x.room_id = rid) = '1:300.00 2:0.00 3:0.00'
      and (select out_kind from public.durak_players where room_id = rid and user_id = cur) = 'left'
      and (public.coins_of(u[1]) - b[1]) + (public.coins_of(u[2]) - b[2]) + (public.coins_of(u[3]) - b[3]) = 0 then n := n + 1; end if;
   -- выход во время выбора открытых карт (вдвоём): второй сразу побеждает
@@ -447,7 +447,7 @@ begin
   if e = 'choose' and (select status from public.durak_rooms where id = rid) = 'finished'
      and (select place from public.durak_players where room_id = rid and user_id = u[1]) = 1
      and (select place from public.durak_players where room_id = rid and user_id = u[2]) = 2 then n := n + 1; end if;
-  res := res || case when n = 6 then E'ok  16 «Выйти» во время игры: последнее свободное место, карты в биту, ход не сбился; ходящий вышел — итог 200/100/0; выход при выборе — второй победил\n'
+  res := res || case when n = 6 then E'ok  16 «Выйти» во время игры: последнее свободное место, карты в биту, ход не сбился; ходящий вышел — итог 300/0/0 (вышедшие без выплаты); выход при выборе — второй победил\n'
                      else E'FAIL 16 (' || n || E'/6)\n' end;
 
   raise exception E'\n%', res;
