@@ -17,11 +17,11 @@ const ids = execFileSync('psql', ['-h', '/tmp', '-p', '5433', '-U', 'postgres', 
   await A.getByRole('button', { name: 'Новая комната' }).click();
   await A.fill('#dk-stake', '50');
   await A.getByRole('button', { name: /Открыть комнату/ }).click();
-  await A.waitForSelector('.dk-top');
+  await A.waitForSelector('.duel-lobby');
   for (const p of pages.slice(1)) {
     await p.waitForSelector('.duel-row button:has-text("Войти")', { timeout: 12000 });
     await p.locator('.duel-row button:has-text("Войти")').first().click();
-    await p.waitForSelector('.dk-top');
+    await p.waitForSelector('.duel-lobby');
   }
   await B.sleep(1500);
   await shot(A, 'players_room');

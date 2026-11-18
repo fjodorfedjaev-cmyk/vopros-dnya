@@ -1,4 +1,4 @@
--- ДУРАК, боты: самоотменяющийся тест. Запускать одним запросом ВМЕСТЕ с 02_bots.sql (01_durak.sql уже в базе).
+-- ДУРАК, боты: самоотменяющийся тест. Запускать одним запросом вместе с новой миграцией «Дурака» (предыдущие уже в базе).
 -- Админ играет против ботов в тестовой комнате; время в тесте стоит, поэтому «прошло 1,5 секунды» изображаем,
 -- сдвигая срок хода. В конце тест падает — всё откатывается.
 do $test$
@@ -145,6 +145,18 @@ begin
   if (select status from public.durak_rooms where id = rid2) = 'cancelled'
      and not exists (select 1 from public.durak_players x where x.room_id = rid2) then n := n + 1; end if;
   res := res || case when n = 2 then E'ok   6 «Ещё раз» — те же боты; админ вышел — комната закрыта\n' else E'FAIL 6 (' || n || E')\n' end;
+
+  -- 6в. Админ вышел посреди партии с ботами — партия сразу закончилась, админ последний
+  rid2 := public.durak_create(0, true);
+  perform public.durak_add_bot(rid2); perform public.durak_add_bot(rid2);
+  perform public.durak_start(rid2);
+  me := public.durak_view(rid2)->'my';
+  perform public.durak_choose(rid2, array[(me->'pick'->>0)::int, (me->'pick'->>1)::int, (me->'pick'->>2)::int]);
+  e := (select status from public.durak_rooms where id = rid2);
+  perform public.durak_leave(rid2);
+  res := res || case when e = 'play' and (select status from public.durak_rooms where id = rid2) = 'finished'
+                      and (select place || ' ' || out_kind from public.durak_players where room_id = rid2 and user_id = adm) = '3 left'
+    then E'ok  6в админ вышел посреди партии с ботами — партия закончена, админ последний\n' else E'FAIL 6в ' || e || E'\n' end;
 
   -- 7. Монеты не тронуты; обычные комнаты работают как раньше (ставка, видна всем)
   n := 0;

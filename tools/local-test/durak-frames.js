@@ -10,7 +10,7 @@ const admin = q('select user_id from public.admins limit 1');
   await A.getByRole('button', { name: 'Новая комната' }).click();
   await A.locator('.dk-test-chip').click();
   await A.getByRole('button', { name: 'Открыть тестовую комнату' }).click();
-  await A.waitForSelector('.dk-top');
+  await A.waitForSelector('.duel-lobby');
   for (let i = 0; i < 2; i++) { await A.getByRole('button', { name: 'Добавить бота' }).click(); await B.sleep(400); }
   await A.getByRole('button', { name: 'Начать' }).click();
   await B.chooseOpen(A);

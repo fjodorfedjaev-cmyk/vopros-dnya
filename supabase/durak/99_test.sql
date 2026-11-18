@@ -183,8 +183,13 @@ begin
   begin perform public.durak_flip(rid, 1); exception when others then if sqlerrm = 'durak_bad_move' then n := n + 1; end if; end;
   v := public.durak_view(rid);
   if v->'my'->>'src' = 'open' and jsonb_array_length(v->'my'->'playable') = 2 then n := n + 1; end if;
-  perform public.durak_play(rid, array[(12-2)*4+2, (12-2)*4+3]);   -- две дамы со стола за раз
-  -- u2 кладёт короля, u1 открывает закрытую тройку — не подошла: забирает стопку вместе с ней
+  -- со стола — только по одной, даже если одинаковые
+  begin perform public.durak_play(rid, array[(12-2)*4+2, (12-2)*4+3]); exception when others then if sqlerrm = 'durak_bad_move' then n := n + 1; end if; end;
+  perform public.durak_play(rid, array[(12-2)*4+2]);
+  if (select open from public.durak_players where room_id = rid and user_id = u[1]) is not distinct from array[null, null, (12-2)*4+3]::integer[] then n := n + 1; end if;
+  -- вторую даму убираем со стола (в биту), чтобы дальше u1 играл закрытыми
+  update public.durak_players set open = array[null, null, null]::integer[] where room_id = rid and user_id = u[1];
+  -- u2 кладёт короля, u1 открывает закрытую тройку — не подошла: забирает стопку (В, Д, К) вместе с ней — 4 карты
   update public.durak_players set hand = array[(13-2)*4+1, (5-2)*4+1, (5-2)*4+2] where room_id = rid and user_id = u[2];
   update public.durak_rooms gx set bita = 52 - cardinality(gx.pile) - (select sum(cardinality(x.hand) + cardinality(array_remove(x.open, null)) + cardinality(array_remove(x.closed, null))) from public.durak_players x where x.room_id = rid) where id = rid;
   perform set_config('request.jwt.claims', json_build_object('sub', u[2], 'role', 'authenticated')::text, true);
@@ -195,10 +200,15 @@ begin
   begin perform public.durak_take(rid); exception when others then if sqlerrm = 'durak_bad_move' then n := n + 1; end if; end;
   perform public.durak_flip(rid, 1);
   v := public.durak_view(rid);
-  if jsonb_array_length(v->'my'->'hand') = 5 and (v->>'pile_n')::int = 0 and v->'log'->-1->>'kind' = 'flip_take'
-     and (v->'log'->-1->>'pos')::int = 1 then n := n + 1; end if;
-  res := res || case when n = 5 then E'ok  10 пока есть открытые — закрытую нельзя; две открытые дамы за раз; закрытая 3 на короля — забрал стопку вместе с ней\n'
-                     else E'FAIL 10 (' || n || E'/5)\n' end;
+  if jsonb_array_length(v->'my'->'hand') = 4 and (v->>'pile_n')::int = 0 and v->'log'->-1->>'kind' = 'flip_take'
+     and (v->'log'->-1->>'pos')::int = 1 and v->'log'->-1->'cards' = jsonb_build_array((3-2)*4+3) then n := n + 1; end if;
+  -- соперник видит, что закрытая не подошла, но не видит, какая это карта
+  perform set_config('request.jwt.claims', json_build_object('sub', u[2], 'role', 'authenticated')::text, true);
+  v := public.durak_view(rid);
+  if v->'log'->-1->>'kind' = 'flip_take' and not (v->'log'->-1 ? 'cards') then n := n + 1; end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
+  res := res || case when n = 8 then E'ok  10 пока есть открытые — закрытую нельзя; со стола две дамы за раз — нельзя, по одной — можно; закрытая 3 на короля — забрал стопку вместе с ней, сопернику её не видно\n'
+                     else E'FAIL 10 (' || n || E'/8)\n' end;
 
   -- 11: время. u2 не ходит: 1-й раз — база забирает стопку за него, 2-й раз подряд — выбывает на последнее место
   update public.durak_rooms set turn_seat = 1, pile = array[(14-2)*4+1] where id = rid;
@@ -305,7 +315,7 @@ begin
         if random() < 0.7 then i := (me->'playable'->>0)::int;
         else i := (me->'playable'->>floor(random() * jsonb_array_length(me->'playable'))::int)::int; end if;
         cards := array(select (x)::int from jsonb_array_elements_text(me->'playable') x where (x)::int / 4 = i / 4);
-        if random() < 0.5 then cards := array[i]; end if;     -- иногда кладём одну из одинаковых
+        if random() < 0.5 or me->>'src' = 'open' then cards := array[i]; end if;     -- иногда кладём одну из одинаковых; со стола — всегда одну
         perform public.durak_play(rid, cards);
       else
         perform public.durak_take(rid);
@@ -378,6 +388,67 @@ begin
   begin perform public.durak_finish(rid); e := e || ',зовёт'; exception when others then e := e || ',нет'; end;
   reset role;
   res := res || case when e = 'нет,нет,нет' then E'ok  15 таблицы и внутренние функции закрыты для телефона\n' else E'FAIL 15 ' || e || E'\n' end;
+
+  -- 16: выход во время игры = поражение (последнее свободное место), карты уходят в биту, игра идёт дальше
+  b := array(select public.coins_of(x) from unnest(u) x);
+  perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
+  rid := public.durak_create(100);
+  for i in 2..3 loop
+    perform set_config('request.jwt.claims', json_build_object('sub', u[i], 'role', 'authenticated')::text, true);
+    perform public.durak_join(rid);
+  end loop;
+  perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
+  perform public.durak_start(rid);
+  for i in 2..3 loop
+    perform set_config('request.jwt.claims', json_build_object('sub', u[i], 'role', 'authenticated')::text, true);
+    perform public.durak_ready(rid);
+  end loop;
+  for i in 1..3 loop
+    perform set_config('request.jwt.claims', json_build_object('sub', u[i], 'role', 'authenticated')::text, true);
+    me := public.durak_view(rid)->'my';
+    perform public.durak_choose(rid, array[(me->'pick'->>0)::int, (me->'pick'->>1)::int, (me->'pick'->>2)::int]);
+  end loop;
+  select * into g from public.durak_rooms where id = rid;
+  n := 0;
+  -- выходит тот, кто сейчас не ходит: 3-е место, ход не меняется
+  select user_id into cur from public.durak_players where room_id = rid and seat <> g.turn_seat order by seat limit 1;
+  perform set_config('request.jwt.claims', json_build_object('sub', cur, 'role', 'authenticated')::text, true);
+  perform public.durak_leave(rid);
+  if (select place from public.durak_players where room_id = rid and user_id = cur) = 3
+     and (select out_kind from public.durak_players where room_id = rid and user_id = cur) = 'left'
+     and (select status from public.durak_rooms where id = rid) = 'play'
+     and (select turn_seat from public.durak_rooms where id = rid) = g.turn_seat then n := n + 1; end if;
+  select g2.bita + cardinality(g2.deck) + cardinality(g2.pile)
+         + (select coalesce(sum(cardinality(x.hand) + cardinality(array_remove(x.open, null)) + cardinality(array_remove(x.closed, null)) + cardinality(x.pick)), 0)
+              from public.durak_players x where x.room_id = rid)
+    into total from public.durak_rooms g2 where g2.id = rid;
+  if total = 52 then n := n + 1; end if;
+  begin perform public.durak_leave(rid); exception when others then if sqlerrm = 'durak_gone' then n := n + 1; end if; end;
+  if not exists (select 1 from jsonb_array_elements(public.durak_list()) x where (x->>'id')::bigint = rid) then n := n + 1; end if;
+  -- выходит тот, кто ходит: 2-е место, оставшийся — первый, итог
+  select user_id into cur from public.durak_players where room_id = rid and seat = g.turn_seat;
+  perform set_config('request.jwt.claims', json_build_object('sub', cur, 'role', 'authenticated')::text, true);
+  perform public.durak_leave(rid);
+  if (select status from public.durak_rooms where id = rid) = 'finished'
+     and (select string_agg(x.place || ':' || x.payout, ' ' order by x.place) from public.durak_players x where x.room_id = rid) = '1:200.00 2:100.00 3:0.00'
+     and (select out_kind from public.durak_players where room_id = rid and user_id = cur) = 'left'
+     and (public.coins_of(u[1]) - b[1]) + (public.coins_of(u[2]) - b[2]) + (public.coins_of(u[3]) - b[3]) = 0 then n := n + 1; end if;
+  -- выход во время выбора открытых карт (вдвоём): второй сразу побеждает
+  perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
+  rid := public.durak_create(0);
+  perform set_config('request.jwt.claims', json_build_object('sub', u[2], 'role', 'authenticated')::text, true);
+  perform public.durak_join(rid);
+  perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
+  perform public.durak_start(rid);
+  perform set_config('request.jwt.claims', json_build_object('sub', u[2], 'role', 'authenticated')::text, true);
+  perform public.durak_ready(rid);
+  e := (select status from public.durak_rooms where id = rid);
+  perform public.durak_leave(rid);
+  if e = 'choose' and (select status from public.durak_rooms where id = rid) = 'finished'
+     and (select place from public.durak_players where room_id = rid and user_id = u[1]) = 1
+     and (select place from public.durak_players where room_id = rid and user_id = u[2]) = 2 then n := n + 1; end if;
+  res := res || case when n = 6 then E'ok  16 «Выйти» во время игры: последнее свободное место, карты в биту, ход не сбился; ходящий вышел — итог 200/100/0; выход при выборе — второй победил\n'
+                     else E'FAIL 16 (' || n || E'/6)\n' end;
 
   raise exception E'\n%', res;
 end $test$;

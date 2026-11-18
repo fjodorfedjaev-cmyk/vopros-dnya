@@ -12,7 +12,7 @@ const setTurn = (room, seat, pile) => q(`update public.durak_rooms set turn_seat
   await A.getByRole('button', { name: 'Новая комната' }).click();
   await A.locator('.dk-test-chip').click();
   await A.getByRole('button', { name: 'Открыть тестовую комнату' }).click();
-  await A.waitForSelector('.dk-top');
+  await A.waitForSelector('.duel-lobby');
   await A.getByRole('button', { name: 'Добавить бота' }).click(); await B.sleep(400);
   await A.getByRole('button', { name: 'Начать' }).click();
   await B.chooseOpen(A);

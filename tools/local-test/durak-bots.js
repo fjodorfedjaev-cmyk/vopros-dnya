@@ -18,7 +18,7 @@ const other = q('select id from public.profiles where id not in (select user_id 
   await A.locator('.dk-test-chip').click();
   await shot(A, 'bots_form');
   await A.getByRole('button', { name: 'Открыть тестовую комнату' }).click();
-  await A.waitForSelector('.dk-top');
+  await A.waitForSelector('.duel-lobby');
   const extra = BOTS < 4 ? 1 : 0;   // если есть место — сажаем лишнего бота и убираем его (проверка «×»)
   for (let i = 0; i < BOTS + extra; i++) { await A.getByRole('button', { name: 'Добавить бота' }).click(); await B.sleep(500); }
   if (extra) await A.locator('.dk-seat-x').last().click();

@@ -11,7 +11,7 @@ const admin = q('select user_id from public.admins limit 1');
   await A.getByRole('button', { name: 'Новая комната' }).click();
   await A.locator('.dk-test-chip').click();
   await A.getByRole('button', { name: 'Открыть тестовую комнату' }).click();
-  await A.waitForSelector('.dk-top');
+  await A.waitForSelector('.duel-lobby');
   for (let i = 0; i < 2; i++) { await A.getByRole('button', { name: 'Добавить бота' }).click(); await B.sleep(400); }
   await A.getByRole('button', { name: 'Начать' }).click();
   await B.chooseOpen(A);
@@ -25,6 +25,7 @@ const admin = q('select user_id from public.admins limit 1');
       return {
         turn: me.classList.contains('turn'),
         hand: me.querySelectorAll('.dk-hand .dk-card').length,
+        rows: new Set([...me.querySelectorAll('.dk-hand .dk-card')].map(c => c.offsetTop)).size,
         many: !!me.querySelector('.dk-hand.many'),
         slots: (me.querySelector('.dk-slots') || {}).className || '',
         msg: !!me.querySelector('.msg:not(:empty)'),
@@ -36,8 +37,8 @@ const admin = q('select user_id from public.admins limit 1');
     if (s && s.done) break;
     if (s && !s.msg) {
       samples++;
-      // карт в руке больше 3 — переносятся в 2 ряда; учитываем число рядов, а не точное число карт
-      const key = Math.ceil(s.hand / (s.many ? 7 : 5)) + '|' + s.many + '|' + s.slots;
+      // сравниваем рамки с одинаковым числом рядов карт в руке и одинаковым видом карт на столе
+      const key = s.rows + '|' + s.many + '|' + s.slots;
       if (!seen.has(key)) seen.set(key, new Set());
       seen.get(key).add(s.wrapH);
       if (s.turn && !shotTurn) { await A.screenshot({ path: __dirname + '/shots/layout_turn.png' }); shotTurn = true; }

@@ -9,7 +9,7 @@ async function launch() { return chromium.launch({ executablePath: '/usr/bin/goo
 // Одна «вкладка телефона» для участника uid. errors — общий список ошибок страницы.
 async function phone(browser, uid, errors, opts) {
   opts = opts || {};
-  const ctx = await browser.newContext({ viewport: { width: opts.width || +process.env.WIDTH || 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  const ctx = await browser.newContext({ viewport: { width: opts.width || +process.env.WIDTH || 390, height: opts.height || +process.env.HEIGHT || 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
   await ctx.addInitScript(([u, mode]) => {
     localStorage.setItem('mock-user', u);
     localStorage.setItem('install-hint-seen', '1');   // без подсказок «установить» и «уведомления»

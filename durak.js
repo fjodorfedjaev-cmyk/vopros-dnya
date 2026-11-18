@@ -215,7 +215,7 @@
   /* ---------- комната ---------- */
   function isOpen() { return !!K.open; }
   function openRoom(id) {
-    K.open = id; K.st = null; K.sig = ''; K.sel = []; K.pick = []; K.msg = ''; K.rtt = 1e9; K.lastI = -1; K.wasTurn = false;
+    K.open = id; K.st = null; K.sig = ''; K.sel = []; K.pick = []; K.msg = ''; K.rtt = 1e9; K.lastI = -1; K.wasTurn = false; K.quitAsk = false;
     stopListPoll();
     paint(true);
     window.scrollTo(0, 0);
@@ -223,7 +223,7 @@
   }
   function closeRoom() {
     stopPoll();
-    K.open = null; K.st = null; K.sig = '';
+    K.open = null; K.st = null; K.sig = ''; K.quitAsk = false;
     paint(true);
     loadList();
     startListPoll();
@@ -318,11 +318,34 @@
   function playerAt(seat) { var p = playersBySeat(); for (var i = 0; i < p.length; i++) if (p[i].seat === seat) return p[i]; return null; }
   function bank(st) { return st.stake * playersBySeat().length; }
 
-  function head(st) {
-    var b = el('span', { class: 'duel-bank' });
+  // Ставка и банк одной строкой (в комнате ожидания)
+  function stakeLine(st) {
+    var b = el('span', { class: 'duel-bank dk-stake' });
     setText(b, st.test ? 'тестовая комната · с ботами' : st.stake ? 'ставка ' + coins(st.stake) + ' · банк ' + coins(bank(st)) : 'без ставки');
-    var back = el('button', { type: 'button', class: 'link quiet dk-back', text: '← Комнаты', onclick: closeRoom });
-    return el('div', { class: 'card dk-top' }, [el('div', { class: 'dk-top-row' }, [el('span', { class: 'dk-title', text: 'Дурак' }), back]), b]);
+    return b;
+  }
+
+  // Над столом: банк и «Выйти». Выход во время игры — поражение, поэтому сначала короткое предупреждение.
+  function gameBar(st) {
+    var me = st.my || {};
+    var myP = playerAt(me.seat) || {};
+    var already = myP.place != null;        // уже вне игры — просто к списку комнат
+    var b = el('span', { class: 'dk-bank' });
+    setText(b, st.test ? 'тестовая · с ботами' : st.stake ? 'банк ' + coins(bank(st)) : 'без ставки');
+    var quit = el('button', { type: 'button', class: 'dk-quit', text: 'Выйти', 'aria-expanded': String(!!K.quitAsk && !already),
+      onclick: function () { if (already) { closeRoom(); return; } K.quitAsk = !K.quitAsk; paint(true); } });
+    var kids = [b, quit];
+    if (K.quitAsk && !already) {
+      kids.push(el('div', { class: 'dk-quit-pop', role: 'dialog', 'aria-label': 'Выйти из игры?' }, [
+        el('p', { text: 'Выйти из игры? Это засчитается как поражение — последнее свободное место.' }),
+        el('div', { class: 'dk-quit-acts' }, [
+          el('button', { type: 'button', class: 'btn small', text: 'Остаться', onclick: function () { K.quitAsk = false; paint(true); } }),
+          el('button', { type: 'button', class: 'btn small danger', text: 'Выйти', disabled: K.busy,
+            onclick: function () { K.quitAsk = false; act('durak_leave', null, 'Вне игры'); } })
+        ])
+      ]));
+    }
+    return el('div', { class: 'dk-gamebar' }, kids);
   }
 
   function msgLine() {
@@ -351,12 +374,14 @@
     var acts = [];
     if (st.status === 'open' && st.test) {
       box.appendChild(el('p', { class: 'duel-big', text: 'Тестовая комната · ' + n + ' из 5' }));
+      box.appendChild(stakeLine(st));
       box.appendChild(seatsList(st, function (p) { return { text: p.bot ? 'бот' : 'ты', on: false, remove: p.bot ? p.id : null }; }));
       if (n < 5) acts.push(el('button', { type: 'button', class: 'btn', text: 'Добавить бота', disabled: K.busy, onclick: function () { act('durak_add_bot'); } }));
       acts.unshift(el('button', { type: 'button', class: 'btn primary', text: 'Начать', disabled: n < 2 || K.busy, onclick: function () { act('durak_start'); } }));
       acts.push(el('button', { type: 'button', class: 'btn', text: 'Закрыть', disabled: K.busy, onclick: function () { act('durak_leave'); } }));
     } else if (st.status === 'open') {
       box.appendChild(el('p', { class: 'duel-big', text: n < 2 ? 'Ждём игроков' : 'В комнате ' + n + ' из 5' }));
+      box.appendChild(stakeLine(st));
       box.appendChild(seatsList(st, function (p) { return { text: p.creator ? 'создатель' : '', on: false }; }));
       if (st.creator) acts.push(el('button', { type: 'button', class: 'btn primary', text: 'Начать', disabled: n < 2 || K.busy, onclick: function () { act('durak_start'); } }));
       acts.push(el('button', { type: 'button', class: 'btn', text: st.stake ? 'Выйти — ставка вернётся' : 'Выйти', disabled: K.busy,
@@ -364,6 +389,7 @@
     } else {
       var me = st.my || {};
       box.appendChild(el('p', { class: 'duel-big', text: me.ready ? 'Ждём остальных' : 'Игра начинается' }));
+      box.appendChild(stakeLine(st));
       box.appendChild(el('div', { class: 'dk-bar', 'aria-hidden': 'true' }, [el('i')]));
       box.appendChild(seatsList(st, function (p) { return { text: p.ready ? 'готово' : 'ждём', on: p.ready }; }));
       if (!me.ready) acts.push(el('button', { type: 'button', class: 'btn primary duel-ready-btn', text: 'Готов', disabled: K.busy, onclick: function () { act('durak_ready'); } }));
@@ -437,22 +463,36 @@
     K.msg = '';
     var i = K.sel.indexOf(c);
     if (i >= 0) K.sel.splice(i, 1);
+    else if (my.src === 'open') K.sel = [c];                          // открытые со стола — только по одной
     else if (K.sel.length && rank(K.sel[0]) !== rank(c)) K.sel = [c];
     else K.sel.push(c);
     paint(true);
   }
 
-  // Соперник: имя и карты на столе (сколько в руке — не показываем)
+  // Сколько карт в руке у соперника: маленький веер рубашек и число
+  function fanEl(n) {
+    var k = Math.min(n, 4);
+    var pic = el('span', { class: 'dk-fan-pic', 'aria-hidden': 'true' });
+    for (var i = 0; i < k; i++) {
+      var b = el('i');
+      b.style.transform = 'rotate(' + ((i - (k - 1) / 2) * 18) + 'deg)';
+      pic.appendChild(b);
+    }
+    return el('span', { class: 'dk-fan', title: 'Карт в руке: ' + n, 'aria-label': 'Карт в руке: ' + n }, [pic, el('b', { text: String(n) })]);
+  }
+  function outText(p) { return p.out === 'afk' || p.out === 'left' ? 'вне игры' : p.place + ' место'; }
+
+  // Соперник: имя, сколько карт в руке (веер) и карты на столе
   function oppBox(p, st, spot) {
     var turn = st.status === 'play' && st.turn === p.seat && p.place == null;
-    var tag = p.place != null ? (p.out === 'afk' ? 'вне игры' : p.place + ' место') : '';
-    return el('div', { class: 'dk-opp' + (turn ? ' turn' : '') + (p.place != null ? ' out' : ''), 'data-seat': String(p.seat), style: 'grid-area:' + spot }, [
+    var tag = p.place != null ? outText(p) : '';
+    return el('div', { class: 'dk-opp at-' + spot + (turn ? ' turn' : '') + (p.place != null ? ' out' : ''), 'data-seat': String(p.seat), style: 'grid-area:' + spot }, [
       el('div', { class: 'dk-opp-head' }, [
         A.avatar(p.name, p.color, true, p.avatar),
         el('span', { class: 'dk-opp-name', text: p.name })
       ]),
       tableSlots(p, false),
-      tag ? el('span', { class: 'dk-opp-tag', text: tag }) : null,
+      el('div', { class: 'dk-opp-foot' }, [tag ? el('span', { class: 'dk-opp-tag', text: tag }) : p.hand > 0 ? fanEl(p.hand) : null]),
       el('div', { class: 'dk-bar sm' + (turn ? '' : ' off'), 'aria-hidden': 'true' }, [el('i')])   // есть всегда — рамка не прыгает
     ]);
   }
@@ -482,41 +522,46 @@
   }
 
   // Я: «Твой ход», мои карты на столе (в тени, пока есть рука), рука, кнопки
-  // Я: рамка меняет размер только от числа карт. В свой ход рамка светится, а над ней — оранжевая надпись «Твой ход».
-  // Полоска времени и кнопки есть всегда (вне своего хода — невидимые), чтобы ничего не прыгало.
+  // Я: рамка меняет размер только от числа карт. В свой ход рамка светится, а над ней — «Твой ход», секунды и кнопка.
+  // Строка над рамкой и полоска времени есть всегда (вне своего хода — невидимые), чтобы ничего не прыгало.
   function meBox(st) {
     var me = st.my || {};
     var myP = playerAt(me.seat) || {};
     var turn = !!me.turn;
     var fresh = turn && !K.wasTurn;
     var dim = me.src === 'hand';
+    var acts = [];
+    if (turn) {
+      if (me.can_take) {
+        acts.push(el('button', { type: 'button', class: 'btn primary', text: 'Забрать стопку', disabled: K.busy, onclick: function () { if (!K.anim) act('durak_take'); } }));
+      } else if (me.src !== 'closed') {
+        acts.push(el('button', { type: 'button', class: 'btn primary', text: 'Положить', disabled: !K.sel.length || K.busy,
+          onclick: function () { if (!K.anim) act('durak_play', { p_cards: K.sel.slice() }); } }));
+      }
+    }
     var line = el('div', { class: 'dk-turn-line' + (turn ? ' on' : '') + (fresh ? ' pop' : '') }, [
-      el('span', { class: 'dk-turn-t', text: 'Твой ход' }),
-      el('span', { class: 'dk-turn-left', 'data-left': '1' })
+      el('span', { class: 'dk-turn-lbl' }, [el('span', { class: 'dk-turn-t', text: 'Твой ход' }), el('span', { class: 'dk-turn-left', 'data-left': '1' })]),
+      el('div', { class: 'dk-acts' }, acts)
     ]);
     var box = el('div', { class: 'dk-me' + (turn ? ' turn' : '') + (fresh ? ' pop' : '') + (myP.place != null ? ' out' : ''), 'data-seat': String(me.seat) });
     if (myP.place != null) {
-      box.appendChild(el('div', { class: 'dk-me-done', text: myP.out === 'afk' ? 'Вне игры' : myP.place + ' место' }));
+      box.appendChild(el('div', { class: 'dk-me-done', text: outText(myP).replace(/^в/, 'В') }));
     } else {
       box.appendChild(el('div', { class: 'dk-bar' + (turn ? '' : ' off'), 'aria-hidden': 'true' }, [el('i')]));
     }
-    box.appendChild(tableSlots(myP, true, me.src, turn, dim));
+    var slots = tableSlots(myP, true, me.src, turn, dim);
     var hand = me.hand || [];
     if (hand.length) {
-      box.appendChild(el('div', { class: 'dk-hand' + (hand.length > 8 ? ' many' : '') }, hand.map(function (c) {
+      var handEl = el('div', { class: 'dk-hand' + (hand.length > 8 ? ' many' : '') }, hand.map(function (c) {
         var active = turn && me.src === 'hand';
         var playable = active && me.playable.indexOf(c) >= 0;
         return cardEl(c, { button: active, pressed: active ? K.sel.indexOf(c) >= 0 : null,
           cls: (playable ? 'can' : active ? 'no' : '') + (K.sel.indexOf(c) >= 0 ? ' sel' : ''),
           onclick: active ? function () { tapCard(c); } : null });
-      })));
-    }
-    if (myP.place == null) {
-      var canPut = turn && me.src !== 'closed';
-      var acts = [el('button', { type: 'button', class: 'btn primary' + (canPut ? '' : ' ghost'), text: 'Положить', disabled: !canPut || !K.sel.length || K.busy,
-        onclick: function () { if (!K.anim) act('durak_play', { p_cards: K.sel.slice() }); } })];
-      if (turn && me.can_take) acts.push(el('button', { type: 'button', class: 'btn', text: 'Забрать стопку', disabled: K.busy, onclick: function () { if (!K.anim) act('durak_take'); } }));
-      box.appendChild(el('div', { class: 'dk-acts' }, acts));
+      }));
+      box.appendChild(el('div', { class: 'dk-me-row' }, [handEl, slots]));
+    } else {
+      box.appendChild(slots);
     }
     if (K.msg) box.appendChild(msgLine());
     K.wasTurn = turn;
@@ -609,12 +654,15 @@
     var cards = e.cards || [];
     if (e.kind === 'play' && e.from === 'closed' || e.kind === 'flip_take') {
       var slot = box.querySelector('.dk-slot[data-pos="' + (e.pos || 1) + '"]') || box;
-      await flipAt(slot, cards[0], sm);
+      var show = mine && cards.length;   // лицо карты видит только тот, кто её открыл
+      if (show) await flipAt(slot, cards[0], sm);
+      else if (slot.firstChild) slot.firstChild.style.visibility = 'hidden';
+      var flyer = function () { return show ? cardEl(cards[0]) : backEl({ cls: 'dk-fly-back' }); };
       if (e.kind === 'flip_take') {
-        await Promise.all([fly(cardEl(cards[0]), slot, toActor, { s0: sm, s1: 0.6 }), flyBacks(pile, toActor, (e.n || 2) - 1)]);
+        await Promise.all([fly(flyer(), slot, toActor, { s0: sm, s1: 0.6 }), flyBacks(pile, toActor, (e.n || 2) - 1)]);
       } else {
-        await fly(cardEl(cards[0]), slot, pile, { s0: sm });
-        pile.appendChild(cardEl(cards[0], { cls: 'over landed' }));
+        await fly(flyer(), slot, pile, { s0: show ? sm : 0.6 });
+        pile.appendChild(cardEl(cards[0], { cls: 'over landed' }));   // в стопке карту видят все — иначе не побить
       }
     } else if (e.kind === 'play') {
       await Promise.all(cards.map(function (c, i) {
@@ -655,7 +703,7 @@
       return el('div', { class: 'dk-pl' + (p.me ? ' me' : '') }, [
         el('span', { class: 'dk-pl-n', text: p.place === n ? 'дурак' : p.place + '.' }),
         A.avatar(p.name, p.color, true, p.avatar),
-        el('span', { class: 'dk-pl-name', text: p.name + (p.out === 'afk' ? ' · по времени' : '') }),
+        el('span', { class: 'dk-pl-name', text: p.name + (p.out === 'afk' ? ' · по времени' : p.out === 'left' ? ' · выход' : '') }),
         money
       ]);
     })));
@@ -689,7 +737,7 @@
       el('p', { class: 'duel-big', text: 'Комната закрыта — ставки вернулись' }),
       el('div', { class: 'duel-acts' }, [el('button', { type: 'button', class: 'btn', text: 'К комнатам', onclick: closeRoom })])
     ]);
-    return [head(st), body];
+    return st.status === 'choose' || st.status === 'play' ? [gameBar(st), body] : [body];
   }
 
   // Перерисовка. force — перерисовать, даже если вид не поменялся (после нажатий).
