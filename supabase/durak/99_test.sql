@@ -455,5 +455,30 @@ begin
   res := res || case when n = 6 then E'ok  16 «Выйти» во время игры: последнее свободное место, карты в биту, ход не сбился; ходящий вышел — итог 300/0/0 (вышедшие без выплаты); выход при выборе — второй победил\n'
                      else E'FAIL 16 (' || n || E'/6)\n' end;
 
+  -- 17: не успел выбрать открытые — база кладёт три случайные из шести (не всегда старшие), рука — остальные три
+  n := 0; k := 0;
+  for i in 1..12 loop
+    perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
+    rid2 := public.durak_create(0);
+    perform set_config('request.jwt.claims', json_build_object('sub', u[2], 'role', 'authenticated')::text, true);
+    perform public.durak_join(rid2);
+    perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
+    perform public.durak_start(rid2);
+    perform set_config('request.jwt.claims', json_build_object('sub', u[2], 'role', 'authenticated')::text, true);
+    perform public.durak_ready(rid2);
+    cards := (select pick from public.durak_players where room_id = rid2 and user_id = u[1]);
+    update public.durak_rooms set deadline = now() - interval '1 minute' where id = rid2;
+    perform public.durak_tick(rid2);
+    if (select status from public.durak_rooms where id = rid2) = 'play'
+       and (select cardinality(open) = 3 and cardinality(hand) = 3 and (open || hand) @> cards and cards @> (open || hand)
+              from public.durak_players where room_id = rid2 and user_id = u[1]) then n := n + 1; end if;
+    if not (select open @> array(select y from unnest(cards) y order by y desc limit 3)
+              from public.durak_players where room_id = rid2 and user_id = u[1]) then k := k + 1; end if;   -- набор не «три старшие»
+    perform set_config('request.jwt.claims', json_build_object('sub', u[1], 'role', 'authenticated')::text, true);
+    perform public.durak_leave(rid2);
+  end loop;
+  res := res || case when n = 12 and k > 0 then E'ok  17 не успел выбрать — открытыми легли три случайные (не старшие в ' || k || E' из 12), рука — остальные\n'
+                     else E'FAIL 17 (' || n || ', случайных ' || k || E')\n' end;
+
   raise exception E'\n%', res;
 end $test$;

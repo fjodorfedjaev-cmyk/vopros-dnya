@@ -22,6 +22,7 @@ const W = process.env.WIDTH || 390, N = +process.env.BOTS || 4;
   await shot('2');
   await b.nth(4).click(); await B.sleep(150);
   await A.getByRole('button', { name: /^Положить/ }).click();
+  for (let f = 0; f < 6; f++) { await A.screenshot({ path: __dirname + '/shots/choosefly_' + f + '_' + N + '_' + W + '.png' }); await B.sleep(70); }
   await A.waitForSelector('.dk-turn-line:not(.wait)', { timeout: 10000 }).catch(() => {});
   await B.sleep(600);
   await shot('3');
@@ -34,6 +35,15 @@ const W = process.env.WIDTH || 390, N = +process.env.BOTS || 4;
   }
   await B.sleep(500);
   await shot('4');
+  // список комнат: правила и история
+  await A.locator('.dk-quit').click();
+  await A.locator('.dk-quit-pop').getByRole('button', { name: 'Выйти' }).click();
+  await A.waitForSelector('.dk-rules');
+  await A.locator('.dk-rules > summary').click();
+  await B.sleep(6500);                                    // список обновляется каждые 5 секунд — правила не должны закрыться
+  const rulesOpen = await A.locator('.dk-rules').evaluate(d => d.open);
+  console.log('правила открыты через 6,5 с:', rulesOpen ? 'да' : 'НЕТ');
+  await shot('5');
   console.log(errors.length ? errors.join('\n') : 'ошибок на странице нет');
   await browser.close();
 })().catch(e => { console.error('СБОЙ', e); process.exit(1); });
