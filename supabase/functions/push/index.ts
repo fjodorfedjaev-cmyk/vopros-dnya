@@ -2,6 +2,7 @@
 // Вызывает её только сама база (через pg_net) с секретным заголовком x-hook-secret.
 // Типы вызова: init (создать ключи), test, comment, reminder, sale (купили карточку в лавке), suggest (новое «Свой вопрос» — админу),
 // duel (вызов на дуэль в Секторе, «вызов принят», новая комната, «соперник найден»).
+// durak (новая комната в «Дураке» — всем, кто не в ней; «игра начинается, жми Готов» — тем, кто в комнате).
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { sendPush, vapidKey, b64u } from './webpush.js';
 
@@ -137,6 +138,17 @@ Deno.serve(async (req) => {
         url: SITE + '?tab=duel', tag: 'duel' + body.duel_id
       });
     }
+  } else if (body.type === 'durak') {
+    const list = ((await db.rpc('push_durak_targets', { p_id: body.room_id, p_event: body.event })).data || []) as
+      { user_id: string; creator_name: string; stake: number }[];
+    let sent = 0;
+    for (const t of list) {
+      sent += await sendTo(t.user_id, body.event === 'start'
+        ? { title: '🃏 Дурак начинается', body: 'Жми «Готов» — на это 30 секунд', url: SITE + '?tab=durak', tag: 'durak' + body.room_id }
+        : { title: '🃏 Новая комната в Дураке', body: cut(t.creator_name, 40) + ' собирает игру · ' + (t.stake ? 'ставка ' + t.stake + ' 🪙' : 'без ставки'),
+            url: SITE + '?tab=durak', tag: 'durak' + body.room_id });
+    }
+    out.sent = sent;
   } else {
     return new Response('unknown type', { status: 400 });
   }

@@ -904,7 +904,9 @@ html.sector-on .game-switch { pointer-events: none; opacity: 0.35; }
 @media (prefers-reduced-motion: reduce) { .farm-plot.is-ready .farm-art, .farm-float, .farm-back, .farm-sheet { animation: none !important; } .farm-plot:active { transform: none; } }
 
 /* ===== игра «Зигзаг» ===== */
-.game-switch { grid-template-columns: repeat(3, 1fr); }
+.game-switch { grid-template-columns: repeat(4, 1fr); }
+.game-switch button { padding: 0 4px; font-size: 14px; }
+.game-switch .seg-badge { margin-left: 3px; padding: 1px 3px; font-size: 9px; }
 .zz-field {
   position: relative; width: 100%; max-width: 420px; display: flex; justify-content: center; overflow: hidden;
   touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
@@ -1365,3 +1367,116 @@ html.sector-on #duel-sect { pointer-events: none; opacity: 0.35; }
 .duel-score { margin: 0; font: 500 15px var(--font-mono); color: var(--ink); }
 .duel-money { margin: 2px 0 0; font-weight: 600; }
 .sector.won .sector-glow { opacity: 1; }
+
+/* ===== «Дурак» (китайский дурак) =====
+   Карты — светлые, как настоящие: красные масти тёмно-красные (не путать с --trap — это ловушка Сектора).
+   Особые карты (2, 7, 8, 10) — с оранжевой точкой в углу. Рубашка — в цвет кнопок сайта. */
+.dk { gap: 12px; }
+.dk-avs { display: inline-flex; }
+.dk-avs .avatar { margin-left: -6px; box-shadow: 0 0 0 2px var(--surface); }
+.dk-avs .avatar:first-child { margin-left: 0; }
+.dk-rules > summary { padding: 12px 16px; cursor: pointer; font-weight: 500; }
+.dk-rules-list { margin: 0; padding: 12px 18px 14px 34px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
+.dk-top { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; }
+.dk-top-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.dk-title { font: 600 18px var(--font-display); }
+.dk-back { min-height: 32px; padding: 4px 0; }
+.dk-seats { display: flex; flex-wrap: wrap; gap: 8px; }
+.dk-seat { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; }
+.dk-seat.on { border-color: var(--accent); }
+.dk-seat-tag { font: 500 11.5px var(--font-mono); color: var(--muted); }
+.dk-seat-tag.on, .dk-seat.on .dk-seat-tag { color: var(--accent); }
+.dk-bar { height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.dk-bar > i { display: block; height: 100%; width: 100%; background: var(--accent); transition: width 0.25s linear; }
+.dk-bar.sm { height: 2px; }
+.dk-sub { margin: 4px 0 0; font: 500 12px var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.dk-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.dk-choose { display: flex; flex-direction: column; gap: 10px; }
+.dk-pick { gap: 8px; }
+
+/* карта */
+.dk-card {
+  --w: 46px; --h: 64px;
+  position: relative; flex: none; width: var(--w); height: var(--h); padding: 0; border-radius: 7px;
+  background: #F4EFE6; color: #1C1B1A; border: 1px solid #D9D1C4; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-body);
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s, box-shadow 0.12s, opacity 0.12s;
+}
+.dk-card.red { color: #C8323C; }
+.dk-card .dk-r { position: absolute; top: 3px; left: 5px; font: 600 15px/1 var(--font-mono); }
+.dk-card .dk-s { font-size: 26px; line-height: 1; margin-top: 10px; }
+.dk-card.sp::after { content: ''; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.dk-card.sm { --w: 28px; --h: 40px; border-radius: 5px; }
+.dk-card.sm .dk-r { top: 2px; left: 3px; font-size: 11px; }
+.dk-card.sm .dk-s { font-size: 15px; margin-top: 8px; }
+.dk-card.sm.sp::after { top: 3px; right: 3px; width: 4px; height: 4px; }
+.dk-card.back {
+  background: repeating-linear-gradient(45deg, #C4500B 0 4px, #A9450A 4px 8px);
+  border: 2px solid #F4EFE6; color: #fff;
+}
+.dk-card.back .dk-n { font: 600 13px var(--font-mono); background: rgba(18, 18, 18, 0.72); border-radius: 6px; padding: 1px 5px; }
+.dk-card.ghost { background: transparent; border: 1px dashed var(--line); box-shadow: none; }
+button.dk-card { cursor: pointer; }
+.dk-card.can { box-shadow: 0 0 0 2px rgba(242, 120, 44, 0.7), 0 2px 6px rgba(0, 0, 0, 0.35); }
+.dk-card.no { opacity: 0.45; }
+.dk-card.sel { transform: translateY(-8px); box-shadow: 0 0 0 3px var(--accent), 0 6px 14px rgba(0, 0, 0, 0.45); }
+.dk-card.back.can { box-shadow: 0 0 0 3px var(--accent), 0 2px 6px rgba(0, 0, 0, 0.35); }
+
+/* стол: соперники, центр, я */
+.dk-table { display: flex; flex-direction: column; gap: 10px; }
+.dk-opps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dk-opps.n1 { grid-template-columns: 1fr; }
+.dk-opp { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+.dk-opp.turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.dk-opp.out { opacity: 0.55; }
+.dk-opp-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dk-opp-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.dk-opp-cards { display: flex; align-items: flex-start; gap: 6px; }
+.dk-slots { display: flex; gap: 3px; }
+.dk-slots.mine { gap: 8px; }
+.dk-slot { position: relative; width: 28px; height: 46px; }
+.dk-slot .dk-card { position: absolute; left: 0; top: 0; }
+.dk-slot .dk-card.top { top: 6px; }
+.dk-slots.mine .dk-slot { width: 46px; height: 74px; }
+.dk-slots.mine .dk-slot .dk-card.top { top: 10px; }
+.dk-slot.vacant::before { content: ''; position: absolute; inset: 0 0 6px; border: 1px dashed var(--line); border-radius: 5px; }
+.dk-slots.mine .dk-slot.vacant::before { inset: 0 0 10px; border-radius: 7px; }
+.dk-center { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.dk-center-row { display: flex; align-items: center; gap: 14px; }
+.dk-pile { display: flex; align-items: center; min-width: 46px; flex: none; padding-right: 4px; }
+.dk-pile .dk-card.over { margin-left: -26px; transform: rotate(6deg); }
+.dk-center-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dk-need { font-weight: 600; font-size: 14.5px; }
+.dk-counts { font: 400 12px var(--font-mono); color: var(--muted); }
+.dk-log { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line); padding-top: 8px; }
+.dk-log p { margin: 0; font-size: 13.5px; }
+.dk-log p.old { color: var(--muted); font-size: 12.5px; }
+.dk-me { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.dk-me.turn { border-color: var(--accent); }
+.dk-me-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.dk-me-status { font-weight: 600; }
+.dk-me.turn .dk-me-status { color: var(--accent); }
+.dk-left { font: 500 13px var(--font-mono); color: var(--muted); }
+.dk-hand { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; }
+.dk-hand.many { gap: 4px; }
+.dk-hand.many .dk-card { --w: 40px; --h: 56px; }
+.dk-hand.many .dk-card .dk-s { font-size: 22px; }
+.dk-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.dk-acts .btn.primary { flex: 1; }
+.dk-me .msg:empty, .dk-choose .msg:empty, .duel-lobby .msg:empty, .dk-result .msg:empty { display: none; }
+
+/* итог */
+.dk-result { display: flex; flex-direction: column; gap: 12px; }
+.dk-result .duel-title { text-align: center; }
+.dk-result .duel-title.win { color: var(--accent); }
+.dk-result .duel-title.lose { color: var(--err); }
+.dk-places { display: flex; flex-direction: column; gap: 6px; }
+.dk-pl { display: grid; grid-template-columns: 52px auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); }
+.dk-pl.me { border-color: var(--accent); }
+.dk-pl-n { font: 500 13px var(--font-mono); color: var(--muted); }
+.dk-pl-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-pl-money { font: 600 14px var(--font-mono); }
+.dk-pl-money.plus { color: var(--ok, #3FB97F); }
+.dk-pl-money.minus { color: var(--err); }
+@media (prefers-reduced-motion: reduce) { .dk-card, .dk-bar > i { transition: none; } }
