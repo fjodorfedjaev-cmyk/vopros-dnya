@@ -49,7 +49,7 @@
     points: null,            // мои баллы: { balance, today, game_today }
     boardPeriod: 'week',
     gameState: null,         // start | play | over, пока открыта вкладка «Игра»
-    gameMode: (function () { try { var m = localStorage.getItem('game-mode'); return m === 'farm' || m === 'zigzag' || m === 'durak' ? m : 'sector'; } catch (e) { return 'sector'; } })(), // sector | zigzag | durak | farm — что открыто во вкладке «Игра»
+    gameMode: (function () { try { var m = localStorage.getItem('game-mode'); return m === 'farm' || m === 'zigzag' || m === 'durak' || m === 'poker' ? m : 'sector'; } catch (e) { return 'sector'; } })(), // sector | zigzag | durak | poker | farm — что открыто во вкладке «Игра»
     zz: null, zzBox: null,   // игра «Зигзаг», пока она на экране
     zzBoard: { week: null, all: null }, // рейтинг «Зигзага»
     zzBoardPeriod: 'week',
@@ -1390,6 +1390,7 @@
     if (view === 'game' && S.gameMode === 'farm') return 'Ферма';
     if (view === 'game' && S.gameMode === 'zigzag') return 'Зигзаг';
     if (view === 'game' && S.gameMode === 'durak') return 'Дурак';
+    if (view === 'game' && S.gameMode === 'poker') return 'Покер';
     return TITLES[view] || APP;
   }
 
@@ -1465,6 +1466,7 @@
       if (S.gameMode === 'farm') { if (window.Farm) window.Farm.enter(); }
       else if (S.gameMode === 'sector') { loadBoard().then(function () { if (S.view === 'game') fillBoard(); }); if (window.Duels) window.Duels.enter(); }
       else if (S.gameMode === 'durak') { if (window.Durak) window.Durak.enter(); }
+      else if (S.gameMode === 'poker') { if (window.Poker) window.Poker.enter(); }
       else loadZzBoard().then(zzBoardLoaded);
       return;
     }
@@ -1487,6 +1489,7 @@
     if (S.view !== 'game') { stopGame(); stopZigzag(); if (window.Duels) window.Duels.leave(); }
     if ((S.view !== 'game' || S.gameMode !== 'farm') && window.Farm) window.Farm.leave();
     if ((S.view !== 'game' || S.gameMode !== 'durak') && window.Durak) window.Durak.leave();
+    if ((S.view !== 'game' || S.gameMode !== 'poker') && window.Poker) window.Poker.leave();
     if (S.view !== 'casino' && window.Casino) window.Casino.leave();
     if (S.view !== 'cards' && window.Collection) window.Collection.leave();
     if (S.view === 'game') body = viewGame();
@@ -2139,15 +2142,35 @@
     };
   }
 
-  // Во вкладке «Игра» четыре раздела: «Сектор», «Зигзаг», «Дурак» и «Ферма». Выбор запоминается на этом телефоне.
+  // Во вкладке «Игра» четыре раздела: «Сектор», «Зигзаг», «Карты» и «Ферма». Выбор запоминается на этом телефоне.
+  // «Карты» открывает окошко с карточными играми: «Китайский дурак» и «Покер» (потом добавятся другие).
+  var CARD_GAMES = [['durak', 'Китайский дурак', '♣︎'], ['poker', 'Покер', '♠︎']];
+  function isCardGame(m) { return m === 'durak' || m === 'poker'; }
   function gameSwitch() {
-    return el('div', { class: 'segment day-switch game-switch', role: 'group', 'aria-label': 'Какая игра' }, [['sector', 'Сектор'], ['zigzag', 'Зигзаг'], ['durak', 'Дурак'], ['farm', 'Ферма', 'демо']].map(function (x) {
+    var seg = el('div', { class: 'segment day-switch game-switch', role: 'group', 'aria-label': 'Какая игра' }, [['sector', 'Сектор'], ['zigzag', 'Зигзаг'], ['cards', 'Карты'], ['farm', 'Ферма', 'демо']].map(function (x) {
+      var cards = x[0] === 'cards';
       return el('button', {
-        type: 'button', 'aria-pressed': String(S.gameMode === x[0]),
+        type: 'button', 'aria-pressed': String(cards ? isCardGame(S.gameMode) : S.gameMode === x[0]),
         'aria-label': x[2] ? x[1] + ' (' + x[2] + '-версия)' : null,
-        onclick: function () { setGameMode(x[0]); }
+        'aria-expanded': cards ? String(!!S.cardsPick) : null, 'aria-haspopup': cards ? 'true' : null,
+        'data-dismiss-trigger': cards ? 'cards-pick' : null,
+        onclick: function () {
+          if (cards) { if (S.gameState === 'play') return; S.cardsPick = !S.cardsPick; render(); return; }
+          S.cardsPick = false; setGameMode(x[0]);
+        }
       }, [x[1], x[2] ? el('span', { class: 'seg-badge', 'aria-hidden': 'true', text: x[2] }) : null]);
     }));
+    var kids = [seg];
+    if (S.cardsPick) {
+      // окошко закрывается нажатием мимо
+      dismissible('cards-pick', function () { if (S.cardsPick) { S.cardsPick = false; render(); } });
+      kids.push(el('div', { class: 'cards-pick', role: 'menu', 'aria-label': 'Карточные игры', 'data-dismiss': 'cards-pick' }, CARD_GAMES.map(function (g) {
+        return el('button', { type: 'button', role: 'menuitemradio', 'aria-pressed': String(S.gameMode === g[0]),
+          onclick: function () { S.cardsPick = false; if (S.gameMode === g[0]) render(); else setGameMode(g[0]); } },
+          [el('span', { class: 'ico', 'aria-hidden': 'true', text: g[2] }), g[1]]);
+      })));
+    }
+    return el('div', { class: 'game-switch-wrap' }, kids);
   }
 
   function setGameMode(mode) {
@@ -2161,8 +2184,10 @@
     else if (mode === 'sector') { loadBoard().then(function () { if (S.view === 'game' && S.gameMode === 'sector') fillBoard(); }); if (window.Duels) window.Duels.enter(); }
     else if (mode === 'zigzag') loadZzBoard().then(zzBoardLoaded);
     else if (mode === 'durak') { if (window.Durak) window.Durak.enter(); }
+    else if (mode === 'poker') { if (window.Poker) window.Poker.enter(); }
     if (mode !== 'sector' && window.Duels) window.Duels.leave();
     if (mode !== 'durak' && window.Durak) window.Durak.leave();
+    if (mode !== 'poker' && window.Poker) window.Poker.leave();
   }
 
   /* ----- «Зигзаг» ----- */
@@ -2248,6 +2273,11 @@
       if (S.game) stopGame();
       stopZigzag();
       return [gameSwitch()].concat(window.Durak ? window.Durak.view() : [el('p', { class: 'empty', text: 'Дурак не загрузился. Обнови страницу.' })]);
+    }
+    if (S.gameMode === 'poker') {
+      if (S.game) stopGame();
+      stopZigzag();
+      return [gameSwitch()].concat(window.Poker ? window.Poker.view() : [el('p', { class: 'empty', text: 'Покер не загрузился. Обнови страницу.' })]);
     }
     stopZigzag();
     if (!S.gameBox && window.SectorGame) {
@@ -3168,9 +3198,11 @@
       if (S.view === 'game') { render(); if (window.Duels) window.Duels.enter(); return; }
       tab = 'game';
     }
-    if (tab === 'durak') {
-      S.gameMode = 'durak'; try { localStorage.setItem('game-mode', 'durak'); } catch (e) { /* ничего */ }
-      if (S.view === 'game') { render(); if (window.Durak) window.Durak.enter(); return; }
+    if (tab === 'durak' || tab === 'poker') {
+      var mod = tab === 'durak' ? window.Durak : window.Poker;
+      if (S.view === 'game' && S.gameMode !== tab) { setGameMode(tab); return; }
+      S.gameMode = tab; try { localStorage.setItem('game-mode', tab); } catch (e) { /* ничего */ }
+      if (S.view === 'game') { render(); if (mod) mod.enter(); return; }
       tab = 'game';
     }
     var ok = tab === 'fill' || TABS.some(function (t) { return t[0] === tab; });
@@ -3227,6 +3259,7 @@
     };
     if (window.Duels) window.Duels.init();
     if (window.Durak) window.Durak.init();
+    if (window.Poker) window.Poker.init();
 
     // Реакция на вход или выход в другой вкладке. Внутри обработчика нельзя ждать запросы к Supabase, поэтому setTimeout.
     sb.auth.onAuthStateChange(function (event, session) {

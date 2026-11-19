@@ -31,8 +31,54 @@ async function phone(browser, uid, errors, opts) {
 // Открыть Игры → Дурак
 async function openDurak(p) {
   await p.locator('.bn-item', { hasText: 'Игры' }).click();
-  await p.locator('.game-switch button', { hasText: 'Дурак' }).click();
-  await p.waitForSelector('.dk', { timeout: 5000 });
+  if (!(await p.locator('.dk:not(.pk)').count())) {   // «Карты» → «Китайский дурак»
+    await p.locator('.game-switch button', { hasText: 'Карты' }).click();
+    await p.locator('.cards-pick button', { hasText: 'Китайский дурак' }).click();
+  }
+  await p.waitForSelector('.dk:not(.pk)', { timeout: 5000 });
+}
+
+// Открыть Игры → Карты → Покер (через окошко выбора карточной игры)
+async function openPoker(p) {
+  await p.locator('.bn-item', { hasText: 'Игры' }).click();
+  if (!(await p.locator('.pk').count())) {
+    await p.locator('.game-switch button', { hasText: 'Карты' }).click();
+    await p.locator('.cards-pick button', { hasText: 'Покер' }).click();
+  }
+  await p.waitForSelector('.pk', { timeout: 5000 });
+}
+
+// Покер: сходить, если сейчас мой ход. Чаще уравнять/чек, иногда повысить через ползунок, иногда пас. Возвращает, что сделано.
+async function pokerMove(p, opts) {
+  opts = opts || {};
+  if (!(await p.locator('.pk-acts.on').count())) return null;
+  const btns = p.locator('.pk-acts.on .btn');
+  const r = Math.random();
+  try {
+    if (r < (opts.raise || 0.2)) {
+      const rb = btns.nth(2);
+      if (await rb.isEnabled()) {
+        const label = (await rb.textContent()) || '';
+        await rb.click({ timeout: 2000 });
+        if (/Ва-банк/.test(label)) return 'allin';
+        await p.waitForSelector('.pk-raise', { timeout: 2000 });
+        if (opts.shot) await opts.shot();
+        const q = p.locator('.pk-raise-quick .btn');
+        const k = Math.random();
+        if (k < 0.4) await q.nth(0).click(); else if (k < 0.6) await q.nth(1).click(); else if (k < 0.65) await q.nth(2).click();
+        else {   // ползунок: подвинуть клавишами
+          const range = p.locator('.pk-raise input[type=range]');
+          await range.focus();
+          for (let i = 0; i < 3; i++) await p.keyboard.press('ArrowRight');
+        }
+        await p.locator('.pk-raise-go').click({ timeout: 2000 });
+        return 'raise';
+      }
+    }
+    if (r > 1 - (opts.fold || 0.1)) { await btns.nth(0).click({ timeout: 2000 }); return 'fold'; }
+    await btns.nth(1).click({ timeout: 2000 });
+    return 'call';
+  } catch (e) { return null; }   // стол успел смениться — попробуем снова
 }
 
 // Сделать ход, если сейчас мой: открыть закрытую / положить подходящую / забрать стопку
@@ -66,4 +112,4 @@ function shooter(dir) {
   return (p, name) => p.screenshot({ path: path.join(dir, name + '.png'), fullPage: true });
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-module.exports = { launch, phone, openDurak, moveIfMyTurn, chooseOpen, shooter, sleep };
+module.exports = { launch, phone, openDurak, openPoker, pokerMove, moveIfMyTurn, chooseOpen, shooter, sleep };

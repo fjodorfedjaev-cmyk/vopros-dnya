@@ -2,7 +2,8 @@
 // Вызывает её только сама база (через pg_net) с секретным заголовком x-hook-secret.
 // Типы вызова: init (создать ключи), test, comment, reminder, sale (купили карточку в лавке), suggest (новое «Свой вопрос» — админу),
 // duel (вызов на дуэль в Секторе, «вызов принят», новая комната, «соперник найден»).
-// durak (новая комната в «Дураке» — всем, кто не в ней; «игра начинается, жми Готов» — тем, кто в комнате).
+// durak (новая комната в «Дураке» — всем, кто не в ней; «игра начинается, жми Готов» — тем, кто в комнате),
+// poker (новый стол в «Покере» — всем, кто за ним не сидит).
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { sendPush, vapidKey, b64u } from './webpush.js';
 
@@ -147,6 +148,15 @@ Deno.serve(async (req) => {
         ? { title: '🃏 Дурак начинается', body: 'Жми «Готов» — на это 30 секунд', url: SITE + '?tab=durak', tag: 'durak' + body.room_id }
         : { title: '🃏 Новая комната в Дураке', body: cut(t.creator_name, 40) + ' собирает игру · ' + (t.stake ? 'ставка ' + t.stake + ' 🪙' : 'без ставки'),
             url: SITE + '?tab=durak', tag: 'durak' + body.room_id });
+    }
+    out.sent = sent;
+  } else if (body.type === 'poker') {
+    const list = ((await db.rpc('push_poker_targets', { p_id: body.table_id, p_event: body.event })).data || []) as
+      { user_id: string; creator_name: string; sb: number; bb: number }[];
+    let sent = 0;
+    for (const t of list) {
+      sent += await sendTo(t.user_id, { title: '♠️ Новый стол в покере', body: cut(t.creator_name, 40) + ' за столом · блайнды ' + money(t.sb) + ' / ' + money(t.bb),
+        url: SITE + '?tab=poker', tag: 'poker' + body.table_id });
     }
     out.sent = sent;
   } else {

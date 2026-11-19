@@ -1622,3 +1622,146 @@ button.dk-card { cursor: pointer; }
 .dk-test-row { display: flex; flex-direction: column; gap: 6px; }
 .dk-test-chip { align-self: flex-start; padding: 6px 14px; }
 .dk-seat-x { width: 24px; height: 24px; font-size: 17px; margin-right: -4px; }
+
+/* «Покер»: столы на 2–6 человек. Карты и полёты — общие с «Дураком» (.dk-card, .dk-fx). */
+.pk-levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.pk-level { justify-content: center; padding: 8px 2px; font: 600 13px var(--font-mono); white-space: nowrap; letter-spacing: -0.02em; }
+.pk-amt { width: 150px; }
+.pk-sit { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
+.pk-sit .msg:empty { display: none; }
+.pk-net { font: 600 14px var(--font-mono); white-space: nowrap; }
+.pk-net.plus { color: var(--ok, #3FB97F); }
+.pk-net.minus { color: var(--err); }
+.pk-hist-ico { width: 30px; text-align: center; color: var(--muted); font-size: 18px; }
+.pk-bar-acts { display: flex; gap: 6px; flex: none; }
+.pk-bar-acts .dk-quit { white-space: nowrap; padding: 4px 12px; }
+.pk-blinds { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pk-top-pop { display: flex; flex-direction: column; gap: 8px; }
+.pk-top-pop .msg { margin: 0; }
+.pk-top-pop .msg:empty { display: none; }
+.pk-out { gap: 10px; }
+.pk-out .duel-big { font-size: 17px; }
+
+/* круг игроков: сверху и по бокам соперники, в середине общие карты и банк */
+.pk-ring {
+  display: grid; grid-template-columns: 92px minmax(0, 1fr) 92px; grid-template-areas: "tl top tr" "l mid r";
+  gap: 8px 4px; align-items: center; justify-items: center; align-content: space-evenly;
+  flex: 1 1 auto; position: relative; isolation: isolate;
+}
+.pk-ring::before {
+  content: ''; position: absolute; inset: -6px -8px; z-index: -1; border-radius: 26px; pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 55%, rgba(242, 120, 44, 0.08), rgba(242, 120, 44, 0) 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'%3E%3Cg fill='%23ffffff' fill-opacity='0.035' font-family='Georgia,serif' font-size='15' text-anchor='middle'%3E%3Ctext x='18' y='24'%3E%E2%99%A0%3C/text%3E%3Ctext x='54' y='24'%3E%E2%99%A5%3C/text%3E%3Ctext x='36' y='60' transform='rotate(180 36 55)'%3E%E2%99%A6%3C/text%3E%3Ctext x='0' y='60'%3E%E2%99%A3%3C/text%3E%3Ctext x='72' y='60'%3E%E2%99%A3%3C/text%3E%3C/g%3E%3C/svg%3E"),
+    rgba(255, 255, 255, 0.015);
+}
+.pk-ring.n0 { grid-template-columns: minmax(0, 1fr); grid-template-areas: "mid"; }
+.pk-ring.n1 { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "mid"; }
+.pk-ring.n2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "tl tr" "mid mid"; }
+.pk-ring.n6 { grid-template-areas: "tl top tr" "l mid r" "bot bot bot"; }
+.pk-ring.n3 .at-l, .pk-ring.n3 .at-r { align-self: start; }
+.pk-opp {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 92px; box-sizing: border-box;
+  padding: 6px 3px 5px; border-radius: 12px; border: 1px solid transparent; transition: border-color 0.2s, opacity 0.2s;
+}
+.pk-ring.n1 .pk-opp, .pk-ring.n2 .pk-opp { width: 150px; }
+.pk-opp.turn { border-color: var(--accent); box-shadow: 0 0 12px rgba(242, 120, 44, 0.3); }
+.pk-opp.folded { opacity: 0.45; }
+.pk-opp.won, .pk-me.won { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(242, 120, 44, 0.35); }
+.pk-opp .dk-opp-head { gap: 4px; justify-content: center; width: 100%; }
+.pk-x { position: absolute; top: -8px; right: -6px; z-index: 2; width: 22px; height: 22px; font-size: 15px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); }
+.pk-ring .at-top { width: 140px; }
+.pk-d {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%;
+  background: #F4EFE6; color: #1C1B1A; font: 700 10px/1 var(--font-mono); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.pk-hole { display: inline-flex; gap: 3px; min-height: 31px; align-items: center; }
+.pk-hole .dk-card.sm { --w: 22px; --h: 31px; border-radius: 4px; }
+.pk-hole .dk-card.sm .dk-r { font-size: 10px; top: 2px; left: 2px; }
+.pk-hole .dk-card.sm .dk-s { font-size: 12px; margin-top: 8px; }
+.pk-hole .dk-card.back.sm { border-width: 1.5px; }
+.pk-ring.n1 .pk-hole, .pk-ring.n2 .pk-hole { min-height: 42px; }
+.pk-ring.n1 .pk-hole .dk-card.sm, .pk-ring.n2 .pk-hole .dk-card.sm { --w: 30px; --h: 42px; border-radius: 5px; }
+.pk-ring.n1 .pk-hole .dk-card.sm .dk-r, .pk-ring.n2 .pk-hole .dk-card.sm .dk-r { font-size: 12px; top: 3px; left: 3px; }
+.pk-ring.n1 .pk-hole .dk-card.sm .dk-s, .pk-ring.n2 .pk-hole .dk-card.sm .dk-s { font-size: 16px; margin-top: 9px; }
+.pk-hole.folded { opacity: 0.45; }
+.pk-stack { display: inline-flex; align-items: center; gap: 3px; font: 600 12.5px var(--font-mono); color: var(--ink); white-space: nowrap; }
+.pk-stack.big { font-size: 18px; }
+.pk-tag { font: 500 11px/14px var(--font-mono); color: var(--muted); min-height: 14px; white-space: nowrap; }
+.pk-tag.win { color: var(--accent); font: 700 13px/14px var(--font-mono); }
+.pk-tag.hot { color: var(--accent); }
+.pk-bet {
+  font: 600 11.5px/16px var(--font-mono); color: #fff; white-space: nowrap; min-height: 18px; box-sizing: border-box;
+  background: rgba(242, 120, 44, 0.2); border: 1px solid rgba(242, 120, 44, 0.65); border-radius: 999px; padding: 0 7px;
+}
+.pk-bet.none { visibility: hidden; }
+.pk-bar { height: 3px; width: 100%; border-radius: 2px; background: var(--line); overflow: hidden; visibility: hidden; }
+.pk-bar.on { visibility: visible; }
+.pk-bar.sm { height: 2px; }
+.pk-bar > i { display: block; height: 100%; width: 100%; background: var(--accent); transition: width 0.25s linear; }
+
+.pk-mid { grid-area: mid; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0; width: 100%; min-width: 0; }
+.pk-board { display: flex; gap: 4px; justify-content: center; }
+.pk-slot { position: relative; width: 36px; height: 50px; flex: none; }
+.pk-slot .dk-card { --w: 36px; --h: 50px; position: absolute; left: 0; top: 0; border-radius: 6px; }
+.pk-slot .dk-card .dk-r { font-size: 13px; top: 3px; left: 4px; }
+.pk-slot .dk-card .dk-s { font-size: 20px; margin-top: 10px; }
+.pk-ring.n0 .pk-slot, .pk-ring.n1 .pk-slot, .pk-ring.n2 .pk-slot { width: 50px; height: 70px; }
+.pk-ring.n0 .pk-slot .dk-card, .pk-ring.n1 .pk-slot .dk-card, .pk-ring.n2 .pk-slot .dk-card { --w: 50px; --h: 70px; border-radius: 7px; }
+.pk-ring.n0 .pk-slot .dk-card .dk-r, .pk-ring.n1 .pk-slot .dk-card .dk-r, .pk-ring.n2 .pk-slot .dk-card .dk-r { font-size: 16px; top: 4px; left: 5px; }
+.pk-ring.n0 .pk-slot .dk-card .dk-s, .pk-ring.n1 .pk-slot .dk-card .dk-s, .pk-ring.n2 .pk-slot .dk-card .dk-s { font-size: 28px; margin-top: 12px; }
+.pk-pot { display: inline-flex; align-items: center; gap: 4px; min-height: 20px; font: 500 13px var(--font-mono); color: var(--muted); text-align: center; }
+.pk-pot.win { color: var(--accent); font: 600 16px var(--font-display); }
+.pk-ghost { visibility: hidden; }
+.pk-chip {
+  width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box;
+  background: radial-gradient(circle, #F4EFE6 0 26%, #F2782C 28% 100%); border: 2px dashed #F4EFE6; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* я: две карты, фишки, ставка, кнопки (кнопки есть всегда — рамка не прыгает) */
+.pk-me { position: relative; gap: 10px; }
+.pk-me-row { display: flex; align-items: center; gap: 14px; }
+.pk-hole.big { gap: 6px; min-height: 78px; min-width: 118px; }
+.pk-hole.big .dk-card { --w: 56px; --h: 78px; border-radius: 8px; }
+.pk-hole.big .dk-card .dk-r { font-size: 18px; top: 5px; left: 6px; }
+.pk-hole.big .dk-card .dk-s { font-size: 34px; margin-top: 14px; }
+.pk-wait { font-size: 13px; color: var(--muted); }
+.pk-me-info { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
+.pk-me-top, .pk-me-bot { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.pk-acts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; visibility: hidden; }
+.pk-acts.on { visibility: visible; }
+.pk-acts .btn { min-height: 44px; padding: 0 6px; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pk-acts .btn.two { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; line-height: 1.1; }
+.pk-acts .btn.two small { font: 600 12px var(--font-mono); opacity: 0.85; }
+.pk-raise {
+  position: absolute; left: 10px; right: 10px; bottom: 66px; z-index: 20; display: flex; flex-direction: column; gap: 10px;
+  padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--accent); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+.pk-raise-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.pk-raise-amt { display: inline-flex; align-items: center; gap: 4px; font: 700 20px var(--font-mono); }
+.pk-raise-quick { display: flex; gap: 6px; }
+.pk-raise-quick .btn { min-height: 34px; padding: 4px 10px; font-size: 13px; }
+.pk-raise input[type="range"] { width: 100%; height: 30px; accent-color: var(--accent); }
+.pk-raise-go { min-height: 44px; }
+@media (max-width: 370px) {
+  .pk-ring { grid-template-columns: 84px minmax(0, 1fr) 84px; }
+  .pk-opp { width: 84px; }
+  .pk-slot { width: 33px; height: 46px; }
+  .pk-slot .dk-card { --w: 33px; --h: 46px; }
+  .pk-board { gap: 3px; }
+}
+
+/* выбор карточной игры («Карты» → «Китайский дурак» / «Покер») */
+.game-switch-wrap { position: relative; z-index: 45; }
+.cards-pick {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; width: min(240px, 70vw); display: flex; flex-direction: column; gap: 4px;
+  padding: 6px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+.cards-pick button {
+  display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px; border: 0; border-radius: 8px; background: none;
+  color: var(--ink); font: 500 15px var(--font-body); text-align: left;
+}
+.cards-pick button:hover { background: var(--soft); }
+.cards-pick button[aria-pressed="true"] { background: rgba(242, 120, 44, 0.16); color: var(--accent); }
+.cards-pick .ico { width: 22px; text-align: center; font-size: 17px; }

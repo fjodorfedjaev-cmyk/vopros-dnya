@@ -8,7 +8,7 @@
     return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ user: USER }, body)) })
       .then(function (r) { return r.json(); });
   }
-  var LOCAL_RPC = /^(durak_|my_points$|member_coins$|is_admin$)/;
+  var LOCAL_RPC = /^(durak_|poker_|my_points$|member_coins$|is_admin$)/;
   var DEFAULTS = {
     ensure_today_question: [{ q_day: '2026-11-18', q_id: 1, q_category: 'funny', q_text: 'Тестовый вопрос дня?' }],
     ensure_today_fill: [{ q_day: '2026-11-18', q_id: 1, q_category: 'fill', q_text: 'Тест ___ фраза' }],

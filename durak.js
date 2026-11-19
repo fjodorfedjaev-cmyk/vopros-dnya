@@ -13,16 +13,10 @@
     lastI: -1, anim: false, wasTurn: false, dropAt: {}   // какие действия уже показаны анимацией; идёт ли анимация; был ли мой ход
   };
 
-  /* ---------- карты ---------- */
+  /* ---------- карты (рисунки и полёты — общие, в playing-cards.js) ---------- */
   // Карта — число 0..51: достоинство = карта / 4 + 2 (11 — валет, 14 — туз), масть = карта % 4.
-  var SUITS = ['♠', '♥', '♦', '♣'];
-  var NAMES = { 11: 'В', 12: 'Д', 13: 'К', 14: 'Т' };
-  var VS = '︎'; // чтобы ♥ и ♦ рисовались значком, а не цветным смайликом
-  function rank(c) { return Math.floor(c / 4) + 2; }
-  function suit(c) { return c % 4; }
-  function rankName(r) { return NAMES[r] || String(r); }
-  function cardName(c) { return rankName(rank(c)) + SUITS[suit(c)] + VS; }
-  function isRed(c) { return suit(c) === 1 || suit(c) === 2; }
+  var PC = window.PlayingCards;
+  var rank = PC.rank;
 
   function el() { return A.el.apply(null, arguments); }
   function setText(node, t) { if (window.Coin && window.Coin.has(t)) window.Coin.fill(node, t); else node.textContent = t; }
@@ -49,27 +43,14 @@
     return 'Что-то пошло не так.';
   }
 
-  // Лицо карты. opts: small, button, cls, label
+  // Лицо карты (особые 2, 7, 8, 10 — с оранжевой точкой). opts: small, button, cls, label, pressed, onclick
   function cardEl(c, opts) {
     opts = opts || {};
-    var r = rank(c);
-    var cls = 'dk-card' + (isRed(c) ? ' red' : '') + (opts.small ? ' sm' : '') + ([2, 7, 8, 10].indexOf(r) >= 0 ? ' sp' : '') + (opts.cls ? ' ' + opts.cls : '');
-    return el(opts.button ? 'button' : 'span', {
-      class: cls, type: opts.button ? 'button' : null, 'aria-label': opts.label || cardName(c), 'data-card': String(c),
-      'aria-pressed': opts.pressed != null ? String(!!opts.pressed) : null, onclick: opts.onclick || null
-    }, [
-      el('span', { class: 'dk-r', 'aria-hidden': 'true', text: rankName(r) }),
-      el('span', { class: 'dk-s', 'aria-hidden': 'true', text: SUITS[suit(c)] + VS })
-    ]);
+    var sp = [2, 7, 8, 10].indexOf(rank(c)) >= 0;
+    return PC.face(c, Object.assign({}, opts, { cls: (sp ? 'sp' : '') + (opts.cls ? ' ' + opts.cls : '') }));
   }
   // Рубашка. opts: small, button, n (число поверх), cls, label, onclick
-  function backEl(opts) {
-    opts = opts || {};
-    return el(opts.button ? 'button' : 'span', {
-      class: 'dk-card back' + (opts.small ? ' sm' : '') + (opts.cls ? ' ' + opts.cls : ''), type: opts.button ? 'button' : null,
-      'aria-label': opts.label || 'Закрытая карта', onclick: opts.onclick || null
-    }, opts.n != null ? [el('span', { class: 'dk-n', text: String(opts.n) })] : []);
-  }
+  function backEl(opts) { return PC.back(opts); }
 
   /* ---------- список комнат ---------- */
   async function loadList() {
@@ -627,66 +608,10 @@
   }
 
   /* ---------- анимации ---------- */
-  // Слой поверх страницы, в нём летают карты. Время каждого полёта — доли секунды, игру не задерживают.
-  var REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  function fxLayer() {
-    var l = document.getElementById('dk-fx');
-    if (!l) { l = el('div', { id: 'dk-fx', class: 'dk-fx', 'aria-hidden': 'true' }); document.body.appendChild(l); }
-    return l;
-  }
-  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  function centerOf(r) { return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
-  // Поставить node в центр элемента from (с масштабом s)
-  function placeAt(node, from, s) {
-    var a = from.getBoundingClientRect();
-    fxLayer().appendChild(node);
-    var c = centerOf(a);
-    node.style.left = (c.x - node.offsetWidth / 2) + 'px';
-    node.style.top = (c.y - node.offsetHeight / 2) + 'px';
-    node.style.transform = 'scale(' + s + ')';
-    return c;
-  }
-  // Полёт карты node из from в to
-  function fly(node, from, to, o) {
-    o = o || {};
-    if (!from || !to || !from.getBoundingClientRect().width || !to.getBoundingClientRect().width) return Promise.resolve();
-    node.classList.add('dk-flying');
-    var s0 = o.s0 || 1, s1 = o.s1 || 1;
-    var a = placeAt(node, from, s0), b = centerOf(to.getBoundingClientRect());
-    var dx = b.x - a.x, dy = b.y - a.y;
-    var anim = node.animate([
-      { transform: 'translate(0,0) scale(' + s0 + ') rotate(0deg)', opacity: 1 },
-      { transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + s1 + ') rotate(' + (o.rot || 0) + 'deg)', opacity: o.fade ? 0 : 1 }
-    ], { duration: o.ms || 340, delay: o.delay || 0, easing: 'cubic-bezier(.25,.75,.3,1)', fill: 'forwards' });
-    return anim.finished.then(function () { node.remove(); }, function () { node.remove(); });
-  }
-  // Несколько рубашек подряд (стопку забирают, карты из колоды, в биту)
-  function flyBacks(from, to, n, o) {
-    o = o || {};
-    var all = [];
-    for (var i = 0; i < Math.max(1, Math.min(n, 5)); i++) {
-      all.push(fly(backEl({ cls: 'dk-fly-back' }), from, to, { s0: o.s0 || 0.6, s1: o.s1 || 0.6, delay: i * 60, rot: o.rot || 0, ms: o.ms || 330, fade: o.fade }));
-    }
-    return Promise.all(all);
-  }
+  var REDUCED = PC.REDUCED;
+  var wait = PC.wait, fly = PC.fly, flyBacks = PC.flyBacks, flash = PC.flash;
   // Переворот закрытой карты на месте: рубашка → лицо
-  function flipAt(from, c, s) {
-    if (!from || !from.getBoundingClientRect().width) return Promise.resolve();
-    var inner = el('div', { class: 'dk-flip-in' }, [backEl({ cls: 'dk-flip-back' }), cardEl(c, { cls: 'dk-flip-face' })]);
-    var node = el('div', { class: 'dk-flip dk-flying' }, [inner]);
-    placeAt(node, from, s);
-    if (from.firstChild) from.firstChild.style.visibility = 'hidden';
-    return inner.animate([{ transform: 'rotateY(0deg)' }, { transform: 'rotateY(180deg)' }],
-      { duration: 420, easing: 'ease-in-out', fill: 'forwards' }).finished.then(function () { return wait(160); }).then(function () { node.remove(); });
-  }
-  // Вспышка надписи над элементом («Бита!»)
-  function flash(target, text) {
-    if (!target) return;
-    var node = el('div', { class: 'dk-flash', text: text });
-    placeAt(node, target, 1);
-    node.animate([{ transform: 'scale(.5)', opacity: 0 }, { transform: 'scale(1.15)', opacity: 1, offset: 0.3 }, { transform: 'scale(1)', opacity: 0 }],
-      { duration: 900, easing: 'ease-out', fill: 'forwards' }).finished.then(function () { node.remove(); }, function () { node.remove(); });
-  }
+  function flipAt(from, c, s) { return PC.flipAt(from, c, s, { faceEl: function (x) { return cardEl(x, { cls: 'dk-flip-face' }); } }); }
   function seatEl(seat) { return K.rootEl.querySelector('[data-seat="' + seat + '"]'); }
 
   // Показать одно действие из журнала. Стол на экране — ещё старый, новый нарисуется после.
