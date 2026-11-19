@@ -91,7 +91,7 @@
     out.push(el('div', { class: 'duel-head' }, [
       el('h2', { text: 'Комнаты' }),
       el('button', { type: 'button', class: 'btn' + (K.form ? '' : ' primary'), text: K.form ? 'Закрыть' : 'Новая комната',
-        onclick: function () { K.form = !K.form; paint(true); } })
+        'data-dismiss-trigger': 'dk-form', onclick: function () { K.form = !K.form; paint(true); } })
     ]));
     if (K.form) out.push(createForm());
     var active = (K.list || []).filter(function (r) { return r.status !== 'finished'; });
@@ -203,7 +203,9 @@
       testRow = el('div', { class: 'dk-test-row' }, [tb]);
     }
     sync();
-    return el('div', { class: 'card duel-form' }, [testRow, stakeBox, go, msg]);
+    // нажатие мимо формы закрывает её (ставка запоминается)
+    if (A.dismissible) A.dismissible('dk-form', function () { if (K.form && !K.busy) { K.form = false; paint(true); } });
+    return el('div', { class: 'card duel-form', 'data-dismiss': 'dk-form' }, [testRow, stakeBox, go, msg]);
   }
 
   function rulesBlock() {
@@ -346,11 +348,12 @@
     var already = myP.place != null;        // уже вне игры — просто к списку комнат
     var b = el('span', { class: 'dk-bank' });
     setText(b, st.test ? 'тестовая · с ботами' : st.stake ? 'банк ' + coins(bank(st)) : 'без ставки');
-    var quit = el('button', { type: 'button', class: 'dk-quit', text: 'Выйти', 'aria-expanded': String(!!K.quitAsk && !already),
+    var quit = el('button', { type: 'button', class: 'dk-quit', text: 'Выйти', 'aria-expanded': String(!!K.quitAsk && !already), 'data-dismiss-trigger': 'dk-quit',
       onclick: function () { if (already) { closeRoom(); return; } K.quitAsk = !K.quitAsk; paint(true); } });
     var kids = [b, quit];
     if (K.quitAsk && !already) {
-      kids.push(el('div', { class: 'dk-quit-pop', role: 'dialog', 'aria-label': 'Выйти из игры?' }, [
+      if (A.dismissible) A.dismissible('dk-quit', function () { if (K.quitAsk) { K.quitAsk = false; paint(true); } });
+      kids.push(el('div', { class: 'dk-quit-pop', role: 'dialog', 'aria-label': 'Выйти из игры?', 'data-dismiss': 'dk-quit' }, [
         el('p', { text: 'Выйти из игры? Это засчитается как поражение' + (st.stake ? ': ставка не вернётся.' : '.') }),
         el('div', { class: 'dk-quit-acts' }, [
           el('button', { type: 'button', class: 'btn small', text: 'Остаться', onclick: function () { K.quitAsk = false; paint(true); } }),

@@ -53,10 +53,16 @@
     var head = el('div', { class: 'duel-head' }, [
       el('h2', { text: 'Дуэли' }),
       el('button', { type: 'button', class: 'btn' + (D.form ? '' : ' primary'), text: D.form ? 'Закрыть' : 'Новая дуэль',
-        onclick: function () { D.form = !D.form; fillList(sect); } })
+        'data-dismiss-trigger': 'duel-form', onclick: function () { D.form = !D.form; fillList(sect); } })
     ]);
     sect.appendChild(head);
-    if (D.form) sect.appendChild(challengeForm(sect));
+    if (D.form) {
+      // нажатие мимо формы закрывает её (выбранный соперник и ставка запоминаются)
+      var f = challengeForm(sect);
+      f.setAttribute('data-dismiss', 'duel-form');
+      if (A.dismissible) A.dismissible('duel-form', function () { if (D.form) { D.form = false; fillList(sect); } });
+      sect.appendChild(f);
+    }
     if (!D.list) {
       sect.appendChild(el('p', { class: 'muted', text: D.listErr ? errText(D.listErr) : 'Загружаю…' }));
       return;

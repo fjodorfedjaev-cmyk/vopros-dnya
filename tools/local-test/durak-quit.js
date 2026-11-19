@@ -24,7 +24,7 @@ const admin = q('select user_id from public.admins limit 1');
   const stayed = !(await A.locator('.dk-quit-pop').count()) && (await A.locator('.dk-table').count()) > 0;
   await A.locator('.dk-quit').click();
   await A.locator('.dk-quit-pop').getByRole('button', { name: 'Выйти' }).click();
-  await A.waitForSelector('.duel-row, .muted', { timeout: 8000 });
+  await A.waitForSelector('.duel-head', { timeout: 8000 });
   await B.sleep(800);
   const row = q(`select r.status || ' ' || p.place || ' ' || p.out_kind from public.durak_players p join public.durak_rooms r on r.id = p.room_id where p.user_id = '${admin}' order by r.id desc limit 1`);
   console.log('«Остаться» закрывает предупреждение:', stayed ? 'да' : 'НЕТ');

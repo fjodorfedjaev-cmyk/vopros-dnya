@@ -431,6 +431,27 @@
     close();
   }
 
+  // Временные окошки на всём сайте (комментарии под ответом, правка ответа, «Новая комната», «Новая дуэль»,
+  // предупреждение «Выйти»…) закрываются нажатием в любое место мимо них — как во многих приложениях.
+  // Окошко помечено data-dismiss="ключ"; кнопка, которая его открывает и закрывает, — data-dismiss-trigger="ключ"
+  // (её нажатие — не «мимо»). Как закрыть, сообщает dismissible(ключ, функция); функция сама решает, можно ли
+  // (например, правку ответа с изменённым текстом не закрываем, чтобы текст не пропал).
+  // Закрываем после самого нажатия (setTimeout), чтобы нажатая кнопка успела сработать.
+  // Окна поверх экрана (праздник, карточка, грядка, выбор в профиле) закрываются своим фоном — их не трогаем.
+  var dismissers = {};
+  function dismissible(key, close) { dismissers[key] = close; }
+  function onOutsideClick(ev) {
+    var t = ev.target;
+    if (!t || !t.closest || t.closest('.celebrate, .kc-overlay, .kr, .farm-back, .set-back, .set-pop, .picker, .menu')) return;
+    var todo = [];
+    document.querySelectorAll('[data-dismiss]').forEach(function (node) {
+      var key = node.getAttribute('data-dismiss');
+      if (node.contains(t) || t.closest('[data-dismiss-trigger="' + key + '"]')) return;
+      if (dismissers[key]) todo.push(dismissers[key]);
+    });
+    if (todo.length) setTimeout(function () { todo.forEach(function (fn) { try { fn(); } catch (e) { /* не страшно */ } }); }, 0);
+  }
+
   // Реакции под чужим ответом или комментарием: уже поставленные реакции и кнопка 🙂+ с окном выбора.
   // list — общий массив реакций, он меняется на месте. Один человек — одна реакция.
   function reactionBar(targetId, list, kind) {
@@ -592,6 +613,8 @@
       if (v) { var i = wrap.querySelector('input'); if (i) i.focus(); }
     }
     toggle.addEventListener('click', function (ev) { ev.stopPropagation(); setOpen(!S.openComments[answerId]); });
+    toggle.setAttribute('data-dismiss-trigger', 'cmt:' + answerId);
+    dismissible('cmt:' + answerId, function () { if (S.openComments[answerId]) setOpen(false); });   // черновик остаётся в S.commentDrafts
 
     function closeMenu() { menuFor = null; confirmFor = null; draw(); flushStale(); }
     function openMenu(id) {
@@ -612,6 +635,7 @@
       toggle.setAttribute('title', open ? 'Свернуть комментарии' : (items.length ? 'Комментарии' : 'Написать комментарий'));
       // На своём ответе без комментариев делать нечего — иконку прячем.
       toggle.hidden = !!ownAnswer && !items.length;
+      if (open) wrap.setAttribute('data-dismiss', 'cmt:' + answerId); else wrap.removeAttribute('data-dismiss');
       wrap.replaceChildren();
       if (!open) {
         // Превью последнего комментария одной строкой.
@@ -1715,6 +1739,18 @@
   function fillAnswer(sect) {
     var mine = myAnswer();
     sect.replaceChildren();
+    if (mine && S.editing) {
+      sect.setAttribute('data-dismiss', 'answer-edit');
+      dismissible('answer-edit', function () {
+        var m = myAnswer();
+        if (!S.editing || !m || (S.draft || '').trim() !== String(m.body || '').trim()) return;   // текст поменяли — не закрываем
+        S.editing = false; S.draft = '';
+        fillAnswer(sect);
+        if (S.kind === 'fill') updateBlank(m.body);
+      });
+    } else {
+      sect.removeAttribute('data-dismiss');
+    }
     if (mine && !S.editing) {
       sect.appendChild(myAnswerCard(mine, sect));
       return;
@@ -3186,7 +3222,8 @@
       balance: balance, setBalance: setBalance, loadPoints: loadPoints, avatar: avatar,
       // для дуэлей
       me: function () { return S.userId; }, members: function () { return S.members || []; },
-      setGameState: function (st) { S.gameState = st; }, rerender: function () { render(); }
+      setGameState: function (st) { S.gameState = st; }, rerender: function () { render(); },
+      dismissible: dismissible   // временное окошко закрывается нажатием мимо (см. onOutsideClick)
     };
     if (window.Duels) window.Duels.init();
     if (window.Durak) window.Durak.init();
@@ -3227,6 +3264,8 @@
     document.addEventListener('focusout', flushStale);
     // Окно реакций закрывается кликом мимо него или клавишей Esc.
     document.addEventListener('click', function () { closePicker(); });
+    // Остальные временные окошки — тоже нажатием мимо (до обработчиков кнопок, которые останавливают всплытие).
+    document.addEventListener('click', onOutsideClick, true);
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { closePicker(); if (S.profileOpen) closeSetPop(); } });
     boot();
   }

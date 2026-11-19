@@ -24,7 +24,11 @@
       eq: function (c, v) { st.eq.push([c, v]); return b; },
       single: function () { st.single = true; return b; }, maybeSingle: function () { st.maybe = true; return b; },
       then: function (ok, bad) {
-        var p = TABLES[table] ? post('/mock/table', { table: table, eq: st.eq }) : Promise.resolve({ data: [] });
+        // строки для проверки (ответы, комментарии…) можно положить в localStorage 'mock-tables': { таблица: [строки] }
+        var fake = null;
+        try { fake = JSON.parse(localStorage.getItem('mock-tables') || 'null'); } catch (e) { fake = null; }
+        var p = fake && fake[table] ? Promise.resolve({ data: fake[table] })
+          : TABLES[table] ? post('/mock/table', { table: table, eq: st.eq }) : Promise.resolve({ data: [] });
         return p.then(function (r) {
           if (r.error) return { data: null, error: r.error };
           var d = r.data;
