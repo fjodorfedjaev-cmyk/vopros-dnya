@@ -692,6 +692,7 @@
   /* ---------- лавка: данные ---------- */
   // Лоты (market_lots) идут от дешёвых к дорогим, заявки (market_bids) — от дорогих к дешёвым.
   function otherLots(cardId) { return (K.lots || []).filter(function (l) { return l.card_id === cardId && !l.mine; }); }
+  function allLots(cardId) { return (K.lots || []).filter(function (l) { return l.card_id === cardId; }); }   // и свои тоже
   function bidsOf(cardId) { return (K.bids || []).filter(function (b) { return b.card_id === cardId; }); }
   function bestBid(cardId) { return bidsOf(cardId).filter(function (b) { return !b.mine; })[0] || null; }
   function myBids() { return (K.bids || []).filter(function (b) { return b.mine; }); }
@@ -854,12 +855,12 @@
   }
   function filtersOn() { return (K.mkSeries !== 'all' ? 1 : 0) + K.mkRars.length; }
   function marketCards() {
-    var minOf = function (c) { var l = otherLots(c.card_id)[0]; return l ? cents(l.price) : null; };
+    var minOf = function (c) { var l = allLots(c.card_id)[0]; return l ? cents(l.price) : null; };
     var rank = function (c) { return R(c.rarity).rank; };
     var cards = K.catalog.filter(function (c) {
       if (K.mkSeries !== 'all' && SERIES !== K.mkSeries) return false;      // пока все карточки — из «Начала»
       if (K.mkRars.length && K.mkRars.indexOf(c.rarity) < 0) return false;
-      if (K.mkFilter === 'sale') return otherLots(c.card_id).length > 0;
+      if (K.mkFilter === 'sale') return allLots(c.card_id).length > 0;
       if (K.mkFilter === 'miss') return !haveCard(c.card_id);
       return true;
     });
@@ -869,7 +870,7 @@
         if ((ma == null) !== (mb == null)) return ma == null ? 1 : -1;            // без продажи — в конце
         if (ma != null && ma !== mb) return K.mkSort === 'price_desc' ? mb - ma : ma - mb;
       } else if (K.mkSort === 'count') {
-        var d = otherLots(b.card_id).length - otherLots(a.card_id).length;
+        var d = allLots(b.card_id).length - allLots(a.card_id).length;
         if (d) return d;
         if (ma != null && mb != null && ma !== mb) return ma - mb;
       }
@@ -900,30 +901,27 @@
         [el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }), R(r).name, el('span', { 'aria-hidden': 'true', text: '×' })]));
     });
     var cards = marketCards();
-    var forSale = (K.lots || []).filter(function (l) { return !l.mine; }).length;
+    var forSale = (K.lots || []).length;
     return [el('section', { class: 'sect mk-cat' }, [
       chips,
       el('div', { class: 'mk-ctrl' }, [sortBtn, el('span', { class: 'mk-sum', text: cards.length + ' ' + plural(cards.length, 'вид', 'вида', 'видов') + (forSale ? ' · ' + forSale + ' в продаже' : '') })]),
       tags.length ? el('div', { class: 'mk-ftags' }, tags) : null,
-      forSale ? null : el('p', { class: 'kc-note mk-none', text: 'Предложений других игроков пока нет — можно создать заявку.' }),
+      forSale ? null : el('p', { class: 'kc-note mk-none', text: 'В продаже пока ничего нет — можно создать заявку.' }),
       cards.length ? el('div', { class: 'mk-grid' }, cards.map(catTile)) : el('p', { class: 'kc-note mk-empty', text: 'Под эти фильтры ничего нет.' })
     ])];
   }
   function plural(n, a, b, c) { return A.plural ? A.plural(n, a, b, c) : c; }
 
-  // Плитка каталога: рисунок, название в полоске цвета редкости, «N шт.» и «от N» (или «нет в продаже»)
+  // Плитка каталога: рисунок, название в полоске цвета редкости, «N шт.» и «от N» (или «нет в продаже»).
+  // Считаются все лоты, и свои тоже (свой купить нельзя — это видно на странице карточки).
   function catTile(c) {
-    var lots = otherLots(c.card_id), have = myCopies(c.card_id).length;
-    var mineLot = myLots().some(function (l) { return l.card_id === c.card_id; });
-    var mineBid = myBids().some(function (b) { return b.card_id === c.card_id; });
+    var lots = allLots(c.card_id);
     var art = el('span', { class: 'mk-tl-art', 'aria-hidden': 'true' }, [window.Cards.art(c.code)]);
-    if (have) art.appendChild(el('span', { class: 'mk-tl-have', text: 'у тебя ' + have }));
-    if (mineLot || mineBid) art.appendChild(el('span', { class: 'mk-tl-me', text: mineLot ? 'твой лот' : 'заявка' }));
     var price = el('span', { class: 'mk-tl-price' });
     if (lots.length) setText(price, 'от ' + money(lots[0].price) + ' 🪙');
     return el('button', {
       type: 'button', class: 'mk-tl r-' + c.rarity,
-      'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + ', ' + (lots.length ? 'в продаже ' + lots.length + ' шт., от ' + money(lots[0].price) + ' монет' : 'нет в продаже') + (have ? ', у тебя ' + have : ''),
+      'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + ', ' + (lots.length ? 'в продаже ' + lots.length + ' шт., от ' + money(lots[0].price) + ' монет' : 'нет в продаже'),
       onclick: function () { openMarketCard(c.card_id); }
     }, [
       art,
@@ -980,7 +978,7 @@
   function openMarketCard(cardId, note, pickId) {
     var c = cardById(cardId);
     if (!c) return;
-    var lots = otherLots(cardId), mineLots = myLots().filter(function (l) { return l.card_id === cardId; });
+    var every = allLots(cardId), lots = otherLots(cardId);
     var bids = bidsOf(cardId), bb = bestBid(cardId), mineB = bids.filter(function (b) { return b.mine; });
     var free = freeCopies(cardId);
     var sheet = bottomSheet(c.name + ' — лавка');
@@ -989,7 +987,8 @@
     if (note) setText(msg, note);
     sheet.appendChild(cardHead(c));
     sheet.appendChild(el('div', { class: 'mk-tiles' }, [
-      el('div', { class: 'mk-tile' }, [el('span', { text: 'Купить от' }), lots.length ? coinText(lots[0].price) : el('b', { text: '—' })]),
+      el('div', { class: 'mk-tile' }, [el('span', { text: 'В продаже от' }), every.length ? coinText(every[0].price) : el('b', { text: '—' }),
+        every.length && every[0].mine ? el('small', { text: 'твой лот' }) : null]),
       el('div', { class: 'mk-tile' }, [el('span', { text: 'Лучшая заявка' }), bids.length ? coinText(bids[0].price) : el('b', { text: '—' }),
         bids.length && bids[0].mine ? el('small', { text: 'твоя' }) : null])
     ]));
@@ -1011,9 +1010,20 @@
         twoTap(buy, 'Купить №' + s.serial + ' за ' + money(price) + ' 🪙', 'Точно? Купить №' + s.serial + ' за ' + money(price) + ' 🪙', function () { doBuy(s, c, buy, msg); });
       }
     }
-    if (lots.length || mineLots.length) {
+    if (every.length) {
       var offers = el('div', { class: 'mk-offers', role: 'radiogroup', 'aria-label': 'Предложения продавцов' });
-      lots.forEach(function (l) {
+      every.forEach(function (l) {
+        if (l.mine) {   // свой лот: купить нельзя — нажал, и можно изменить цену или снять
+          var me = el('button', { type: 'button', class: 'mk-offer mk-offer-me', 'aria-label': '№' + l.serial + ', ' + money(l.price) + ' монет, твой лот — изменить или снять',
+            onclick: function () { openMyLot(l, function () { openMarketCard(cardId); }); } }, [
+            el('span', { class: 'mk-offer-no', text: copyNo(c, l.serial) }),
+            el('span', { class: 'mk-who mk-mine', text: 'твой лот · изменить' }),
+            coinText(l.price)
+          ]);
+          me.lastChild.classList.add('mk-price');
+          offers.appendChild(me);
+          return;
+        }
         // строка — выбор номера; имя продавца внутри — отдельная кнопка: открывает его мини-профиль
         function choose() {
           sel = l;
@@ -1034,16 +1044,8 @@
         row.lastChild.classList.add('mk-price');
         offers.appendChild(row);
       });
-      mineLots.forEach(function (l) {
-        var row = el('button', { type: 'button', class: 'mk-offer mk-offer-me', onclick: function () { openMyLot(l, function () { openMarketCard(cardId); }); } }, [
-          el('span', { class: 'mk-offer-no', text: copyNo(c, l.serial) }),
-          el('span', { class: 'mk-who', text: 'твой лот · изменить' }),
-          coinText(l.price)
-        ]);
-        row.lastChild.classList.add('mk-price');
-        offers.appendChild(row);
-      });
       sheet.appendChild(el('div', { class: 'mk-block' }, [el('h3', { class: 'mk-h', text: 'Предложения продавцов' }), offers]));
+      if (!lots.length) sheet.appendChild(el('p', { class: 'kc-note mk-own-note', text: (every.length > 1 ? 'Это твои лоты' : 'Это твой лот') + ' — свою карточку купить нельзя. Других предложений пока нет.' }));
     } else {
       sheet.appendChild(el('p', { class: 'kc-note', text: 'Сейчас никто не продаёт. Создай заявку — купится автоматически, когда кто-то выставит.' }));
     }

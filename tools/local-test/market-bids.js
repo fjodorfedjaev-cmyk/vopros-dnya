@@ -37,8 +37,8 @@ async function twice(p, loc) { const h = await loc.elementHandle(); await h.clic
   // 1. каталог у покупателя
   await openMarket(pf); await tab(pf, 'Рынок');
   await shot(pf, 'mb_catalog');
-  ok('каталог: 20 плиток, «20 видов», «Предложений других игроков пока нет»', await pf.locator('.mk-tl').count() === 20
-    && (await pf.locator('.mk-sum').textContent()).includes('20 видов') && (await pf.locator('.mk-none').textContent()).includes('Предложений других игроков пока нет'));
+  ok('каталог: 20 плиток, «20 видов», «В продаже пока ничего нет»', await pf.locator('.mk-tl').count() === 20
+    && (await pf.locator('.mk-sum').textContent()).includes('20 видов') && (await pf.locator('.mk-none').textContent()).includes('В продаже пока ничего нет'));
   ok('первая плитка по редкости — легендарная «Солнце дня»', (await pf.locator('.mk-tl').first().textContent()).includes('Солнце дня'));
   await pf.locator('.mk-sortbtn').click();
   await pf.waitForSelector('.kb-sheet .mk-radios');
@@ -101,13 +101,23 @@ async function twice(p, loc) { const h = await loc.elementHandle(); await h.clic
   await pa.locator('#mk-p').fill('120');
   await pa.locator('.kc-actions .btn.primary').click();
   await B.sleep(1200);
+  await tab(pa, 'Рынок');
+  const sellerTile = await pa.locator('.mk-tl', { hasText: 'Ракета' }).textContent();
+  await pa.locator('.mk-tl', { hasText: 'Ракета' }).click();
+  await pa.waitForSelector('.mk-offers');
+  await shot(pa, 'mb_seller_card');
+  ok('продавец видит свои лоты: плитка «2 шт. · от 120», на карточке оба «твой лот», купить нельзя, подпись «Это твой лот»',
+    sellerTile.includes('2 шт.') && /от\s*120/.test(sellerTile) && await pa.locator('.mk-offer-me').count() === 2
+    && !(await pa.locator('.kc-actions .btn.primary', { hasText: 'Купить' }).count()) && await pa.locator('.mk-own-note').count() === 1
+    && (await pa.locator('.mk-tiles').textContent()).includes('твой лот'));
+  await pa.locator('.kb-close').click();
   ok('выставлены №2 за 150 и №3 за 120', q(`select string_agg(k.serial || ':' || l.price::int, ',' order by k.serial) from public.card_listings l join public.card_copies k on k.id = l.copy_id where l.status = 'active' and k.card_id = ${rocket}`) === '2:150,3:120');
 
   // 5. покупатель: страница Ракеты — предложения, выбор №2, покупка
   await openMarket(pf); await tab(pf, 'Рынок');
   await shot(pf, 'mb_catalog2');
   const tileTxt = await pf.locator('.mk-tl', { hasText: 'Ракета' }).textContent();
-  ok('плитка Ракеты: «2 шт.», «от 120», «у тебя 1»', /от\s*120/.test(tileTxt) && tileTxt.includes('2 шт.') && tileTxt.includes('у тебя 1'));
+  ok('плитка Ракеты: «2 шт.», «от 120», без меток «у тебя» и «твой лот»', /от\s*120/.test(tileTxt) && tileTxt.includes('2 шт.') && !/у тебя|твой лот|заявка/.test(tileTxt));
   await pf.locator('.mk-sortbtn').click();
   await pf.locator('.kb-sheet .mk-radio-row', { hasText: 'Сначала дешёвые' }).click();
   await pf.getByRole('button', { name: 'Готово' }).click();
@@ -117,7 +127,7 @@ async function twice(p, loc) { const h = await loc.elementHandle(); await h.clic
   await shot(pf, 'mb_grid');
   await pf.locator('.mk-tl', { hasText: 'Ракета' }).click();
   await pf.waitForSelector('.mk-offers');
-  ok('на странице: «Купить от 120», выбран самый дешёвый №3', (await pf.locator('.mk-tiles').textContent()).includes('120')
+  ok('на странице: «В продаже от 120», выбран самый дешёвый №3', (await pf.locator('.mk-tiles').textContent()).includes('120')
     && (await pf.locator('.mk-offer[aria-checked="true"]').textContent()).includes('№3'));
   await pf.locator('.mk-offer', { hasText: '№2' }).click();
   await shot(pf, 'mb_card_offers');
