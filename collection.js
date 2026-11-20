@@ -890,7 +890,7 @@
     var cards = marketCards();
     var forSale = (K.lots || []).length;
     return [el('section', { class: 'sect mk-cat' }, [
-      el('div', { class: 'mk-ctrl' }, [sortBtn, el('span', { class: 'mk-sum', text: cards.length + ' ' + plural(cards.length, 'вид', 'вида', 'видов') + (forSale ? ' · ' + forSale + ' в продаже' : '') })]),
+      el('div', { class: 'mk-ctrl' }, [sortBtn]),
       tags.length ? el('div', { class: 'mk-ftags' }, tags) : null,
       forSale ? null : el('p', { class: 'kc-note mk-none', text: 'В продаже пока ничего нет — можно создать заявку.' }),
       cards.length ? el('div', { class: 'mk-grid' }, cards.map(catTile)) : el('p', { class: 'kc-note mk-empty', text: 'Под эти фильтры ничего нет.' })

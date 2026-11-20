@@ -37,8 +37,8 @@ async function twice(p, loc) { const h = await loc.elementHandle(); await h.clic
   // 1. каталог у покупателя
   await openMarket(pf); await tab(pf, 'Рынок');
   await shot(pf, 'mb_catalog');
-  ok('каталог: 20 плиток, «20 видов», «В продаже пока ничего нет»', await pf.locator('.mk-tl').count() === 20
-    && (await pf.locator('.mk-sum').textContent()).includes('20 видов') && (await pf.locator('.mk-none').textContent()).includes('В продаже пока ничего нет'));
+  ok('каталог: 20 плиток, без надписи «N видов · N в продаже», «В продаже пока ничего нет»', await pf.locator('.mk-tl').count() === 20
+    && !(await pf.locator('.mk-cat .mk-sum').count()) && (await pf.locator('.mk-none').textContent()).includes('В продаже пока ничего нет'));
   ok('первая плитка по редкости — легендарная «Солнце дня»', (await pf.locator('.mk-tl').first().textContent()).includes('Солнце дня'));
   await pf.locator('.mk-sortbtn').click();
   await pf.waitForSelector('.kb-sheet .mk-radios');
