@@ -197,8 +197,7 @@
     var short = price ? Math.max(0, cents(price) - cents(bal())) / 100 : 0;
     var btn = el('button', { type: 'button', class: 'btn primary ko-open' });
     if (!price) btn.textContent = 'Колода закончилась';
-    else if (short > 0) setText(btn, 'Не хватает ' + money(short) + ' 🪙');
-    else setText(btn, 'Открыть за ' + price + ' 🪙');
+    else setText(btn, 'Открыть за ' + price + ' 🪙');   // не хватает монет — та же цена, кнопка просто неактивна
     btn.disabled = !price || K.busy || short > 0;
     btn.addEventListener('click', openCard);
     var msg = el('p', { class: 'msg', role: 'status', id: 'coll-msg' });
@@ -980,17 +979,14 @@
 
     var sel = lots.filter(function (l) { return l.listing_id === pickId; })[0] || lots[0] || null;
     var buy = el('button', { type: 'button', class: 'btn primary' });
-    var lack = el('p', { class: 'kc-note', hidden: true });
     function setBuy() {
       if (!sel) return;
       var price = Number(sel.price), short = cents(price) - cents(bal());
       buy.replaceWith(buy = el('button', { type: 'button', class: 'btn primary' }));
-      if (short > 0) {
+      if (short > 0) {   // не хватает монет — на кнопке та же цена, она просто неактивна
         setText(buy, 'Купить №' + sel.serial + ' за ' + money(price) + ' 🪙');
         buy.disabled = true;
-        lack.hidden = false; setText(lack, 'Не хватает ' + money(short / 100) + ' 🪙 (доступно ' + money(bal()) + ')');
       } else {
-        lack.hidden = true;
         var s = sel;
         twoTap(buy, 'Купить №' + s.serial + ' за ' + money(price) + ' 🪙', 'Точно? Купить №' + s.serial + ' за ' + money(price) + ' 🪙', function () { doBuy(s, c, buy, msg); });
       }
@@ -1036,7 +1032,7 @@
     }
 
     var acts = el('div', { class: 'kc-actions' });
-    if (sel) { acts.appendChild(buy); acts.appendChild(lack); setBuy(); }
+    if (sel) { acts.appendChild(buy); setBuy(); }
     acts.appendChild(el('button', { type: 'button', class: sel ? 'btn' : 'btn primary', text: 'Создать заявку', onclick: function () { openBidForm(cardId, null); } }));
     sheet.appendChild(acts);
 
@@ -1642,7 +1638,7 @@
       setTimeout(function () { showResult(card); }, reduce ? 0 : 650);
     }
     // Результат: «Новая карточка» или «Повтор · теперь ×3», редкость, прогресс альбома,
-    // «В коллекцию», «На витрину», «Открыть ещё за N» (или «Не хватает N»).
+    // «В коллекцию», «На витрину», «Открыть ещё за N» (не хватает монет — неактивна).
     function showResult(card) {
       var isNew = !had[res.card_id];
       var cat = cardById(res.card_id);
@@ -1671,11 +1667,7 @@
       var again = el('button', { type: 'button', class: 'btn kr-again' });
       var short = next ? Math.max(0, cents(next) - cents(bal())) / 100 : 0;
       if (!next) again.textContent = 'Колода закончилась';
-      else if (short > 0) {
-        var t1 = el('span'), t2 = el('small');
-        setText(t1, 'Не хватает ' + money(short) + ' 🪙'); setText(t2, 'Повторное открытие — ' + next + ' 🪙');
-        again.appendChild(t1); again.appendChild(t2); again.classList.add('kr-short');
-      } else setText(again, 'Открыть ещё за ' + next + ' 🪙');
+      else setText(again, 'Открыть ещё за ' + next + ' 🪙');   // не хватает монет — та же цена, кнопка неактивна
       again.disabled = !next || short > 0;
       again.addEventListener('click', function () { finish(true); });
       result.replaceChildren.apply(result, [info, extra, el('div', { class: 'kr-btns' }, [toColl, toShelf, again])].filter(Boolean));
