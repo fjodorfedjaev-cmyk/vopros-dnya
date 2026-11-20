@@ -173,14 +173,6 @@
       reactions: st.reactions_received, coins: S.coins && S.coins[uid] !== undefined ? S.coins[uid] : (uid === S.userId ? balance() : undefined)
     };
   }
-  // Вызвать на дуэль из мини-профиля: Игры → Сектор, форма вызова уже с этим человеком
-  function challenge(uid) {
-    if (S.gameState === 'play') { toast('Сначала доиграй партию'); return; }
-    if (window.Duels && window.Duels.prefill) window.Duels.prefill(uid);
-    if (S.view !== 'game') go('game');
-    if (S.gameMode !== 'sector') setGameMode('sector'); else render();
-    setTimeout(function () { var d = document.getElementById('duel-sect'); if (d) d.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 80);
-  }
 
   function parseDay(s) {
     var p = String(s).split('-');
@@ -3302,7 +3294,7 @@
       setGameState: function (st) { S.gameState = st; }, rerender: function () { render(); },
       dismissible: dismissible,  // временное окошко закрывается нажатием мимо (см. onOutsideClick)
       // мини-профиль (people.js)
-      person: person, memberInfo: memberInfo, challenge: challenge, go: go,
+      person: person, memberInfo: memberInfo, go: go,
       zodiac: function (code) { var z = zodiacOf(code); return z ? { name: z[2], icon: constellation(z[0], 20) } : null; }
     };
     if (window.Duels) window.Duels.init();

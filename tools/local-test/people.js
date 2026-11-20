@@ -1,7 +1,6 @@
-// Сценарий «Мини-профиль» (people.js): нажал на имя — окно по центру с аватаркой, знаком, «с нами с …», «сегодня»,
-// плитками (серия, ответы, монеты, реакции), витриной (карточка крупно), играми, счётом ваших дуэлей,
-// «Вызвать на дуэль» (Игры → Сектор с выбранным человеком), свой профиль; открывается из Участников, ленты ответов
-// (меню ответа при этом не открывается) и у продавца в Лавке.
+// Сценарий «Мини-профиль» (people.js): нажал на имя — маленькое окно по центру: аватарка, имя, знак, серия дней,
+// «сегодня», витрина (карточка крупно); без «с нами с…», ответов, реакций, монет, игр и дуэлей; свой профиль;
+// открывается из Участников, ленты ответов (меню ответа при этом не открывается) и у продавца в Лавке.
 // База: как для market-bids.js, плюс profile-stub.sql (после cards-stub.sql), ../../supabase/duels/01_duels.sql,
 // ../../supabase/members/02_member_profile.sql и profile-seed.sql. Запуск: DB=pf node people.js
 const { execFileSync } = require('child_process');
@@ -24,25 +23,23 @@ const aname = q(`select display_name from public.profiles where id = '${A}'`);
   await p.locator('.bn-item', { hasText: 'Профиль' }).click();
   await p.waitForSelector('table.board .person');
   await p.locator('table.board .person', { hasText: fname }).click();
-  await p.waitForSelector('.pf .pf-rows', { timeout: 6000 });
+  await p.waitForSelector('.pf .pf-shelves', { timeout: 6000 });
   await B.sleep(400);
   await p.screenshot({ path: __dirname + '/shots/pf_friend.png' });
   const txt = await p.locator('.pf').innerText();
-  ok('окно: имя, «Лев», «с нами с 3 октября», «Сегодня: ответ есть»', txt.includes(fname) && txt.includes('Лев') && txt.includes('с нами с 3 октября') && txt.includes('Сегодня: ответ есть'));
-  const tiles = await p.locator('.pf-tile').allInnerTexts();
-  ok('плитки: серия 5 (лучшая 5), 5 ответов, 5 000 монет, 3 реакции', tiles.length === 4 && /5/.test(tiles[0]) && /лучшая 5/.test(tiles[0]) && /5\s*ответов/.test(tiles[1])
-    && /5\s000/.test(tiles[2]) && /3\s*реакции/.test(tiles[3]));
+  ok('окно: имя, «Лев», «5 дней подряд», «Сегодня: ответ есть»', txt.includes(fname) && txt.includes('Лев') && txt.includes('5 дней подряд') && txt.includes('Сегодня: ответ есть'));
   ok('витрина: 3 карточки, «Собрано 3 из 20»', await p.locator('.pf-shelves .kc').count() === 3 && txt.includes('Собрано 3 из 20'));
-  ok('игры: Сектор 1 240 (незачтённые 2000 не считаются), Зигзаг 315, дуэли 1 · 2 · 1, Дурак — пока не было',
-    /рекорд 1\s240/.test(txt) && txt.includes('рекорд 315') && txt.includes('1 победа · 2 поражения · 1 ничья') && txt.includes('пока не было'));
-  ok('«Ваши дуэли»: Ты 2 : 1, и 1 ничья', (await p.locator('.pf-vs').innerText()).includes('2 : 1') && (await p.locator('.pf-vs').innerText()).includes('1 ничья'));
+  ok('нет «с нами с», ответов, реакций, монет, лучшей серии, игр, дуэлей и кнопки «Вызвать на дуэль»',
+    !/с нами с|ответов|реакц|монет|лучшая|Сектор|Зигзаг|Дуэли|Дурак|Ваши дуэли/.test(txt) && !(await p.getByRole('button', { name: 'Вызвать на дуэль' }).count()));
+  const box = await p.locator('.pf').boundingBox();
+  ok('окно маленькое: ' + Math.round(box.width) + '×' + Math.round(box.height) + ' (влезает в экран без прокрутки)', box.height < 560 && box.width <= 320);
   // карточка крупно и назад
   await p.locator('.pf-shelves .shelf').first().click();
   await p.waitForSelector('.pf-zoom .kc');
   await p.screenshot({ path: __dirname + '/shots/pf_zoom.png' });
   ok('карточка с витрины открывается крупно', (await p.locator('.pf .kb-info').innerText()).includes('Легендарная'));
   await p.getByRole('button', { name: 'Назад' }).click();
-  ok('«Назад» — снова профиль', await p.locator('.pf .pf-tiles').count() === 1);
+  ok('«Назад» — снова профиль', await p.locator('.pf .pf-shelves').count() === 1);
   // закрыть нажатием мимо
   await p.mouse.click(8, 8);
   await B.sleep(200);
@@ -50,23 +47,12 @@ const aname = q(`select display_name from public.profiles where id = '${A}'`);
 
   // 2. свой профиль
   await p.locator('table.board .person', { hasText: aname }).click();
-  await p.waitForSelector('.pf .pf-rows');
+  await p.waitForSelector('.pf .pf-shelves');
   await p.screenshot({ path: __dirname + '/shots/pf_me.png' });
-  ok('свой профиль: «это ты», нет «Вызвать на дуэль» и «Ваших дуэлей», есть «Изменить профиль»',
-    await p.locator('.pf-me').count() === 1 && !(await p.getByRole('button', { name: 'Вызвать на дуэль' }).count()) && !(await p.locator('.pf-vs').count())
-    && await p.getByRole('button', { name: 'Изменить профиль' }).count() === 1);
+  ok('свой профиль: «это ты», есть «Изменить профиль»', await p.locator('.pf-me').count() === 1 && await p.getByRole('button', { name: 'Изменить профиль' }).count() === 1);
   await p.keyboard.press('Escape');
   await B.sleep(150);
   ok('Esc закрывает', !(await p.locator('.pf').count()));
-
-  // 3. «Вызвать на дуэль» → Игры → Сектор, форма с выбранным другом
-  await p.locator('table.board .person', { hasText: fname }).click();
-  await p.waitForSelector('.pf .pf-rows');
-  await p.getByRole('button', { name: 'Вызвать на дуэль' }).click();
-  await p.waitForSelector('.duel-chip[aria-pressed="true"]', { timeout: 6000 });
-  await B.sleep(400);
-  await p.screenshot({ path: __dirname + '/shots/pf_duel.png' });
-  ok('«Вызвать на дуэль»: открылся Сектор, в форме выбран друг', (await p.locator('.duel-chip[aria-pressed="true"]').innerText()).includes(fname) && await p.locator('#duel-stake').count() === 1);
 
   // 4. лента ответов: нажал на имя в ответе — профиль, меню ответа не открылось
   await p.evaluate(([a, f, an, fn]) => {

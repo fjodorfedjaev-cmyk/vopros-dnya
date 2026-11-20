@@ -1,9 +1,8 @@
-/* Мини-профиль человека: нажал на имя или аватарку где угодно — окно по центру.
-   Сразу показываем то, что уже есть на телефоне (имя, аватарка, серия, ответы, монеты), остальное
-   догружается одним запросом member_profile: знак, «с нами с …», «сегодня», витрина, рекорды игр, дуэли, Дурак,
-   счёт ваших дуэлей. Ответы человека не показываем — чтобы не увидеть ответ раньше своего.
-   Кнопка «Вызвать на дуэль» ведёт в Игры → Сектор с уже выбранным человеком.
-   Связь с сайтом — window.AppAPI (el, avatar, sb, memberInfo, zodiac, challenge), карточки — window.Cards. */
+/* Мини-профиль человека: нажал на имя или аватарку где угодно — маленькое окно по центру:
+   аватарка, имя, знак зодиака, серия дней, «Сегодня: ответ есть / ещё нет», витрина и «Собрано X из 20».
+   Сразу показываем то, что уже есть на телефоне (имя, аватарка, серия), витрину догружаем запросом member_profile.
+   Ответы человека не показываем — чтобы не увидеть ответ раньше своего.
+   Связь с сайтом — window.AppAPI (el, avatar, sb, memberInfo, zodiac), карточки — window.Cards. */
 (function () {
   'use strict';
   var A = null;
@@ -13,16 +12,7 @@
 
   function el() { return A.el.apply(null, arguments); }
   function setText(n, t) { if (window.Coin) window.Coin.fill(n, t); else n.textContent = t; }
-  function num(n) { return Number(n || 0).toLocaleString('ru-RU'); }
-  function coins(n) { var c = Math.round(Number(n || 0) * 100); return (Math.floor(c / 100)).toLocaleString('ru-RU'); }
   function plural(n, a, b, c) { return A.plural ? A.plural(n, a, b, c) : c; }
-  var fmtDay = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' });
-  var fmtDayYear = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-  function joinedText(s) {
-    var d = new Date(s);
-    if (isNaN(d)) return '';
-    return 'с нами с ' + (d.getFullYear() === new Date().getFullYear() ? fmtDay : fmtDayYear).format(d);
-  }
 
   function close() {
     if (!ov) return;
@@ -62,7 +52,7 @@
     }
   }
 
-  // d — ответ базы (или null, пока грузится); loading — показать «Загружаю…» на месте того, чего ещё нет
+  // d — ответ базы (или null, пока грузится). Окно маленькое: аватарка, имя, знак, «сегодня», серия и витрина.
   function draw(sheet, uid, info, d, loading, failed) {
     var me = uid === A.me();
     var name = (d && d.name) || info.name || 'Без имени';
@@ -73,37 +63,29 @@
 
     var av = A.avatar(name, color, false, emoji);
     av.classList.add('pf-av');
-    var meta = [];
-    if (z) meta.push(el('span', { class: 'pf-zod' }, [z.icon, z.name]));
-    if (d && d.joined) meta.push(el('span', { text: joinedText(d.joined) }));
-    var today = pick('answered_today');
-    var head = el('div', { class: 'pf-head' }, [
-      av,
-      el('h2', { class: 'pf-name', text: name }),
-      me ? el('span', { class: 'pf-me', text: 'это ты' }) : null,
-      meta.length ? el('p', { class: 'pf-meta' }, meta.reduce(function (acc, n, i) { if (i) acc.push(el('span', { class: 'pf-dot', 'aria-hidden': 'true', text: '·' })); acc.push(n); return acc; }, [])) : null,
-      today === undefined ? null : el('span', { class: 'pf-today' + (today ? ' on' : ''), text: today ? 'Сегодня: ответ есть' : 'Сегодня: ответа ещё нет' })
-    ]);
-
-    function tile(value, label, sub, cls) {
-      var v = el('b', { class: 'pf-v' });
-      setText(v, value == null ? '…' : value);
-      return el('div', { class: 'pf-tile' + (cls ? ' ' + cls : '') }, [v, el('span', { class: 'pf-l', text: label }), sub ? el('small', { text: sub }) : null]);
+    var today = pick('answered_today'), streak = pick('streak');
+    var line = el('p', { class: 'pf-meta' });
+    if (z) line.appendChild(el('span', { class: 'pf-zod' }, [z.icon, z.name]));
+    if (streak != null) {
+      if (z) line.appendChild(el('span', { class: 'pf-dot', 'aria-hidden': 'true', text: '·' }));
+      var st = el('span', { class: 'pf-streak' });
+      setText(st, FIRE + ' ' + streak + ' ' + plural(streak, 'день', 'дня', 'дней') + ' подряд');
+      line.appendChild(st);
     }
-    var streak = pick('streak'), best = pick('best_streak'), answers = pick('answers'), coinsV = pick('coins'), reacts = pick('reactions');
-    var tiles = el('div', { class: 'pf-tiles' }, [
-      tile(streak == null ? null : FIRE + ' ' + streak, 'серия дней', best != null ? 'лучшая ' + best : null, 'pf-fire'),
-      tile(answers == null ? null : num(answers), plural(answers || 0, 'ответ', 'ответа', 'ответов')),
-      tile(coinsV == null ? null : coins(coinsV) + ' 🪙', 'монеты'),
-      tile(reacts == null ? null : num(reacts), plural(reacts || 0, 'реакция', 'реакции', 'реакций') + ' на ответы')
-    ]);
-
-    var kids = [el('button', { type: 'button', class: 'pf-close kc-close', 'aria-label': 'Закрыть', text: '×', onclick: close }), head, tiles];
+    var kids = [
+      el('button', { type: 'button', class: 'pf-close kc-close', 'aria-label': 'Закрыть', text: '×', onclick: close }),
+      el('div', { class: 'pf-head' }, [
+        av,
+        el('h2', { class: 'pf-name', text: name }),
+        me ? el('span', { class: 'pf-me', text: 'это ты' }) : null,
+        line.childNodes.length ? line : null,
+        today === undefined ? null : el('span', { class: 'pf-today' + (today ? ' on' : ''), text: today ? 'Сегодня: ответ есть' : 'Сегодня: ответа ещё нет' })
+      ])
+    ];
 
     if (!d) {
-      kids.push(el('p', { class: failed ? 'msg err' : 'muted pf-wait', text: failed ? 'Остальное не загрузилось. Проверь интернет.' : 'Загружаю…' }));
+      kids.push(el('p', { class: failed ? 'msg err' : 'muted pf-wait', text: failed ? 'Витрина не загрузилась. Проверь интернет.' : 'Загружаю витрину…' }));
     } else {
-      // витрина
       var shelf = d.shelf || [];
       var slots = [0, 1, 2].map(function (i) {
         var c = shelf[i];
@@ -116,44 +98,9 @@
         el('div', { class: 'pf-sh' }, [el('h3', { text: 'Витрина' }), el('span', { text: 'Собрано ' + (d.cards || 0) + ' из ' + (d.cards_total || 0) })]),
         el('div', { class: 'shelves pf-shelves' }, slots)
       ]));
-      // игры
-      var du = d.duels || {}, dk = d.durak || {};
-      function row(label, value) { return el('div', { class: 'pf-row' }, [el('span', { text: label }), el('span', { text: value })]); }
-      var duelText = (du.won || du.lost || du.draw)
-        ? du.won + ' ' + plural(du.won, 'победа', 'победы', 'побед') + ' · ' + du.lost + ' ' + plural(du.lost, 'поражение', 'поражения', 'поражений') + (du.draw ? ' · ' + du.draw + ' ' + plural(du.draw, 'ничья', 'ничьи', 'ничьих') : '')
-        : 'пока не было';
-      var durakText = dk.games
-        ? dk.games + ' ' + plural(dk.games, 'партия', 'партии', 'партий') + ' · ' + (dk.first || 0) + ' ' + plural(dk.first || 0, 'раз', 'раза', 'раз') + ' первым'
-        : 'пока не было';
-      kids.push(el('section', { class: 'pf-sect' }, [
-        el('div', { class: 'pf-sh' }, [el('h3', { text: 'Игры' })]),
-        el('div', { class: 'pf-rows' }, [
-          row('Сектор', d.sector_best != null ? 'рекорд ' + num(d.sector_best) : 'рекорда пока нет'),
-          row('Зигзаг', d.zigzag_best != null ? 'рекорд ' + num(d.zigzag_best) : 'рекорда пока нет'),
-          row('Дуэли', duelText),
-          row('Дурак', durakText)
-        ])
-      ]));
-      // между вами
-      if (!me && d.vs) {
-        var total = (d.vs.me || 0) + (d.vs.them || 0) + (d.vs.draw || 0);
-        kids.push(el('section', { class: 'pf-vs' }, total ? [
-          el('span', { class: 'pf-vs-l', text: 'Ваши дуэли' }),
-          el('div', { class: 'pf-vs-score' }, [
-            el('span', { class: 'pf-vs-n', text: 'Ты' }), el('b', { text: (d.vs.me || 0) + ' : ' + (d.vs.them || 0) }), el('span', { class: 'pf-vs-n', text: name })
-          ]),
-          d.vs.draw ? el('small', { text: 'и ' + d.vs.draw + ' ' + plural(d.vs.draw, 'ничья', 'ничьи', 'ничьих') }) : null
-        ] : [el('span', { class: 'pf-vs-l', text: 'Дуэлей между вами ещё не было' })]));
-      }
+      if (failed) kids.push(el('p', { class: 'msg err', text: 'Не получилось обновить. Показано то, что было.' }));
     }
-    if (failed && d) kids.push(el('p', { class: 'msg err', text: 'Не получилось обновить. Показано то, что было.' }));
-    // действия
-    if (!me) {
-      kids.push(el('div', { class: 'kc-actions' }, [el('button', { type: 'button', class: 'btn primary', text: 'Вызвать на дуэль', onclick: function () {
-        close();
-        if (A.challenge) A.challenge(uid);
-      } })]));
-    } else {
+    if (me) {
       kids.push(el('div', { class: 'kc-actions' }, [el('button', { type: 'button', class: 'btn', text: 'Изменить профиль', onclick: function () {
         close();
         if (A.go) A.go('profile');
