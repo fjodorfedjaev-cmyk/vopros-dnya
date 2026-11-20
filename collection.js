@@ -1,4 +1,5 @@
-/* Вкладка «Коллекция»: колода, открытие карточки по нажатиям, коллекция, витрина, переплавка, лавка.
+/* Вкладка «Коллекция»: блок открытия, альбом (фильтры, «Новая»), витрина, панель карточки снизу, открытие по нажатиям,
+   переплавка, лавка. Витрина ещё показывается в Профиле (profileShelf).
    Что выпало — решает база (функция cards_open) в момент оплаты. Нажатия при открытии ничего не меняют,
    они только красиво раскрывают уже выпавшую карточку. Даже если закрыть приложение посередине,
    карточка уже лежит в коллекции.
@@ -10,8 +11,10 @@
   var A = null;                 // AppAPI, появляется после запуска сайта
   var root = null;              // корневой элемент вкладки (живёт между перерисовками)
   var SERIES = 1;               // серия «Начало»
-  var K = { catalog: null, my: null, deck: null, lots: null, lotsErr: null, err: null, busy: false, msg: '', mode: savedMode() };
+  var K = { catalog: null, my: null, deck: null, lots: null, lotsErr: null, err: null, busy: false, msg: '', mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0 };
   function savedMode() { try { return localStorage.getItem('coll-mode') === 'market' ? 'market' : 'coll'; } catch (e) { return 'coll'; } }
+  // фильтр альбома: все / полученные / не получены (запоминается на этом телефоне)
+  function savedFilter() { try { var f = localStorage.getItem('coll-filter'); return f === 'got' || f === 'miss' ? f : 'all'; } catch (e) { return 'all'; } }
   var ov = null;                // открытое окно поверх страницы (карточка крупно, открытие, витрина друга)
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -28,14 +31,14 @@
   }
   function errText(e) {
     var m = String((e && (e.message || e.details)) || e || '');
-    if (/cards_price_changed/.test(m)) return 'Цена изменилась, пока ты смотрел. Глянь новую и нажми ещё раз.';
+    if (/cards_price_changed/.test(m)) return 'Цена только что изменилась. Глянь новую и нажми ещё раз.';
     if (/cards_not_enough/.test(m)) return 'Не хватает монет.';
     if (/cards_deck_empty/.test(m)) return 'Колода закончилась.';
     if (/cards_last_copy/.test(m)) return 'Это последняя копия в игре — её не переплавить.';
     if (/cards_no_melt/.test(m)) return 'Легендарную не переплавить.';
     if (/cards_in_showcase/.test(m)) return 'Сначала убери карточку с витрины.';
     if (/cards_not_yours/.test(m)) return 'Эта карточка уже не твоя.';
-    if (/market_price_changed/.test(m)) return 'Цену поменяли, пока ты смотрел. Глянь новую и нажми ещё раз.';
+    if (/market_price_changed/.test(m)) return 'Цену только что поменяли. Глянь новую и нажми ещё раз.';
     if (/market_not_enough/.test(m)) return 'Не хватает монет.';
     if (/market_gone/.test(m)) return 'Эту карточку уже купили или сняли с продажи.';
     if (/market_own/.test(m)) return 'Свою карточку купить нельзя.';
@@ -59,7 +62,30 @@
     K.catalog = res[0] || [];
     K.my = res[1] || [];
     K.deck = one(res[2]) || null;
+    K.loadedAt = Date.now();
     if (res[3]) { K.lots = res[3]; K.lotsErr = null; }
+  }
+
+  /* ---------- «Новая»: какие копии уже видели (помнит этот телефон) ---------- */
+  // В первый раз всё, что уже есть, считается увиденным. Новая копия (открыл или купил) — с меткой «Новая»,
+  // пока не нажмёшь на карточку в альбоме.
+  function seenKey() { return 'cards-seen:' + ((A && A.me && A.me()) || 'anon'); }
+  function saveSeen() { try { localStorage.setItem(seenKey(), JSON.stringify(Object.keys(K.seen).map(Number))); } catch (e) { /* без хранилища — просто без меток */ } }
+  function seenSet() {
+    if (K.seen) return K.seen;
+    var raw = null;
+    try { raw = localStorage.getItem(seenKey()); } catch (e) { raw = null; }
+    K.seen = {};
+    if (raw === null) { (K.my || []).forEach(function (k) { K.seen[k.copy_id] = 1; }); saveSeen(); }
+    else { try { JSON.parse(raw).forEach(function (id) { K.seen[id] = 1; }); } catch (e) { /* испорчено — начнём заново */ } }
+    return K.seen;
+  }
+  function isNewCard(cardId) { var s = seenSet(); return myCopies(cardId).some(function (k) { return !s[k.copy_id]; }); }
+  function markSeen(cardId) {
+    var s = seenSet(), changed = false;
+    myCopies(cardId).forEach(function (k) { if (!s[k.copy_id]) { s[k.copy_id] = 1; changed = true; } });
+    if (changed) saveSeen();
+    return changed;
   }
   async function reload() {
     try { await load(); K.err = null; } catch (e) { K.err = e; }
@@ -130,46 +156,59 @@
     }
     root.appendChild(modeSwitch());
     if (K.mode === 'market') { marketView().forEach(function (n) { root.appendChild(n); }); return; }
-    root.appendChild(deckCard());
+    seenSet();
+    root.appendChild(heroCard());
+    root.appendChild(albumSect());
     root.appendChild(showcaseSect());
-    window.Cards.ORDER.forEach(function (r) { root.appendChild(groupSect(r)); });
   }
 
-  // Колода: прогресс коллекции, какие редкости ещё есть, кнопка «Открыть карточку».
-  function deckCard() {
+  // Блок открытия: серия, рубашка с подсветкой, «1 случайная карточка», кнопка с ценой, сколько осталось, шансы.
+  function heroCard() {
     var d = K.deck || {};
-    var total = K.catalog.length;
-    var got = {}; (K.my || []).forEach(function (k) { got[k.card_id] = true; });
-    var n = Object.keys(got).length;
     var price = d.price;
-    var left = { common: d.left_common, uncommon: d.left_uncommon, rare: d.left_rare, epic: d.left_epic, legendary: d.left_legendary };
-    var dots = window.Cards.ORDER.map(function (r) {
-      var on = left[r] > 0;
-      return el('span', { class: 'kd-dot r-' + r + (on ? '' : ' off'), title: R(r).name + (on ? ': есть в колоде' : ': в колоде уже нет') });
-    });
-    var btn = el('button', { type: 'button', class: 'btn primary coll-open' });
-    if (price) setText(btn, 'Открыть карточку · ' + price + ' 🪙'); else btn.textContent = 'Колода закончилась';
-    btn.disabled = !price || K.busy || bal() < price;
+    var short = price ? Math.max(0, cents(price) - cents(bal())) / 100 : 0;
+    var btn = el('button', { type: 'button', class: 'btn primary ko-open' });
+    if (!price) btn.textContent = 'Колода закончилась';
+    else if (short > 0) setText(btn, 'Не хватает ' + money(short) + ' 🪙');
+    else setText(btn, 'Открыть за ' + price + ' 🪙');
+    btn.disabled = !price || K.busy || short > 0;
     btn.addEventListener('click', openCard);
     var msg = el('p', { class: 'msg', role: 'status', id: 'coll-msg' });
     if (K.msg) setText(msg, K.msg);
-    return el('section', { class: 'card coll-deck' }, [
-      el('div', { class: 'coll-row' }, [
-        el('span', { class: 'coll-got', text: 'Собрано ' + n + ' из ' + total }),
-        el('span', { class: 'coll-series', text: 'Серия «' + (d.series_name || 'Начало') + '»' })
-      ]),
-      el('div', { class: 'coll-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(n), 'aria-label': 'Собрано карточек' },
-        [el('span', { style: 'width:' + (total ? Math.round(n / total * 100) : 0) + '%' })]),
-      el('div', { class: 'coll-row' }, [
-        el('span', { class: 'kd-dots', 'aria-label': 'Какие редкости ещё есть в колоде' }, dots),
-        el('span', { class: 'coll-left', text: 'в колоде ' + (d.deck_left || 0) + ' из ' + (d.deck_total || 0) })
-      ]),
+    return el('section', { class: 'card ko' }, [
+      el('h2', { class: 'ko-title', text: 'Серия «' + (d.series_name || 'Начало') + '»' }),
+      el('div', { class: 'ko-pack' + (price ? '' : ' empty'), 'aria-hidden': 'true' }, [window.Cards.back('md')]),
+      el('p', { class: 'ko-sub', text: price ? '1 случайная карточка' : 'Все карточки серии уже открыты' }),
       btn,
+      el('p', { class: 'ko-meta', text: 'Осталось в колоде: ' + (d.deck_left || 0) + ' из ' + (d.deck_total || 0) }),
+      price ? el('button', { type: 'button', class: 'link ko-odds', text: 'Что может выпасть', onclick: openOdds }) : null,
       msg
     ]);
   }
 
-  // Витрина: 3 полки. Карточку туда ставят из окна карточки («На витрину»).
+  // «Что может выпасть»: карточка выпадает случайно из оставшихся в колоде копий,
+  // поэтому шанс редкости = сколько её копий осталось / сколько всего осталось.
+  function pct(n, t) { var p = t ? n / t * 100 : 0; return (p > 0 && p < 10 ? p.toFixed(1).replace('.', ',') : String(Math.round(p))) + '%'; }
+  function openOdds() {
+    var d = K.deck || {};
+    var total = d.deck_left || 0;
+    var sheet = bottomSheet('Что может выпасть');
+    sheet.appendChild(el('h2', { class: 'kb-title', text: 'Что может выпасть' }));
+    sheet.appendChild(el('div', { class: 'kx-list' }, window.Cards.ORDER.map(function (r) {
+      var n = d['left_' + r] || 0;
+      var names = (K.catalog || []).filter(function (c) { return c.rarity === r; }).map(function (c) { return c.name; }).join(', ');
+      return el('div', { class: 'kx-row' + (n ? '' : ' off') }, [
+        el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }),
+        el('span', { class: 'kx-info' }, [el('span', { class: 'kx-name', text: R(r).name }), el('span', { class: 'kx-cards', text: names })]),
+        el('span', { class: 'kx-left', text: n ? 'осталось ' + n : 'нет' }),
+        el('span', { class: 'kx-pct', text: n ? pct(n, total) : '—' })
+      ]);
+    })));
+    sheet.appendChild(el('p', { class: 'kb-note', text: 'Карточка выпадает случайно из тех, что ещё остались в колоде: чем больше копий осталось, тем выше шанс. '
+      + 'Цена открытия — по самой редкой карточке в колоде: золотая 300, фиолетовая 250, синяя 200, зелёная 150, только серые 100.' }));
+  }
+
+  // Витрина: 3 полки, компактно, ниже альбома. Карточку ставят из панели карточки («На витрину») или перетаскиванием.
   function showcaseSect() {
     var on = shelved();
     var slots = [0, 1, 2].map(function (i) {
@@ -186,37 +225,57 @@
       b.appendChild(window.Cards.face(c, k.serial, 'md'));
       return b;
     });
-    return el('section', { class: 'sect' }, [el('h2', { text: 'Витрина' }), el('div', { class: 'shelves' }, slots)]);
+    return el('section', { class: 'sect kw' }, [
+      el('div', { class: 'ka-head' }, [el('h2', { text: 'Моя витрина' }), on.length < 3 ? el('span', { class: 'kw-hint', text: 'зажми карточку и перетащи' }) : null]),
+      el('div', { class: 'shelves' }, slots)
+    ]);
   }
 
-  // Одна редкость: заголовок со счётчиком и сетка. Карточки нет в коллекции — серая рубашка с названием.
-  function groupSect(r) {
-    var cards = K.catalog.filter(function (c) { return c.rarity === r; });
-    var have = cards.filter(function (c) { return myCopies(c.card_id).length; }).length;
-    var tiles = cards.map(function (c) {
-      var mine = myCopies(c.card_id);
-      if (!mine.length) {
-        // карточки нет в коллекции (не найдена, или все копии в лавке) — серая рубашка и название
-        return el('div', { class: 'kt kt-miss', role: 'img', 'aria-label': c.name + ' — нет в коллекции' }, [
-          el('span', { class: 'kt-pic', 'aria-hidden': 'true' }, [window.Cards.art('back')]),
-          el('span', { class: 'kt-name', 'aria-hidden': 'true', text: c.name })
-        ]);
-      }
-      var pic = el('span', { class: 'kt-pic' });
-      pic.appendChild(window.Cards.art(c.code));
-      if (mine.length > 1) pic.appendChild(el('span', { class: 'kt-count', text: '×' + mine.length }));
-      return el('button', {
-        type: 'button', class: 'kt r-' + r, 'aria-label': c.name + (mine.length > 1 ? ', копий: ' + mine.length : ''), 'data-drag': 'grid:' + c.card_id,
-        onclick: function () { if (!justDragged()) openDetail(c.card_id); }
-      }, [pic, el('span', { class: 'kt-name', text: c.name })]);
-    });
-    return el('section', { class: 'sect coll-group' }, [
-      el('div', { class: 'coll-gh' }, [
-        el('h2', null, [el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }), R(r).plural]),
-        el('span', { class: 'coll-left', text: have + ' / ' + cards.length })
-      ]),
-      el('div', { class: 'coll-grid' }, tiles)
+  // Альбом: «Мой альбом 10 / 20», полоска, фильтры, сетка в 3 колонки (от обычных к легендарной).
+  var FILTERS = [['all', 'Все'], ['got', 'Полученные'], ['miss', 'Не получены']];
+  function albumSect() {
+    var cards = K.catalog.slice().sort(function (a, b) { return (R(a.rarity).rank - R(b.rarity).rank) || (a.sort - b.sort); });
+    var total = cards.length;
+    var n = cards.filter(function (c) { return myCopies(c.card_id).length; }).length;
+    var shown = cards.filter(function (c) { return K.filter === 'all' || (K.filter === 'got') === (myCopies(c.card_id).length > 0); });
+    var filters = el('div', { class: 'ka-filters', role: 'group', 'aria-label': 'Какие карточки показать' }, FILTERS.map(function (f) {
+      return el('button', { type: 'button', class: 'ka-filter', 'aria-pressed': String(K.filter === f[0]), text: f[1], onclick: function () {
+        if (K.filter === f[0]) return;
+        K.filter = f[0];
+        try { localStorage.setItem('coll-filter', f[0]); } catch (e) { /* без хранилища тоже работает */ }
+        draw();
+      } });
+    }));
+    var grid = el('div', { class: 'ka-grid' }, shown.length ? shown.map(tile)
+      : [el('p', { class: 'empty ka-empty', text: K.filter === 'got' ? 'Пока ни одной — открой первую' : 'Все карточки собраны' })]);
+    return el('section', { class: 'sect ka' }, [
+      el('div', { class: 'ka-head' }, [el('h2', { text: 'Мой альбом' }), el('span', { class: 'ka-count', text: n + ' / ' + total })]),
+      el('div', { class: 'coll-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(n), 'aria-label': 'Собрано карточек' },
+        [el('span', { style: 'width:' + (total ? Math.round(n / total * 100) : 0) + '%' })]),
+      filters,
+      grid
     ]);
+  }
+  // Плитка: сверху редкость, рисунок, название внутри. Нет карточки — тёмный силуэт рисунка.
+  // Есть повторы — «×2», новая — метка «Новая». Нажатие — панель снизу, зажать — перетащить на витрину.
+  function tile(c) {
+    var mine = myCopies(c.card_id);
+    var kids = [
+      el('span', { class: 'ka-rar' }, [el('span', { class: 'kd-dot r-' + c.rarity, 'aria-hidden': 'true' }), R(c.rarity).name]),
+      el('span', { class: 'ka-art', 'aria-hidden': 'true' }, [window.Cards.art(c.code)]),
+      el('span', { class: 'ka-name', text: c.name })
+    ];
+    if (!mine.length) {
+      return el('div', { class: 'ka-tile miss r-' + c.rarity, role: 'img', 'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + ' — не получена' }, kids);
+    }
+    var fresh = isNewCard(c.card_id);
+    if (mine.length > 1) kids.push(el('span', { class: 'ka-badge', text: '×' + mine.length }));
+    if (fresh) kids.push(el('span', { class: 'ka-new', text: 'Новая' }));
+    return el('button', {
+      type: 'button', class: 'ka-tile r-' + c.rarity, 'data-drag': 'grid:' + c.card_id,
+      'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + (mine.length > 1 ? ', копий: ' + mine.length : '') + (fresh ? ', новая' : ''),
+      onclick: function () { if (!justDragged()) openDetail(c.card_id); }
+    }, kids);
   }
 
   /* ---------- окно поверх страницы ---------- */
@@ -239,21 +298,35 @@
     document.addEventListener('keydown', h);
     return function () { document.removeEventListener('keydown', h); };
   }
+  // Панель снизу (карточка, шансы): закрывается крестиком, нажатием мимо и Esc
+  function bottomSheet(label) {
+    var o = overlay('kc-overlay kc-bottom', label);
+    o._cleanup = onKey(closeOverlay);
+    o.addEventListener('click', function (ev) { if (ev.target === o) closeOverlay(); });
+    var sheet = el('div', { class: 'kc-sheet kb-sheet' }, [
+      el('span', { class: 'kb-grip', 'aria-hidden': 'true' }),
+      el('button', { type: 'button', class: 'kb-close', 'aria-label': 'Закрыть', text: '×', onclick: closeOverlay })
+    ]);
+    o.appendChild(sheet);
+    return sheet;
+  }
 
-  // Карточка крупно: номер копии, выбор копии (если их несколько), витрина, переплавка.
-  function openDetail(cardId, copyId) {
+  // Панель снизу: карточка крупно, редкость и сколько копий, выбор копии, витрина, продажа, переплавка.
+  // note — сообщение сразу при открытии (например, «Витрина полная»).
+  function openDetail(cardId, copyId, note) {
     var c = cardById(cardId);
     var copies = myCopies(cardId);
     if (!c || !copies.length) { closeOverlay(); return; }
     var sel = copies.filter(function (k) { return k.copy_id === copyId; })[0] || copies[0];
-    var o = overlay('kc-overlay', c.name);
-    o._cleanup = onKey(closeOverlay);
-    o.addEventListener('click', function (ev) { if (ev.target === o) closeOverlay(); });
-
-    var sheet = el('div', { class: 'kc-sheet' });
+    if (markSeen(cardId)) draw();   // метка «Новая» снимается
+    var sheet = bottomSheet(c.name);
     var msg = el('p', { class: 'msg', role: 'status' });
-    sheet.appendChild(el('button', { type: 'button', class: 'kc-close', 'aria-label': 'Закрыть', text: '×', onclick: closeOverlay }));
+    if (note) setText(msg, note);
     sheet.appendChild(window.Cards.face(c, sel.serial, 'lg'));
+    sheet.appendChild(el('p', { class: 'kb-info' }, [
+      el('span', { class: 'kd-dot r-' + c.rarity, 'aria-hidden': 'true' }),
+      R(c.rarity).name + ' · ' + (c.copies === 1 ? 'единственная в игре' : 'у тебя ' + copies.length + ' из ' + c.copies + ' копий')
+    ]));
 
     if (copies.length > 1) {
       sheet.appendChild(el('div', { class: 'kc-copies', role: 'group', 'aria-label': 'Твои копии' }, copies.map(function (k) {
@@ -275,7 +348,7 @@
     if (sel.slot) {
       acts.appendChild(el('p', { class: 'kc-note', text: 'Чтобы продать или переплавить, сначала убери с витрины.' }));
     } else {
-      acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'Продать', onclick: function () { openSell(cardId, sel); } }));
+      acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'Продать в Лавке', onclick: function () { openSell(cardId, sel); } }));
     }
     // переплавка: первое нажатие — предупреждение, подтвердить — зажать кнопку на 5 секунд
     if (sel.slot) {
@@ -291,8 +364,7 @@
     }
     sheet.appendChild(acts);
     sheet.appendChild(msg);
-    o.appendChild(sheet);
-    var first = sheet.querySelector('.kc-close'); if (first) first.focus();
+    var first = sheet.querySelector('.kb-close'); if (first) first.focus();
   }
 
   // Витрина всегда «плотная»: карточки стоят слева направо без пустых мест.
@@ -1089,28 +1161,62 @@
       if (res.rarity === 'legendary' && !reduce) sparkle(o);
       setTimeout(function () { showResult(card); }, reduce ? 0 : 650);
     }
+    // Результат: «Новая карточка» или «Повтор · теперь ×3», редкость, прогресс альбома,
+    // «В коллекцию», «На витрину», «Открыть ещё за N» (или «Не хватает N»).
     function showResult(card) {
       var isNew = !had[res.card_id];
       var cat = cardById(res.card_id);
-      var sub = isNew ? R(res.rarity).name + ' · ' + (res.copies === 1 ? 'единственная в игре' : '№' + res.serial + ' из ' + res.copies)
-        : 'Повтор' + (cat && cat.melt_value ? ' — можно переплавить за ' + cat.melt_value + ' 🪙' : '');
-      var title = el('p', { class: 'kr-title', text: isNew ? 'Новая карточка!' : card.name });
-      var subEl = el('p', { class: 'kr-sub' }); setText(subEl, sub);
-      var again = el('button', { type: 'button', class: 'btn primary' });
+      var total = (K.catalog || []).length;
+      var gotIds = {}; (K.my || []).forEach(function (k) { gotIds[k.card_id] = true; });
+      var before = Object.keys(gotIds).length;
+      gotIds[res.card_id] = true;
+      var after = Object.keys(gotIds).length;
+      var dup = myCopies(res.card_id).length + 1;     // K.my ещё старый — плюс только что открытая
+      var badge = el('span', { class: 'kr-badge r-' + res.rarity, text: isNew ? 'Новая карточка' : dup >= 2 ? 'Повтор · теперь ×' + dup : 'Повтор' });
+      o.insertBefore(badge, stage);
+      var info = el('p', { class: 'kr-sub' }, [el('span', { class: 'kd-dot r-' + res.rarity, 'aria-hidden': 'true' }),
+        ' ' + R(res.rarity).name + ' · ' + (res.copies === 1 ? 'единственная в игре' : '№' + res.serial + ' из ' + res.copies)]);
+      var extra = null;
+      if (isNew) {
+        var fill = el('span', { style: 'width:' + (total ? Math.round(before / total * 100) : 0) + '%' });
+        extra = el('div', { class: 'kr-prog' }, [el('span', { class: 'kr-prog-t', text: 'Собрано ' + after + ' из ' + total }),
+          el('div', { class: 'coll-bar', 'aria-hidden': 'true' }, [fill])]);
+        requestAnimationFrame(function () { requestAnimationFrame(function () { fill.style.width = (total ? Math.round(after / total * 100) : 0) + '%'; }); });
+      } else if (cat && cat.melt_value) {
+        extra = el('p', { class: 'kr-sub' }); setText(extra, 'Повтор можно переплавить за ' + cat.melt_value + ' 🪙');
+      }
+      var toColl = el('button', { type: 'button', class: 'btn primary', text: 'В коллекцию', onclick: function () { finish(false); } });
+      var toShelf = el('button', { type: 'button', class: 'btn kr-ghost', text: 'На витрину', onclick: function () { finish('shelf'); } });
       var next = res.next_price;
-      if (next) setText(again, 'Открыть ещё · ' + next + ' 🪙'); else again.textContent = 'Колода закончилась';
-      again.disabled = !next || bal() < next;
+      var again = el('button', { type: 'button', class: 'btn kr-again' });
+      var short = next ? Math.max(0, cents(next) - cents(bal())) / 100 : 0;
+      if (!next) again.textContent = 'Колода закончилась';
+      else if (short > 0) {
+        var t1 = el('span'), t2 = el('small');
+        setText(t1, 'Не хватает ' + money(short) + ' 🪙'); setText(t2, 'Повторное открытие — ' + next + ' 🪙');
+        again.appendChild(t1); again.appendChild(t2); again.classList.add('kr-short');
+      } else setText(again, 'Открыть ещё за ' + next + ' 🪙');
+      again.disabled = !next || short > 0;
       again.addEventListener('click', function () { finish(true); });
-      var ok = el('button', { type: 'button', class: 'btn', text: 'Готово', onclick: function () { finish(false); } });
-      result.replaceChildren(title, subEl, el('div', { class: 'kr-btns' }, [again, ok]));
+      result.replaceChildren.apply(result, [info, extra, el('div', { class: 'kr-btns' }, [toColl, toShelf, again])].filter(Boolean));
       result.classList.add('on');
-      ok.focus();
+      toColl.focus();
     }
+    // more: true — открыть ещё; 'shelf' — поставить открытую копию на витрину (полная витрина — панель карточки с подсказкой)
     async function finish(more) {
       closeOverlay();
       K.busy = false;
       await reload();
-      if (more) openCard();
+      if (more === true) { openCard(); return; }
+      if (more === 'shelf') {
+        var sel = (K.my || []).filter(function (k) { return k.copy_id === Number(res.copy_id); })[0];
+        if (!sel) return;
+        markSeen(sel.card_id);
+        var on = shelved();
+        var twin = on.some(function (k) { return k.card_id === sel.card_id; });
+        if (!twin && on.length >= 3) { openDetail(sel.card_id, sel.copy_id, 'Витрина полная: сначала убери одну карточку.'); return; }
+        await shelfAdd(sel.card_id, sel, document.getElementById('coll-msg') || el('p'));
+      }
     }
 
     o.addEventListener('click', function (ev) {
@@ -1147,6 +1253,34 @@
     }
   }
 
+  /* ---------- моя витрина в Профиле ---------- */
+  // Три карточки крупно и «Собрано X из 20». Данные — те же, что во вкладке (обновляются не чаще раза в 30 секунд).
+  async function profileShelf(node) {
+    A = window.AppAPI;
+    function paint() {
+      if (!K.catalog || !K.my) return;
+      var on = shelved();
+      var got = {}; K.my.forEach(function (k) { got[k.card_id] = true; });
+      node.replaceChildren(
+        el('div', { class: 'me-shelf-head' }, [el('span', { class: 'me-card-l', text: 'Моя витрина' }),
+          el('span', { class: 'me-shelf-n', text: 'Собрано ' + Object.keys(got).length + ' из ' + K.catalog.length })]),
+        el('div', { class: 'shelves' }, [0, 1, 2].map(function (i) {
+          var k = on[i], c = k && cardById(k.card_id);
+          if (!c) return el('div', { class: 'shelf shelf-empty' }, [el('span', { text: 'пусто' })]);
+          var w = el('div', { class: 'shelf' }); w.appendChild(window.Cards.face(c, k.serial, 'md')); return w;
+        }))
+      );
+      if (!on.length) node.appendChild(el('p', { class: 'me-shelf-note', text: 'Поставь карточки на витрину в Коллекции' }));
+    }
+    paint();
+    if (K.loadedAt && Date.now() - K.loadedAt < 30000) return;
+    try {
+      var res = await Promise.all([K.catalog ? K.catalog : rpc('cards_catalog', { p_series: SERIES }), rpc('cards_my')]);
+      K.catalog = res[0] || []; K.my = res[1] || []; K.loadedAt = Date.now();
+    } catch (e) { if (!K.my) { node.hidden = true; return; } }
+    paint();
+  }
+
   /* ---------- витрина друга (из таблицы «Участники») ---------- */
   async function showFriend(userId, name) {
     A = window.AppAPI;
@@ -1181,7 +1315,7 @@
 
   window.Collection = {
     view: function () { A = window.AppAPI; return view(); },
-    enter: enter, leave: leave, showFriend: showFriend, setMode: setMode,
+    enter: enter, leave: leave, showFriend: showFriend, setMode: setMode, profileShelf: profileShelf,
     _state: function () { return K; }
   };
 })();

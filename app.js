@@ -1850,6 +1850,13 @@
         el('span', { class: 'me-card-n coins' }, [el('span', { 'aria-hidden': 'true', text: '🪙 ' }), S.points ? fmt2(S.points.balance) : '…'])
       ])
     ])];
+    // Моя витрина (коллекционные карточки) — нажал, и откроется «Коллекция»
+    if (window.Collection && window.Collection.profileShelf) {
+      var shelf = el('section', { class: 'card me-shelf', role: 'button', tabindex: '0', 'aria-label': 'Моя витрина — открыть коллекцию',
+        onclick: function () { go('cards'); }, onkeydown: function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go('cards'); } } });
+      window.Collection.profileShelf(shelf);
+      out.push(shelf);
+    }
 
     var rows = S.stats.map(function (s) {
       var me = s.user_id === S.userId;
@@ -2872,11 +2879,14 @@
       ])
     ]);
     var inst = installCard();
-    var stats = viewStats(); // [серия и монеты, участники]
-    // Порядок: серия и монеты → настройки профиля → уведомления → остальное
-    return [stats[0], el('h2', { class: 'sect-title', text: 'Настройки профиля' }), form, pushCard()]
+    var stats = viewStats(); // [серия и монеты, моя витрина, участники]
+    var shelf = stats.filter(function (n) { return n.classList && n.classList.contains('me-shelf'); });
+    var rest = stats.slice(1).filter(function (n) { return shelf.indexOf(n) < 0; });
+    // Порядок: серия и монеты → моя витрина → настройки профиля → уведомления → остальное
+    return [stats[0]].concat(shelf)
+      .concat([el('h2', { class: 'sect-title', text: 'Настройки профиля' }), form, pushCard()])
       .concat(inst ? [inst] : [])
-      .concat(stats.slice(1))
+      .concat(rest)
       .concat([account]);
   }
 
