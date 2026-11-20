@@ -23,6 +23,9 @@
   function cents(n) { return Math.round(Number(n || 0) * 100) / 100; }
   function fmt(n) { return A.fmt(n); }
   function coins(n) { return fmt(n) + ' 🪙'; }
+  // За столом с ботами игра на ненастоящие фишки — суммы без монетки
+  function play() { return !!(K.open && K.st && K.st.test); }
+  function money(n) { return play() ? fmt(n) : coins(n); }
   // блайнды меньше 1 — всегда с двумя знаками: 0,05 / 0,10
   function bl(n) { n = Number(n); return n < 1 ? n.toFixed(2).replace('.', ',') : fmt(n); }
   function blinds(sb, bb) { return bl(sb) + ' / ' + bl(bb); }
@@ -83,7 +86,7 @@
   // Проверка суммы: { n, ok, err }
   function checkBuy(text, min, max, test) {
     var n = parseAmt(text);
-    if (n === null || n < min || n > max) return { n: n, ok: false, err: n === null ? '' : 'От ' + coins(min) + ' до ' + coins(max) };
+    if (n === null || n < min || n > max) return { n: n, ok: false, err: n === null ? '' : 'От ' + money(min) + ' до ' + money(max) };
     if (!test && n > A.balance()) return { n: n, ok: false, err: 'Не хватает: у тебя ' + coins(Math.floor(A.balance() * 100) / 100) };
     return { n: n, ok: true, err: '' };
   }
@@ -134,7 +137,7 @@
     var msg = el('p', { class: 'msg', role: 'status' });
     var acts = [], cls = '';
     var title = 'Блайнды ' + blinds(t.sb, t.bb);
-    var line = t.test ? n + ' из 6 · тестовый, с ботами' : n + ' из 6 · вход ' + bl(t.min_buy) + '–' + bl(t.max_buy) + ' 🪙';
+    var line = t.test ? n + ' из 6 · с ботами, на фишки' : n + ' из 6 · вход ' + bl(t.min_buy) + '–' + bl(t.max_buy) + ' 🪙';
     if (t.mine) {
       cls = ' incoming';
       acts.push(el('button', { type: 'button', class: 'btn primary', text: 'Вернуться', onclick: function () { openTable(t.id); } }));
@@ -163,13 +166,13 @@
     var msg = el('p', { class: 'msg', role: 'status' });
     var go = el('button', { type: 'button', class: 'btn primary duel-go' });
     function sync() {
-      var c = checkBuy(K[key], min, max, false);
-      setText(go, c.ok ? 'Сесть · ' + coins(c.n) : 'Сесть');
+      var c = checkBuy(K[key], min, max, play());
+      setText(go, c.ok ? 'Сесть · ' + money(c.n) : 'Сесть');
       go.disabled = !c.ok || K.busy;
       msg.className = 'msg' + (c.err ? ' err' : ''); setText(msg, c.err);
     }
     go.addEventListener('click', async function () {
-      var c = checkBuy(K[key], min, max, false);
+      var c = checkBuy(K[key], min, max, play());
       if (!c.ok) return;
       go.disabled = true;
       try { await rpc('poker_sit', { p_table: id, p_buyin: c.n }); A.loadPoints(); onClose(); openTable(id); }
@@ -191,7 +194,8 @@
     var l = levelOf(K.level), min = cents(40 * l[2]), max = cents(100 * l[2]);
     function sync() {
       buyBox.hidden = K.test;
-      if (K.test) { setText(go, 'Открыть тестовый стол'); go.disabled = false; msg.className = 'msg'; msg.textContent = ''; return; }
+      note.hidden = !K.test;
+      if (K.test) { setText(go, 'Открыть стол с ботами'); go.disabled = false; msg.className = 'msg'; msg.textContent = ''; return; }
       var c = checkBuy(K.buy, min, max, false);
       setText(go, c.ok ? 'Открыть стол · ' + coins(c.n) : 'Открыть стол');
       go.disabled = !c.ok;
@@ -221,15 +225,16 @@
       amountField('buy', 'pk-buy', min, max, [['Мин', min], ['Макс', max]], sync)
     ]);
     var testRow = null;
+    var note = el('p', { class: 'duel-label pk-note', text: 'Фишки ненастоящие и не кончаются — монеты не тратятся.' });
     if (K.admin) {
-      var tb = el('button', { type: 'button', class: 'chip duel-chip dk-test-chip', 'aria-pressed': String(K.test) }, [el('span', { text: 'Тестовый, с ботами' })]);
+      var tb = el('button', { type: 'button', class: 'chip duel-chip dk-test-chip', 'aria-pressed': String(K.test) }, [el('span', { text: 'С ботами, на фишки' })]);
       tb.addEventListener('click', function () { K.test = !K.test; tb.setAttribute('aria-pressed', String(K.test)); sync(); });
       testRow = el('div', { class: 'dk-test-row' }, [tb]);
     }
     sync();
     if (A.dismissible) A.dismissible('pk-form', function () { if (K.form && !K.busy) { K.form = false; paint(true); } });
     return el('div', { class: 'card duel-form', 'data-dismiss': 'pk-form' }, [
-      testRow, el('p', { class: 'duel-label', text: 'Блайнды' }), levels, buyBox, go, msg
+      testRow, note, el('p', { class: 'duel-label', text: 'Блайнды' }), levels, buyBox, go, msg
     ]);
   }
 
@@ -305,6 +310,8 @@
       if (was && was.version === st.version && was.status === st.status && !!was.my === !!st.my) { K.st = st; return; }
       // сначала анимацией показываем, что произошло (на старом столе), потом рисуем новый
       var fresh = (st.log || []).filter(function (e) { return e.i > K.lastI; });
+      // за столом с ботами фишки кончились — выдали ещё
+      if (was && st.my) fresh.forEach(function (e) { if (e.kind === 'rebuy' && e.seat === st.my.seat) A.toast('Фишки кончились — выдали ещё ' + fmt(e.amount)); });
       if (was && K.lastI >= 0 && fresh.length && fresh.length <= 10 && !document.hidden && !PC.REDUCED
           && K.rootEl && K.rootEl.querySelector('.pk-table') && fresh.some(animated)) {
         K.anim = true;
@@ -371,7 +378,7 @@
   // Над столом: блайнды, «Докупить», «Выйти» (с коротким предупреждением)
   function gameBar(st) {
     var my = st.my;
-    var lbl = el('span', { class: 'dk-bank pk-blinds' }, [blinds(st.sb, st.bb) + (st.test ? ' · тест' : '')]);
+    var lbl = el('span', { class: 'dk-bank pk-blinds' }, [blinds(st.sb, st.bb) + (st.test ? ' · с ботами' : '')]);
     var right = [];
     if (st.test && st.creator && my && players().length < 6 && st.status !== 'closed') {
       right.push(el('button', { type: 'button', class: 'dk-quit', text: '+ бот', disabled: K.busy, onclick: function () { act('poker_add_bot'); } }));
@@ -387,11 +394,12 @@
       if (A.dismissible) A.dismissible('pk-quit', function () { if (K.quitAsk) { K.quitAsk = false; paint(true); } });
       var inHand = st.status === 'play' && my.in_hand && !my.folded;
       kids.push(el('div', { class: 'dk-quit-pop', role: 'dialog', 'aria-label': 'Встать из-за стола?', 'data-dismiss': 'pk-quit' }, [
-        el('p', { text: inHand ? 'Встать из-за стола? Карты сбросятся, остаток фишек вернётся на баланс.' : 'Встать из-за стола? Фишки вернутся на баланс.' }),
+        el('p', { text: st.test ? (inHand ? 'Встать из-за стола? Карты сбросятся, стол с ботами закроется.' : 'Встать из-за стола? Стол с ботами закроется.')
+          : inHand ? 'Встать из-за стола? Карты сбросятся, остаток фишек вернётся на баланс.' : 'Встать из-за стола? Фишки вернутся на баланс.' }),
         el('div', { class: 'dk-quit-acts' }, [
           el('button', { type: 'button', class: 'btn small', text: 'Остаться', onclick: function () { K.quitAsk = false; paint(true); } }),
           el('button', { type: 'button', class: 'btn small danger', text: 'Встать', disabled: K.busy,
-            onclick: function () { act('poker_leave', null, function (r) { if (Number(r) > 0) A.toast('На баланс: ' + coins(r)); }); } })
+            onclick: function () { act('poker_leave', null, function (r) { if (Number(r) > 0 && !st.test) A.toast('На баланс: ' + coins(r)); }); } })
         ])
       ]));
     }
@@ -405,7 +413,7 @@
     var go = el('button', { type: 'button', class: 'btn small primary' });
     function sync() {
       var c = checkBuy(K.topBuy, min, max, st.test);
-      setText(go, c.ok ? 'Докупить · ' + coins(c.n) : 'Докупить');
+      setText(go, c.ok ? 'Докупить · ' + money(c.n) : 'Докупить');
       go.disabled = !c.ok || K.busy;
       msg.className = 'msg' + (c.err ? ' err' : ''); setText(msg, c.err);
     }
@@ -433,7 +441,7 @@
   }
   function stackEl(n, cls) {
     var s = el('span', { class: 'pk-stack' + (cls ? ' ' + cls : '') });
-    setText(s, coins(n));
+    setText(s, money(n));
     return s;
   }
   function betEl(p) {
@@ -476,7 +484,7 @@
     var line;
     var n = players().length;
     if (st.status === 'play') {
-      line = el('span', { class: 'pk-pot', 'aria-label': 'Банк' }); setText(line, Number(st.pot) > 0 ? 'банк ' + coins(st.pot) : '');
+      line = el('span', { class: 'pk-pot', 'aria-label': 'Банк' }); setText(line, Number(st.pot) > 0 ? 'банк ' + money(st.pot) : '');
     } else if (st.result && st.result.showdown) {
       var names = [];
       (st.result.pots || []).forEach(function (p) { if (p.name && names.indexOf(p.name) < 0) names.push(p.name); });
@@ -554,7 +562,7 @@
     range.value = String(Math.round(K.raiseTo * 100));
     function sync() {
       var v = cents(K.raiseTo);
-      setText(amount, coins(v));
+      setText(amount, money(v));
       go.textContent = v >= max ? 'Ва-банк ' + fmt(v) : (cur > 0 ? 'Повысить до ' : 'Ставка ') + fmt(v);
     }
     range.addEventListener('input', function () { K.raiseTo = Number(range.value) / 100; sync(); });
@@ -586,7 +594,7 @@
     if (g && g.kind !== 'bust' && Number(g.net) !== 0) {
       var net = Number(g.net);
       var m = el('span', { class: 'pk-net' + (net > 0 ? ' plus' : ' minus') });
-      setText(m, 'За столом: ' + (net > 0 ? '+' : '−') + coins(Math.abs(net)));
+      setText(m, 'За столом: ' + (net > 0 ? '+' : '−') + money(Math.abs(net)));
       box.appendChild(m);
     }
     var canSit = st.status !== 'closed' && players().length < 6 && (!st.test || st.creator);

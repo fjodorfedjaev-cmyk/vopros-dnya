@@ -27,13 +27,15 @@ const coins = (u) => Number(q(`select public.coins_of('${u}')`));
   await A.waitForSelector('.dk-test-chip', { timeout: 5000 });
   await shot(A, 'pk_form');
   await A.locator('.dk-test-chip').click();
-  await A.getByRole('button', { name: 'Открыть тестовый стол' }).click();
+  await A.getByRole('button', { name: 'Открыть стол с ботами' }).click();
   await A.waitForSelector('.pk-table');
   await shot(A, 'pk_alone');
   for (let i = 0; i < BOTS; i++) { await A.getByRole('button', { name: '+ бот' }).click(); await B.sleep(600); }
   await B.sleep(1500);
-  const seenByOther = await O.locator('.duel-row', { hasText: 'тестовый' }).count();
-  let hands = 0, moves = 0, lastHand = 0, raiseShot = false, t0 = Date.now(), shots = 0;
+  const seenByOther = await O.locator('.duel-row', { hasText: 'с ботами' }).count();
+  let hands = 0, moves = 0, lastHand = 0, raiseShot = false, t0 = Date.now(), shots = 0, outSeen = false, coinSeen = false;
+  // фишки админа почти кончились — проверим, что выдадут ещё
+  q(`update public.poker_seats set stack = 0.04, buyin = buyin - (stack - 0.04) where user_id = '${admin}' and left_at is null`);
   while (hands < HANDS && Date.now() - t0 < 600000) {
     const h = Number(q(`select hand_no from public.poker_tables where test order by id desc limit 1`));
     if (h !== lastHand) { lastHand = h; hands++; }
@@ -44,11 +46,8 @@ const coins = (u) => Number(q(`select public.coins_of('${u}')`));
       if (moves % 5 === 3 && shots < 3) { await B.sleep(900); shots++; await A.screenshot({ path: __dirname + '/shots/pk_fly' + shots + '.png' }); }
     }
     if (await A.locator('.pk-pot.win').count() && shots < 6 && moves > 3) { shots = 6; await shot(A, 'pk_showdown'); }
-    if (await A.locator('.pk-out').count()) {   // фишки кончились — садимся снова
-      await shot(A, 'pk_bust');
-      await A.locator('.pk-out .duel-go').click();
-      await B.sleep(800);
-    }
+    if (await A.locator('.pk-out').count()) { outSeen = true; }   // за столом с ботами вылета быть не должно
+    if (!coinSeen && await A.locator('.pk-table .coin, .pk-table img').count()) coinSeen = true;
     await B.sleep(350);
   }
   await shot(A, 'pk_last');
@@ -67,8 +66,10 @@ const coins = (u) => Number(q(`select public.coins_of('${u}')`));
   await shot(A, 'pk_lobby');
   const closed = q(`select status from public.poker_tables where test order by id desc limit 1`);
   const c1 = coins(admin);
+  const rebuys = Number(q(`select count(*) from public.poker_seats where user_id = '${admin}' and test and buyin > 2`));
+  console.log(`выдача фишек: ${rebuys ? 'была' : 'НЕ было'}; экран «фишки закончились»: ${outSeen ? 'ПОЯВЛЯЛСЯ (плохо)' : 'не появлялся'}; монетки за столом: ${coinSeen ? 'ЕСТЬ (плохо)' : 'нет'}`);
   console.log(`раздач ${hands}, ходов админа ${moves}; другу тестовый стол ${seenByOther ? 'ВИДЕН (плохо)' : 'не виден'}; докупка ${topped ? 'да' : 'НЕТ'}; стол после выхода: ${closed}; монеты админа ${c0} → ${c1}`);
   console.log(errors.length ? errors.slice(0, 20).join('\n') : 'ошибок на страницах нет');
   await browser.close();
-  process.exit(hands >= HANDS && !seenByOther && closed === 'closed' && c0 === c1 && !errors.length ? 0 : 1);
+  process.exit(hands >= HANDS && rebuys && !outSeen && !coinSeen && !seenByOther && closed === 'closed' && c0 === c1 && !errors.length ? 0 : 1);
 })().catch(e => { console.error('СБОЙ', e); process.exit(1); });

@@ -1,4 +1,4 @@
--- ПОКЕР: тестовый стол с ботами — самоотменяющийся тест (запускать вместе с 01_poker.sql, в конце всё откатывается).
+-- ПОКЕР: стол с ботами на ненастоящие фишки — самоотменяющийся тест (запускать вместе с новыми миграциями покера, в конце всё откатывается).
 create function pg_temp.login(p uuid) returns text language sql as $$
   select set_config('request.jwt.claims', json_build_object('sub', p, 'role', 'authenticated')::text, true) $$;
 create function pg_temp.err(p text) returns text language plpgsql as $$
@@ -8,7 +8,7 @@ do $test$
 declare
   adm uuid; u uuid[]; t bigint; t2 bigint; c0 numeric; i integer; k integer; n integer; res text := ''; e text;
   g public.poker_tables%rowtype; me public.poker_seats%rowtype; steps integer; hands integer := 0; bot_moves integer := 0;
-  admin_moves integer := 0; busts integer := 0; bad integer := 0; note text := ''; v_call numeric; v jsonb; buy numeric; onT numeric;
+  admin_moves integer := 0; busts integer := 0; buy0 numeric; bad integer := 0; note text := ''; v_call numeric; v jsonb; buy numeric; onT numeric;
 begin
   select a.user_id into adm from public.admins a where not public.poker_busy(a.user_id, null) limit 1;
   select array_agg(p.id order by p.created_at) into u from (
@@ -43,6 +43,7 @@ begin
   -- 2. 60 раздач против ботов: боты ходят сами через 1,5 с, вылетевший бот докупает, монеты админа не меняются
   perform pg_temp.login(adm);
   for k in 1..60 loop
+    buy0 := (select buyin from public.poker_seats where table_id = t and user_id = adm and left_at is null);
     exit when not public.poker_deal(t);
     hands := hands + 1; steps := 0;
     while (select status from public.poker_tables where id = t) = 'play' and steps < 300 loop
@@ -67,18 +68,22 @@ begin
       if buy <> onT then bad := bad + 1; note := 'фишки ' || buy || ' ≠ ' || onT; end if;
     end loop;
     if (select status from public.poker_tables where id = t) = 'play' then bad := bad + 1; note := 'раздача не закончилась'; end if;
-    -- админ вылетел — стол ждёт, боты без него не играют; садится снова
-    if not exists (select 1 from public.poker_seats where table_id = t and user_id = adm and left_at is null) then
-      perform public.poker_tick(t);
-      if (select status from public.poker_tables where id = t) <> 'open' then bad := bad + 1; note := 'после вылета админа стол не ждёт'; end if;
-      perform public.poker_sit(t, 200);
+    -- фишки ненастоящие и не кончаются: админ всегда за столом, проиграл всё — сразу ещё 100 ББ (и запись в журнале)
+    if (select buyin from public.poker_seats where table_id = t and user_id = adm and left_at is null) > buy0 then
       busts := busts + 1;
+      if not exists (select 1 from jsonb_array_elements((select log from public.poker_tables where id = t)) j
+                      where j ->> 'kind' = 'rebuy' and (j ->> 'seat')::int = (select seat from public.poker_seats where table_id = t and user_id = adm and left_at is null)) then
+        bad := bad + 1; note := 'выдачи фишек нет в журнале';
+      end if;
+    end if;
+    if not exists (select 1 from public.poker_seats where table_id = t and user_id = adm and left_at is null and stack > 0) then
+      bad := bad + 1; note := 'админ остался без фишек или встал';
     end if;
   end loop;
   v := public.poker_view(t);
   if bad = 0 and hands = 60 and bot_moves > 100 and public.coins_of(adm) = c0
      and (select count(*) from public.poker_seats where table_id = t and left_at is null and bot_name is not null) = 5 then
-    res := res || 'ok   2 ' || hands || ' раздач против 5 ботов: ботов ' || bot_moves || ' ходов, админа ' || admin_moves || E', фишки сходятся, монеты админа не изменились, боты докупают; админ вылетал ' || busts || E' раз — стол ждал, сел снова\n';
+    res := res || 'ok   2 ' || hands || ' раздач против 5 ботов: ботов ' || bot_moves || ' ходов, админа ' || admin_moves || E', фишки сходятся, монеты админа не изменились, боты докупают; у админа фишки кончались ' || busts || E' раз — сразу выдали ещё, монеты не тронуты\n';
   else
     res := res || 'FAIL 2 (' || note || ', раздач ' || hands || ', ходов ботов ' || bot_moves || ', монеты ' || c0 || ' → ' || public.coins_of(adm) || E')\n';
   end if;
@@ -89,6 +94,27 @@ begin
      and not exists (select 1 from public.poker_seats where table_id = t and left_at is null) and public.coins_of(adm) = c0 then
     res := res || E'ok   3 админ ушёл — тестовый стол закрылся, монеты админа те же\n';
   else res := res || E'FAIL 3\n'; end if;
+
+  -- 4. За обычным столом (на монеты) всё как было: проиграл всё — встаёт, монеты не появляются
+  perform pg_temp.login(u[1]); t := public.poker_create(4, 80);
+  perform pg_temp.login(u[2]); perform public.poker_sit(t, 200);
+  c0 := public.coins_of(u[1]);
+  perform public.poker_deal(t);
+  update public.poker_seats set hole = case when user_id = u[1] then array[0, 21] else array[48, 49] end   -- 2♠ 7♥ против тузов
+   where table_id = t and left_at is null;
+  update public.poker_tables set deck = array[51, 50, 34, 31, 47, 9, 46, 5] where id = t;               -- доска без пары для 2-7
+  for i in 1..4 loop
+    exit when (select status from public.poker_tables where id = t) <> 'play';
+    perform pg_temp.login((select x.user_id from public.poker_seats x join public.poker_tables tb on tb.id = x.table_id
+                            where x.table_id = t and x.left_at is null and x.seat = tb.turn_seat));
+    perform public.poker_act(t, 'allin');
+  end loop;
+  if not exists (select 1 from public.poker_seats where table_id = t and user_id = u[1] and left_at is null)
+     and (select left_kind from public.poker_seats where table_id = t and user_id = u[1] order by id desc limit 1) = 'bust'
+     and public.coins_of(u[1]) = c0 then
+    res := res || E'ok   4 за столом на монеты проиграл всё — встаёт (фишки не выдаются)\n';
+  else res := res || E'FAIL 4\n'; end if;
+  perform pg_temp.login(u[2]); perform public.poker_leave(t);
 
   raise exception E'\n%', res;
 end $test$;

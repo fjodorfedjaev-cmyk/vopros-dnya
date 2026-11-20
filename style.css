@@ -1640,6 +1640,8 @@ button.dk-card { cursor: pointer; }
 .pk-top-pop .msg { margin: 0; }
 .pk-top-pop .msg:empty { display: none; }
 .pk-out { gap: 10px; }
+.pk-note { margin: -2px 0 0; }
+.pk-note[hidden] { display: none; }
 .pk-out .duel-big { font-size: 17px; }
 
 /* круг игроков: сверху и по бокам соперники, в середине общие карты и банк */
