@@ -53,11 +53,13 @@ async function twice(p, loc) { const h = await loc.elementHandle(); await h.clic
   const badge = (await pf.locator('.mk-sortbtn .seg-badge').textContent()).trim();
   await pf.locator('.mk-ftag', { hasText: 'Легендарная' }).click();
   await pf.locator('.mk-ftag').first().click();
-  await pf.locator('.ka-filter', { hasText: 'В продаже' }).click();
-  const onSale = await pf.locator('.mk-tl').count();
-  await pf.locator('.ka-filter', { hasText: 'Все' }).click();
-  ok('фильтры: коллекция «Начало» + легендарная — 1 плитка, 2 метки, на кнопке «2»; метки снимаются; «В продаже» — пусто',
-    legend === 1 && tags === 2 && badge === '2' && await pf.locator('.mk-ftag').count() === 0 && onSale === 0 && await pf.locator('.mk-tl').count() === 20);
+  const zero = await pf.locator('.mk-tl', { hasText: 'Ракета' }).locator('.mk-tl-foot').innerText();
+  ok('фильтры: коллекция «Начало» + легендарная — 1 плитка, 2 метки, на кнопке «2»; метки снимаются; кнопок «В продаже» и «Нет у меня» нет; нет в продаже — «0» и «—»',
+    legend === 1 && tags === 2 && badge === '2' && await pf.locator('.mk-ftag').count() === 0 && await pf.locator('.mk-tl').count() === 20
+    && !(await pf.locator('.ka-filter').count()) && /^0\s*—$/.test(zero.trim()));
+  await pf.locator('.mk-sortbtn').click();
+  ok('в сортировке нет «Больше в продаже»', !(await pf.locator('.kb-sheet .mk-radio-row', { hasText: 'Больше в продаже' }).count()) && await pf.locator('.kb-sheet .mk-radio-row').count() === 5);
+  await pf.getByRole('button', { name: 'Готово' }).click();
 
   // 2. заявка покупателя на Ракету за 100
   await pf.locator('.mk-tl', { hasText: 'Ракета' }).click();
@@ -106,8 +108,8 @@ async function twice(p, loc) { const h = await loc.elementHandle(); await h.clic
   await pa.locator('.mk-tl', { hasText: 'Ракета' }).click();
   await pa.waitForSelector('.mk-offers');
   await shot(pa, 'mb_seller_card');
-  ok('продавец видит свои лоты: плитка «2 шт. · от 120», на карточке оба «твой лот», купить нельзя, подпись «Это твой лот»',
-    sellerTile.includes('2 шт.') && /от\s*120/.test(sellerTile) && await pa.locator('.mk-offer-me').count() === 2
+  ok('продавец видит свои лоты: плитка «2 · 120», на карточке оба «твой лот», купить нельзя, подпись «Это твои лоты»',
+    /2\s*120/.test(sellerTile) && await pa.locator('.mk-offer-me').count() === 2
     && !(await pa.locator('.kc-actions .btn.primary', { hasText: 'Купить' }).count()) && await pa.locator('.mk-own-note').count() === 1
     && (await pa.locator('.mk-tiles').textContent()).includes('твой лот'));
   await pa.locator('.kb-close').click();
@@ -117,7 +119,8 @@ async function twice(p, loc) { const h = await loc.elementHandle(); await h.clic
   await openMarket(pf); await tab(pf, 'Рынок');
   await shot(pf, 'mb_catalog2');
   const tileTxt = await pf.locator('.mk-tl', { hasText: 'Ракета' }).textContent();
-  ok('плитка Ракеты: «2 шт.», «от 120», без меток «у тебя» и «твой лот»', /от\s*120/.test(tileTxt) && tileTxt.includes('2 шт.') && !/у тебя|твой лот|заявка/.test(tileTxt));
+  const tileFoot = (await pf.locator('.mk-tl', { hasText: 'Ракета' }).locator('.mk-tl-foot').innerText()).trim();
+  ok('плитка Ракеты: «2» и «120» (без «шт.» и «от»), без меток', /^2\s+120/.test(tileFoot) && !/шт|от|у тебя|твой лот|заявка/.test(tileTxt));
   await pf.locator('.mk-sortbtn').click();
   await pf.locator('.kb-sheet .mk-radio-row', { hasText: 'Сначала дешёвые' }).click();
   await pf.getByRole('button', { name: 'Готово' }).click();

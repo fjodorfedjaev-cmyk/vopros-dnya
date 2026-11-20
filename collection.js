@@ -15,8 +15,8 @@
   var SERIES = 1;               // серия «Начало»
   var K = { catalog: null, my: null, deck: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
             mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0,
-            mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'), mkFilter: saved('mk-filter', ['all', 'sale', 'miss'], 'all'),
-            mkSort: saved('mk-sort', ['rarity', 'price_desc', 'price_asc', 'count'], 'rarity'),
+            mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'),
+            mkSort: saved('mk-sort', ['rarity', 'price_desc', 'price_asc'], 'rarity'),
             mkSeries: saved('mk-series', ['all', '1'], 'all') === 'all' ? 'all' : 1, mkRars: [],
             dealsTab: 'sell', sellDup: false };
   // выбор, запомненный на этом телефоне (если нет или чужое значение — по умолчанию)
@@ -843,10 +843,9 @@
   }
 
   /* ---------- «Рынок»: каталог — мини-квадратики (как маркет в Standoff 2) ---------- */
-  // Плитка: рисунок на фоне цвета редкости, полоска с названием, «N шт.» в продаже и «от N» — самая низкая цена.
-  // Сортировка (по редкости / дорогие / дешёвые / больше в продаже), коллекция и редкость — в панели «Сортировка».
-  var MK_FILTERS = [['all', 'Все'], ['sale', 'В продаже'], ['miss', 'Нет у меня']];
-  var MK_SORTS = [['rarity', 'По редкости'], ['price_desc', 'Сначала дорогие'], ['price_asc', 'Сначала дешёвые'], ['count', 'Больше в продаже']];
+  // Плитка: рисунок на фоне цвета редкости, полоска с названием, сколько в продаже (число) и самая низкая цена.
+  // Сортировка (по редкости / дорогие / дешёвые), коллекция и редкость — в панели «Сортировка».
+  var MK_SORTS = [['rarity', 'По редкости'], ['price_desc', 'Сначала дорогие'], ['price_asc', 'Сначала дешёвые']];
   function sortName(k) { return (MK_SORTS.filter(function (x) { return x[0] === k; })[0] || MK_SORTS[0])[1]; }
   // Коллекции (серии) карточек. Пока одна — «Начало»; следующие добавятся сюда сами из каталога.
   function seriesList() {
@@ -860,8 +859,6 @@
     var cards = K.catalog.filter(function (c) {
       if (K.mkSeries !== 'all' && SERIES !== K.mkSeries) return false;      // пока все карточки — из «Начала»
       if (K.mkRars.length && K.mkRars.indexOf(c.rarity) < 0) return false;
-      if (K.mkFilter === 'sale') return allLots(c.card_id).length > 0;
-      if (K.mkFilter === 'miss') return !haveCard(c.card_id);
       return true;
     });
     return cards.sort(function (a, b) {
@@ -869,21 +866,11 @@
       if (K.mkSort === 'price_desc' || K.mkSort === 'price_asc') {
         if ((ma == null) !== (mb == null)) return ma == null ? 1 : -1;            // без продажи — в конце
         if (ma != null && ma !== mb) return K.mkSort === 'price_desc' ? mb - ma : ma - mb;
-      } else if (K.mkSort === 'count') {
-        var d = allLots(b.card_id).length - allLots(a.card_id).length;
-        if (d) return d;
-        if (ma != null && mb != null && ma !== mb) return ma - mb;
       }
       return (rank(b) - rank(a)) || (a.sort - b.sort);                             // редкие — первыми
     });
   }
   function catalogView() {
-    var chips = el('div', { class: 'ka-filters', role: 'group', 'aria-label': 'Какие карточки показать' }, MK_FILTERS.map(function (f) {
-      return el('button', { type: 'button', class: 'ka-filter', 'aria-pressed': String(K.mkFilter === f[0]), text: f[1], onclick: function () {
-        if (K.mkFilter === f[0]) return;
-        K.mkFilter = f[0]; store('mk-filter', f[0]); draw();
-      } });
-    }));
     var n = filtersOn();
     var sortBtn = el('button', { type: 'button', class: 'mk-sortbtn', 'aria-haspopup': 'dialog', onclick: openSortSheet }, [
       el('span', { class: 'mk-sort-ic', 'aria-hidden': 'true', text: '⇅' }),
@@ -903,7 +890,6 @@
     var cards = marketCards();
     var forSale = (K.lots || []).length;
     return [el('section', { class: 'sect mk-cat' }, [
-      chips,
       el('div', { class: 'mk-ctrl' }, [sortBtn, el('span', { class: 'mk-sum', text: cards.length + ' ' + plural(cards.length, 'вид', 'вида', 'видов') + (forSale ? ' · ' + forSale + ' в продаже' : '') })]),
       tags.length ? el('div', { class: 'mk-ftags' }, tags) : null,
       forSale ? null : el('p', { class: 'kc-note mk-none', text: 'В продаже пока ничего нет — можно создать заявку.' }),
@@ -912,22 +898,21 @@
   }
   function plural(n, a, b, c) { return A.plural ? A.plural(n, a, b, c) : c; }
 
-  // Плитка каталога: рисунок, название в полоске цвета редкости, «N шт.» и «от N» (или «нет в продаже»).
+  // Плитка каталога: рисунок, название в полоске цвета редкости, сколько в продаже (число) и самая низкая цена (или «0» и «—»).
   // Считаются все лоты, и свои тоже (свой купить нельзя — это видно на странице карточки).
   function catTile(c) {
     var lots = allLots(c.card_id);
     var art = el('span', { class: 'mk-tl-art', 'aria-hidden': 'true' }, [window.Cards.art(c.code)]);
     var price = el('span', { class: 'mk-tl-price' });
-    if (lots.length) setText(price, 'от ' + money(lots[0].price) + ' 🪙');
+    if (lots.length) setText(price, money(lots[0].price) + ' 🪙'); else price.textContent = '—';
     return el('button', {
       type: 'button', class: 'mk-tl r-' + c.rarity,
-      'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + ', ' + (lots.length ? 'в продаже ' + lots.length + ' шт., от ' + money(lots[0].price) + ' монет' : 'нет в продаже'),
+      'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + ', ' + (lots.length ? 'в продаже ' + lots.length + ', самая низкая цена ' + money(lots[0].price) + ' монет' : 'в продаже 0'),
       onclick: function () { openMarketCard(c.card_id); }
     }, [
       art,
       el('span', { class: 'mk-tl-name', text: c.name }),
-      el('span', { class: 'mk-tl-foot' + (lots.length ? '' : ' none') }, lots.length ? [el('span', { class: 'mk-tl-n', text: lots.length + ' шт.' }), price]
-        : [el('span', { class: 'mk-tl-n', text: 'нет в продаже' })])
+      el('span', { class: 'mk-tl-foot' + (lots.length ? '' : ' none') }, [el('span', { class: 'mk-tl-n', text: String(lots.length) }), price])
     ]);
   }
 
