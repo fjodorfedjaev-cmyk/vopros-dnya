@@ -1733,6 +1733,11 @@ button.dk-card { cursor: pointer; }
 .pk-wait { font-size: 13px; color: var(--muted); }
 .pk-me-info { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
 .pk-me-top, .pk-me-bot { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+/* лучшая комбинация: её карты приподняты и обведены, название — в моей рамке (строка есть всегда — рамка не прыгает) */
+.pk-combo { min-height: 18px; font: 600 16px/18px var(--font-display); color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pk-combo.off { color: var(--muted); }
+.pk-table .dk-card.pk-hit { transform: translateY(-4px); box-shadow: 0 0 0 2px var(--accent), 0 0 14px rgba(242, 120, 44, 0.6); }
+.pk-table .pk-hole .dk-card.sm.pk-hit { transform: translateY(-2px); box-shadow: 0 0 0 1.5px var(--accent), 0 0 9px rgba(242, 120, 44, 0.55); }
 .pk-acts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; visibility: hidden; }
 .pk-acts.on { visibility: visible; }
 .pk-acts .btn { min-height: 44px; padding: 0 6px; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

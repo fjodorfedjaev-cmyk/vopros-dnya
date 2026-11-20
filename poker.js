@@ -59,8 +59,82 @@
     if (/failed to fetch|network|load failed/i.test(m)) return 'Нет связи. Попробуй ещё раз.';
     return 'Что-то пошло не так.';
   }
-  function cardEl(c, opts) { return PC.face(c, opts); }
+  // Карта лучшей комбинации — с подсветкой (какие карты подсветить, решает comboMarks при каждой перерисовке стола)
+  function cardEl(c, opts) {
+    if (HIT[c]) opts = Object.assign({}, opts, { cls: ((opts && opts.cls) ? opts.cls + ' ' : '') + 'pk-hit' });
+    return PC.face(c, opts);
+  }
   function backEl(opts) { return PC.back(opts); }
+
+  /* ---------- лучшая комбинация ---------- */
+  // combo:start — так же, как считает база (poker_eval): из 2–7 карт берём лучшую комбинацию.
+  // Отдаём название и карты, из которых она сложена (без «довесков»): у пары — 2 карты, у двух пар — 4, у стрита — 5 и т. д.
+  var COMBO = ['Старшая карта', 'Пара', 'Две пары', 'Тройка', 'Стрит', 'Флеш', 'Фулл-хаус', 'Каре', 'Стрит-флеш'];
+  function bestHand(list) {
+    var cards = (list || []).filter(function (c) { return c != null; });
+    if (!cards.length) return null;
+    function R(c) { return Math.floor(c / 4) + 2; }
+    // от старших к младшим; при равенстве порядок сохраняется (сначала свои карты, потом общие)
+    var sorted = cards.map(function (c, i) { return [c, i]; })
+      .sort(function (a, b) { return R(b[0]) - R(a[0]) || a[1] - b[1]; }).map(function (x) { return x[0]; });
+    var byRank = {}, bySuit = [[], [], [], []], ranks = [];
+    sorted.forEach(function (c) {
+      if (!byRank[R(c)]) { byRank[R(c)] = []; ranks.push(R(c)); }
+      byRank[R(c)].push(c);
+      bySuit[c % 4].push(c);
+    });
+    function made(cat, used) { return { cat: cat, name: cat === 8 && R(used[0]) === 14 ? 'Роял-флеш' : COMBO[cat], cards: used }; }
+    // пять карт подряд (туз бывает и единицей: Т-2-3-4-5) — самый старший такой ряд
+    function straight(from) {
+      var one = {};
+      from.forEach(function (c) { if (!one[R(c)]) one[R(c)] = c; });
+      for (var top = 14; top >= 5; top--) {
+        var row = [];
+        for (var r = top; r > top - 5; r--) { var c = one[r === 1 ? 14 : r]; if (c == null) break; row.push(c); }
+        if (row.length === 5) return row;
+      }
+      return null;
+    }
+    var flush = null;
+    bySuit.forEach(function (s) { if (s.length >= 5) flush = s; });
+    var sf = flush && straight(flush);
+    if (sf) return made(8, sf);
+    var groups = ranks.map(function (r) { return byRank[r]; });
+    var quads = groups.filter(function (g) { return g.length === 4; });
+    var trips = groups.filter(function (g) { return g.length === 3; });
+    var pairs = groups.filter(function (g) { return g.length === 2; });
+    if (quads.length) return made(7, quads[0]);
+    if (trips.length && (trips.length > 1 || pairs.length)) {
+      var two = trips[1] && (!pairs.length || R(trips[1][0]) > R(pairs[0][0])) ? trips[1].slice(0, 2) : pairs[0];
+      return made(6, trips[0].concat(two));
+    }
+    if (flush) return made(5, flush.slice(0, 5));
+    var st = straight(sorted);
+    if (st) return made(4, st);
+    if (trips.length) return made(3, trips[0]);
+    if (pairs.length >= 2) return made(2, pairs[0].concat(pairs[1]));
+    if (pairs.length) return made(1, pairs[0]);
+    return made(0, [sorted[0]]);
+  }
+  // combo:end
+
+  // Что подсветить на столе. В раздаче — мою лучшую комбинацию (мои 2 карты + открытые общие);
+  // на вскрытии — комбинацию победителя основного банка. mine — моя комбинация (название пишется в моей рамке).
+  var HIT = {};
+  function comboMarks(st) {
+    var hit = {}, mine = null, my = st.my, board = st.board || [];
+    var live = st.status === 'play' || !!st.result;
+    if (my && live && my.in_hand && !my.folded && my.hole && my.hole.length) mine = bestHand(my.hole.concat(board));
+    var seats = [];
+    if (st.status === 'open' && st.result && st.result.showdown) seats = ((st.result.pots || [])[0] || {}).seats || [];
+    else if (mine) seats = [my.seat];
+    seats.forEach(function (s) {
+      var hole = my && my.seat === s ? my.hole : (playerAt(s) || {}).cards;
+      var h = hole && hole.length ? bestHand(hole.concat(board)) : null;
+      if (h) h.cards.forEach(function (c) { hit[c] = true; });
+    });
+    return { hit: hit, mine: mine };
+  }
 
   /* ---------- поле суммы (вход за стол, докупка) ---------- */
   // key — где в K хранится текст; min/max — границы; quick — [[надпись, сумма]]; onSync — после каждого изменения
@@ -518,8 +592,12 @@
     var hole = holeEl(Object.assign({}, p, { cards: my.hole, hidden: false, folded: my.folded }), true);
     if (!my.in_hand) hole = el('span', { class: 'pk-hole big none pk-wait', 'data-hole': String(my.seat), text: st.status === 'play' ? 'Со следующей раздачи' : '' });
     var tag = win > 0 ? '+' + fmt(win) : my.in_hand && p.act ? ACTS[p.act] || '' : '';
+    // строка с названием моей комбинации есть всегда (пустая, если карт нет) — рамка не прыгает
+    var combo = my.in_hand && K.combo ? K.combo.name : '';
     var info = el('div', { class: 'pk-me-info' }, [
       el('div', { class: 'pk-me-top' }, [stackEl(my.stack, 'big'), st.button === my.seat && (st.status === 'play' || st.result) ? el('span', { class: 'pk-d', 'aria-label': 'Дилер', text: 'D' }) : null]),
+      // на вскрытии проиграл — моё название серое, оранжевым подсвечен победитель
+      el('div', { class: 'pk-combo' + (st.result && st.result.showdown && win <= 0 ? ' off' : ''), text: combo }),
       el('div', { class: 'pk-me-bot' }, [betEl(p), el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag })])
     ]);
     box.appendChild(el('div', { class: 'pk-me-row' }, [hole, info]));
@@ -615,6 +693,8 @@
 
   function tableEl(st) {
     var mySeat = st.my ? st.my.seat : -1;
+    var marks = comboMarks(st);
+    HIT = marks.hit; K.combo = marks.mine;
     // соперники по часовой стрелке, начиная со следующего после меня: слева → сверху → справа
     var opps = players().filter(function (p) { return !p.me; }).sort(function (a, b) {
       return ((a.seat - mySeat + 12) % 6) - ((b.seat - mySeat + 12) % 6);
@@ -655,6 +735,9 @@
     for (var k = 0; k < fresh.length; k++) {
       var e = fresh[k];
       if (e.kind === 'hand') {
+        // новая раздача: подсветка и название прошлой комбинации уже не к месту
+        root.querySelectorAll('.pk-hit').forEach(function (c) { c.classList.remove('pk-hit'); });
+        root.querySelectorAll('.pk-combo').forEach(function (c) { c.textContent = ''; });
         // раздача: по одной карте по кругу, два раза
         root.querySelectorAll('.pk-hole').forEach(function (h) { h.style.visibility = 'hidden'; });
         var seats = e.seats || [], flights = [];
