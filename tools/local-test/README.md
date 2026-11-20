@@ -40,7 +40,7 @@ node durak-bots.js 3             # админ против трёх ботов
 «Покер» (база — те же миграции «Дурака» и `../../supabase/poker/01_poker.sql`):
 
 ```bash
-./db.sh e2e ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql
+./db.sh e2e ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql ../../supabase/poker/02_play_money.sql ../../supabase/poker/03_no_clock.sql
 node poker-bots.js 5 6           # админ против пяти ботов, 6 раздач
 node poker-players.js 6 4        # шестеро живых, 4 раздачи
 ```
@@ -49,7 +49,7 @@ node poker-players.js 6 4        # шестеро живых, 4 раздачи
 
 ```bash
 ./db.sh coll cards-stub.sql ../../supabase/cards/01_cards.sql ../../supabase/market/01_market.sql \
-  ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql ../../supabase/poker/02_play_money.sql ../../supabase/market/02_bids.sql
+  ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql ../../supabase/poker/02_play_money.sql ../../supabase/poker/03_no_clock.sql ../../supabase/market/02_bids.sql
 psql -h /tmp -p 5433 -U postgres -d coll -c "insert into public.points_ledger (user_id, amount, reason, ref) select id, 5000 - public.coins_of(id)::int, 'game', 'test:coins' from public.profiles"
 DB=coll node server.js &
 DB=coll node coll-redesign.js
@@ -60,7 +60,7 @@ DB=coll node market-bids.js      # на свежей базе
 
 ```bash
 ./db.sh pf cards-stub.sql profile-stub.sql ../../supabase/cards/01_cards.sql ../../supabase/market/01_market.sql \
-  ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql ../../supabase/poker/02_play_money.sql \
+  ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql ../../supabase/poker/02_play_money.sql ../../supabase/poker/03_no_clock.sql \
   ../../supabase/market/02_bids.sql ../../supabase/duels/01_duels.sql ../../supabase/members/02_member_profile.sql
 psql -h /tmp -p 5433 -U postgres -d pf -f profile-seed.sql
 DB=pf node server.js &
@@ -85,7 +85,7 @@ psql -h /tmp -p 5433 -U postgres -d pf -f ../../supabase/members/99_profile_test
 psql -h /tmp -p 5433 -U postgres -d t -1 -f ../../supabase/durak/99_test.sql
 ```
 
-«Покер»: `./db.sh t ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql`, потом `99_test.sql` и `99_bots_test.sql` из `supabase/poker/`.
+«Покер»: `./db.sh t ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql`, потом `99_test.sql` и `99_bots_test.sql` из `supabase/poker/`. После `03_no_clock.sql` (время на ход не ограничено) — `99_no_clock_test.sql`; в старом `99_test.sql` с ней падает только проверка 9 (старое правило «30 секунд на ход»).
 
 ## Для новой онлайн-функции
 

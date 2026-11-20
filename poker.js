@@ -11,7 +11,7 @@
   var K = {
     list: null, listErr: null, form: false, level: 1, buy: '', test: false, listPoll: null,
     sitFor: null, sitBuy: '',
-    open: null, st: null, offset: 0, rtt: 1e9, poll: null, timer: null,
+    open: null, st: null, poll: null,
     rootEl: null, sig: '', busy: false, msg: '', msgErr: false, admin: false,
     lastI: -1, anim: false, wasTurn: false,
     quitAsk: false, topAsk: false, topBuy: '', raise: false, raiseTo: null
@@ -338,7 +338,7 @@
       'Если у кого-то ва-банк меньше чужой ставки, этот игрок может выиграть только ту часть банка, которую уравнял.',
       'Равные комбинации — банк делится.',
       'За стол садишься с суммой от 40 до 100 больших блайндов — это твои фишки. Встаёшь — остаток сразу на баланс. Комиссии нет.',
-      'На ход 30 секунд. Время вышло — чек или пас. Два раза подряд — место освобождается, фишки возвращаются.'
+      'Время на ход не ограничено — стол ждёт. Если в раздаче сутки никто не ходит, она отменяется: поставленное возвращается, стол закрывается.'
     ];
     return fold('rulesOpen', 'Правила', [el('ul', { class: 'dk-rules-list' }, items.map(function (t) { return el('li', { text: t }); }))], 'dk-rules');
   }
@@ -346,7 +346,7 @@
   /* ---------- стол ---------- */
   function isOpen() { return !!K.open; }
   function openTable(id) {
-    K.open = id; K.st = null; K.sig = ''; K.msg = ''; K.rtt = 1e9; K.lastI = -1; K.wasTurn = false;
+    K.open = id; K.st = null; K.sig = ''; K.msg = ''; K.lastI = -1; K.wasTurn = false;
     K.quitAsk = false; K.topAsk = false; K.raise = false; K.raiseTo = null; K.sitFor = null;
     stopListPoll();
     paint(true);
@@ -363,11 +363,9 @@
   function startPoll() {
     stopPoll(); tick();
     K.poll = setInterval(function () { if (!document.hidden) tick(); }, 1000);
-    K.timer = setInterval(updateTimers, 250);
   }
   function stopPoll() {
     if (K.poll) { clearInterval(K.poll); K.poll = null; }
-    if (K.timer) { clearInterval(K.timer); K.timer = null; }
   }
   var ticking = false;
   async function tick() {
@@ -375,11 +373,8 @@
     ticking = true;
     var id = K.open;
     try {
-      var t0 = Date.now();
       var st = await rpc('poker_view', { p_table: id });
-      var t1 = Date.now();
       if (!st || K.open !== id) return;
-      if (t1 - t0 <= K.rtt) { K.rtt = t1 - t0; K.offset = st.server_ms - (t0 + t1) / 2; }
       var was = K.st;
       if (was && was.version === st.version && was.status === st.status && !!was.my === !!st.my) { K.st = st; return; }
       // сначала анимацией показываем, что произошло (на старом столе), потом рисуем новый
@@ -405,22 +400,6 @@
     } catch (e) {
       if (/poker_gone/.test(String(e && e.message))) { A.toast('Стола больше нет'); closeTable(); }
     } finally { ticking = false; }
-  }
-
-  function secondsLeft() {
-    var st = K.st;
-    if (!st || !st.deadline_ms || st.status !== 'play') return null;
-    return Math.max(0, Math.ceil((st.deadline_ms - (Date.now() + K.offset)) / 1000));
-  }
-  function updateTimers() {
-    var st = K.st;
-    if (!st || !K.rootEl) return;
-    var left = secondsLeft();
-    K.rootEl.querySelectorAll('[data-left]').forEach(function (n) { n.textContent = left == null ? '' : left + ' с'; });
-    K.rootEl.querySelectorAll('.pk-bar.on > i').forEach(function (n) {
-      var ms = st.deadline_ms - (Date.now() + K.offset);
-      n.style.width = Math.max(0, Math.min(100, ms / 300)) + '%';
-    });
   }
 
   async function act(name, args, done) {
@@ -553,8 +532,7 @@
       holeEl(p, false),
       stackEl(p.stack),
       el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag }),
-      betEl(p),
-      el('div', { class: 'pk-bar sm' + (turn ? ' on' : ''), 'aria-hidden': 'true' }, [el('i')])
+      betEl(p)
     ]);
   }
 
@@ -578,7 +556,7 @@
     return el('div', { class: 'pk-mid', style: 'grid-area:mid' }, [el('div', { class: 'pk-board' }, slots), line]);
   }
 
-  // Я: две карты, фишки, ставка; в свой ход — «Твой ход», секунды и кнопки. Строка и кнопки есть всегда — рамка не прыгает.
+  // Я: две карты, фишки, ставка; в свой ход — «Твой ход» и кнопки (время на ход не ограничено). Строка и кнопки есть всегда — рамка не прыгает.
   function meBox(st) {
     var my = st.my;
     var p = playerAt(my.seat) || {};
@@ -586,7 +564,7 @@
     var fresh = turn && !K.wasTurn;
     var win = winOf(st, my.seat);
     var line = el('div', { class: 'dk-turn-line' + (turn ? ' on' : '') + (fresh ? ' pop' : '') }, [
-      el('span', { class: 'dk-turn-lbl' }, [el('span', { class: 'dk-turn-t', text: 'Твой ход' }), el('span', { class: 'dk-turn-left', 'data-left': '1' })])
+      el('span', { class: 'dk-turn-lbl' }, [el('span', { class: 'dk-turn-t', text: 'Твой ход' })])
     ]);
     var box = el('div', { class: 'dk-me pk-me' + (turn ? ' turn' : '') + (fresh ? ' pop' : '') + (win > 0 ? ' won' : ''), 'data-seat': String(my.seat) });
     var hole = holeEl(Object.assign({}, p, { cards: my.hole, hidden: false, folded: my.folded }), true);
@@ -601,7 +579,6 @@
       el('div', { class: 'pk-me-bot' }, [betEl(p), el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag })])
     ]);
     box.appendChild(el('div', { class: 'pk-me-row' }, [hole, info]));
-    box.appendChild(el('div', { class: 'pk-bar' + (turn ? ' on' : ''), 'aria-hidden': 'true' }, [el('i')]));
     box.appendChild(actionsEl(st, turn));
     if (K.raise && turn) box.appendChild(raisePop(st));
     if (K.msg) box.appendChild(msgLine());
@@ -791,7 +768,6 @@
     if (!force && K.rootEl.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.type !== 'range') return;
     K.sig = sig;
     K.rootEl.replaceChildren.apply(K.rootEl, K.open ? tableScreen() : lobby());
-    updateTimers();
   }
 
   function view() {
