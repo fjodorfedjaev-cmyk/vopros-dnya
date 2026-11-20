@@ -1695,13 +1695,11 @@ button.dk-card { cursor: pointer; }
 .pk-tag { font: 500 11px/14px var(--font-mono); color: var(--muted); min-height: 14px; white-space: nowrap; }
 .pk-tag.win { color: var(--accent); font: 700 13px/14px var(--font-mono); }
 .pk-tag.hot { color: var(--accent); }
+/* ставка игрока — только подпись суммы (фишки сразу уезжают в банк) */
 .pk-bet {
-  display: inline-flex; align-items: center; gap: 4px;
   font: 600 11.5px/16px var(--font-mono); color: #fff; white-space: nowrap; min-height: 18px; box-sizing: border-box;
-  background: rgba(242, 120, 44, 0.2); border: 1px solid rgba(242, 120, 44, 0.65); border-radius: 999px; padding: 0 7px 0 2px;
+  background: rgba(242, 120, 44, 0.2); border: 1px solid rgba(242, 120, 44, 0.65); border-radius: 999px; padding: 0 7px;
 }
-.pk-bet b { font-weight: inherit; }
-.pk-bet .pk-chip { width: 13px; height: 13px; border-width: 1.5px; box-shadow: none; }
 .pk-bet.none { visibility: hidden; }
 
 .pk-mid { grid-area: mid; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0; width: 100%; min-width: 0; }
@@ -1714,28 +1712,40 @@ button.dk-card { cursor: pointer; }
 .pk-ring.n0 .pk-slot .dk-card, .pk-ring.n1 .pk-slot .dk-card, .pk-ring.n2 .pk-slot .dk-card { --w: 50px; --h: 70px; border-radius: 7px; }
 .pk-ring.n0 .pk-slot .dk-card .dk-r, .pk-ring.n1 .pk-slot .dk-card .dk-r, .pk-ring.n2 .pk-slot .dk-card .dk-r { font-size: 16px; top: 4px; left: 5px; }
 .pk-ring.n0 .pk-slot .dk-card .dk-s, .pk-ring.n1 .pk-slot .dk-card .dk-s, .pk-ring.n2 .pk-slot .dk-card .dk-s { font-size: 28px; margin-top: 12px; }
-/* над общими картами: колода и банк фишками (на вскрытии вместо банка — выигравшая комбинация); под ними — моя ставка */
-.pk-mid-top { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 40px; max-width: 100%; }
-.pk-mid-bet { display: flex; justify-content: center; min-height: 18px; }
-.pk-deck { position: relative; width: 26px; height: 36px; flex: none; margin: 4px 0 0 4px; }
-.pk-deck .dk-card { position: absolute; left: 0; top: 0; --w: 26px; --h: 36px; border-radius: 4px; border-width: 1.5px; }
+/* над общими картами: колода слева, банк кучей фишек посередине (на вскрытии — выигравшая комбинация), бита справа.
+   Ряд шириной с общие карты и постоянной высоты — куча растёт вверх, карты не сдвигаются. */
+.pk-felt { display: inline-flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.pk-mid-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; height: 74px; padding-right: 6px; }
+.pk-deck { position: relative; width: 26px; height: 36px; flex: none; margin: 0 4px 4px 4px; }
+.pk-deck .dk-card, .pk-bita .dk-card { position: absolute; left: 0; top: 0; --w: 26px; --h: 36px; border-radius: 4px; border-width: 1.5px; }
 .pk-deck .l1 { transform: translate(-2px, -2px); }
 .pk-deck .l2 { transform: translate(-4px, -4px); }
-.pk-pot { display: inline-flex; align-items: center; gap: 7px; min-width: 44px; min-height: 30px; font: 600 14px var(--font-mono); color: var(--ink); }
-.pk-pot.win { color: var(--accent); font: 600 16px/1.15 var(--font-display); min-width: 0; }
+.pk-bita { position: relative; width: 34px; height: 44px; flex: none; }
+.pk-bita .dk-card { left: 4px; top: 4px; }
+.pk-pot {
+  flex: 1 1 auto; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px;
+  font: 600 14px var(--font-mono); color: var(--ink);
+}
+.pk-pot-n { line-height: 16px; white-space: nowrap; }
+.pk-pot.win, .pk-pot.wait { justify-content: center; text-align: center; padding-bottom: 6px; box-sizing: border-box; }
+.pk-pot.win { color: var(--accent); font: 600 16px/1.15 var(--font-display); }
 .pk-pot.wait { color: var(--muted); font: 500 13px var(--font-mono); }
-.pk-pile { display: inline-flex; align-items: flex-end; gap: 2px; }
+/* куча фишек: стопки по 5 и меньше, до 4 в ряд; передний ряд чуть ниже и сдвинут — как горка */
+.pk-pile { display: flex; flex-direction: column; align-items: center; }
+.pk-pile-row { display: flex; align-items: flex-end; gap: 1px; }
+.pk-pile-row.front { margin-top: -12px; transform: translateX(8px); }
 .pk-pile-col { display: flex; flex-direction: column-reverse; }
-.pk-pile .pk-chip { width: 17px; height: 17px; }
-.pk-pile .pk-chip:not(:first-child) { margin-bottom: -13px; }
+.pk-pile .pk-chip { width: 16px; height: 16px; }
+.pk-pile .pk-chip:not(:first-child) { margin-bottom: -12px; }
 .pk-ghost { visibility: hidden; }
 .pk-chip {
   display: block; flex: none; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box;
   background: radial-gradient(circle, #F4EFE6 0 26%, #F2782C 28% 100%); border: 2px dashed #F4EFE6; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
-/* фишки трёх цветов: оранжевая, светлая, красная */
+/* фишки четырёх цветов: оранжевая, светлая, красная, тёмная */
 .pk-chip.c2 { background: radial-gradient(circle, #F2782C 0 26%, #F4EFE6 28% 100%); border-color: #F2782C; }
 .pk-chip.c3 { background: radial-gradient(circle, #F4EFE6 0 26%, #C8323C 28% 100%); border-color: #F4EFE6; }
+.pk-chip.c4 { background: radial-gradient(circle, #F4EFE6 0 26%, #2F3542 28% 100%); border-color: #F4EFE6; }
 
 /* я: две карты, фишки, ставка, кнопки (кнопки есть всегда — рамка не прыгает) */
 .pk-me { position: relative; gap: 10px; }
@@ -1761,9 +1771,12 @@ button.dk-card { cursor: pointer; }
   position: absolute; left: 10px; right: 10px; bottom: 66px; z-index: 20; display: flex; flex-direction: column; gap: 10px;
   padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--accent); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
-.pk-raise-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.pk-raise-amt { display: inline-flex; align-items: center; gap: 4px; font: 700 20px var(--font-mono); }
-.pk-raise-quick { display: flex; gap: 6px; }
+.pk-raise-top { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.pk-raise-field { flex: 1 1 auto; width: auto; max-width: 190px; }
+.pk-raise-field input { width: 100%; text-align: center; padding-left: 36px; font-size: 18px; }
+.pk-raise-field input.bad { border-color: #C8323C; }
+.pk-step { flex: none; width: 44px; min-height: 40px; padding: 0; font: 600 20px/1 var(--font-mono); }
+.pk-raise-quick { display: flex; gap: 6px; justify-content: center; }
 .pk-raise-quick .btn { min-height: 34px; padding: 4px 10px; font-size: 13px; }
 .pk-raise input[type="range"] { width: 100%; height: 30px; accent-color: var(--accent); }
 .pk-raise-go { min-height: 44px; }

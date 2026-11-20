@@ -498,7 +498,7 @@
     setText(s, money(n));
     return s;
   }
-  // Ставка на столе: фишка и сумма (место есть всегда, пустое — невидимое)
+  // Ставка игрока: подпись суммы (сами фишки сразу уезжают в банк). Место есть всегда, пустое — невидимое.
   function betEl(p) {
     var b = el('span', { class: 'pk-bet', 'data-bet': String(p.seat) });
     setBet(b, p.bet);
@@ -508,22 +508,48 @@
     if (!b) return;
     var on = Number(n) > 0;
     b.classList.toggle('none', !on);
-    b.replaceChildren(el('i', { class: 'pk-chip' }), el('b', { text: on ? fmt(n) : '' }));
+    b.textContent = on ? fmt(n) : '';
   }
-  // Колода на столе: из неё летят карты в руки и на стол
+  // Колода на столе (слева): из неё летят карты в руки и на стол
   function deckEl() {
     return el('span', { class: 'pk-deck', 'aria-hidden': 'true' }, [backEl({ cls: 'l2' }), backEl({ cls: 'l1' }), backEl()]);
   }
-  // Банк фишками: чем больше банк (в больших блайндах), тем выше и больше стопок — от 1 до 7 фишек в 1–3 стопках
+  // Бита (справа): сброшенные карты рубашками вразнобой — после паса, сожжённые перед каждой улицей, в конце раздачи
+  var BITA = [[-14, 0, 2], [9, 3, -1], [-4, -2, 1], [17, 2, 3], [-9, -1, -2], [5, 1, 0], [-19, -3, 2], [12, 2, -3]];   // поворот, сдвиг x, y
+  function bitaEl(n) { var b = el('span', { class: 'pk-bita' }); fillBita(b, n); return b; }
+  function fillBita(b, n) {
+    if (!b) return;
+    b.setAttribute('data-n', String(n));
+    b.setAttribute('aria-label', n ? 'Бита: ' + n + ' ' + A.plural(n, 'карта', 'карты', 'карт') : 'Бита');
+    var kids = [];
+    for (var i = 0; i < Math.min(n, BITA.length); i++) {
+      var c = backEl();
+      c.style.transform = 'translate(' + BITA[i][1] + 'px,' + BITA[i][2] + 'px) rotate(' + BITA[i][0] + 'deg)';
+      kids.push(c);
+    }
+    b.replaceChildren.apply(b, kids);
+  }
+  // Сколько карт в бите по столу: сожжённые (флоп — 1, тёрн — 2, ривер — 3) и по 2 у каждого спасовавшего
+  function bitaCount(st) {
+    var n = (st.board || []).length;
+    var folded = players().filter(function (p) { return p.in_hand && p.folded; }).length;
+    return (n >= 3 ? n - 2 : 0) + folded * 2;
+  }
+  // Банк — куча фишек: каждая ставка добавляет фишки. Фишек ≈ 2,6·√(банк в ББ), от 1 до 40,
+  // стопки по 5 и меньше, до 8 стопок в два ряда (передний ряд чуть ниже и сдвинут) — большой банк выглядит массивно
   function pileEl(n, bb) {
-    var x = Number(n) / (Number(bb) || 1);
-    var k = x < 2 ? 1 : x < 4 ? 2 : x < 8 ? 3 : x < 16 ? 4 : x < 32 ? 5 : x < 64 ? 6 : 7;
-    var cols = [Math.min(k, 3), Math.min(Math.max(k - 3, 0), 2), Math.min(Math.max(k - 5, 0), 2)].filter(function (c) { return c > 0; });
-    return el('span', { class: 'pk-pile', 'aria-hidden': 'true' }, cols.map(function (c, i) {
+    var x = Math.max(0, Number(n) / (Number(bb) || 1));
+    var k = Math.max(1, Math.min(40, Math.round(2.6 * Math.sqrt(x))));
+    var cnt = Math.min(8, Math.ceil(k / 5)), hs = [];
+    for (var i = 0; i < cnt; i++) hs.push(Math.floor(k / cnt) + (i < k % cnt ? 1 : 0));
+    function col(h, tone) {
       var chips = [];
-      for (var j = 0; j < c; j++) chips.push(el('i', { class: 'pk-chip c' + (i + 1) }));
+      for (var j = 0; j < h; j++) chips.push(el('i', { class: 'pk-chip c' + (tone % 4 + 1) }));
       return el('span', { class: 'pk-pile-col' }, chips);
-    }));
+    }
+    var rows = [el('span', { class: 'pk-pile-row' }, hs.slice(0, 4).map(function (h, t) { return col(h, t); }))];
+    if (hs.length > 4) rows.push(el('span', { class: 'pk-pile-row front' }, hs.slice(4).map(function (h, t) { return col(h, t + 2); })));
+    return el('span', { class: 'pk-pile', 'aria-hidden': 'true', 'data-chips': String(k) }, rows);
   }
   function fillPot(pot, n, bb) {
     if (!pot) return;
@@ -566,8 +592,8 @@
     ]);
   }
 
-  // Середина стола: сверху колода и банк фишками (на вскрытии вместо банка — выигравшая комбинация),
-  // общие карты, под ними — моя ставка (лежит на столе передо мной)
+  // Середина стола: над общими картами — колода слева, банк кучей фишек посередине (на вскрытии вместо банка — выигравшая комбинация),
+  // бита справа; ряд шириной с общие карты
   function midEl(st) {
     var board = st.board || [];
     var slots = [];
@@ -575,7 +601,7 @@
     var n = players().length;
     var pot = el('span', { class: 'pk-pot' });
     if (st.status === 'play') {
-      fillPot(pot, st.pot, st.bb);
+      fillPot(pot, potTotal(st), st.bb);                       // в куче — и банк, и ставки этого круга
     } else if (st.result && st.result.showdown) {
       var names = [];
       (st.result.pots || []).forEach(function (p) { if (p.name && names.indexOf(p.name) < 0) names.push(p.name); });
@@ -583,13 +609,11 @@
     } else if (n < 2 && st.status === 'open') {
       pot.classList.add('wait'); pot.textContent = st.test && st.creator ? 'Добавь бота' : 'Ждём игроков';
     }
-    var kids = [el('div', { class: 'pk-mid-top' }, [deckEl(), pot]), el('div', { class: 'pk-board' }, slots)];
-    var me = st.my && playerAt(st.my.seat);
-    if (me) kids.push(el('div', { class: 'pk-mid-bet' }, [betEl(me)]));
-    return el('div', { class: 'pk-mid', style: 'grid-area:mid' }, kids);
+    var top = el('div', { class: 'pk-mid-top' }, [deckEl(), pot, bitaEl(st.status === 'play' || st.result ? bitaCount(st) : 0)]);
+    return el('div', { class: 'pk-mid', style: 'grid-area:mid' }, [el('div', { class: 'pk-felt' }, [top, el('div', { class: 'pk-board' }, slots)])]);
   }
 
-  // Я: две карты, фишки, комбинация; в свой ход — «Твой ход» и кнопки (время на ход не ограничено; моя ставка лежит на столе — в midEl). Строка и кнопки есть всегда — рамка не прыгает.
+  // Я: две карты, фишки, комбинация, ставка; в свой ход — «Твой ход» и кнопки (время на ход не ограничено). Строка и кнопки есть всегда — рамка не прыгает.
   function meBox(st) {
     var my = st.my;
     var p = playerAt(my.seat) || {};
@@ -600,7 +624,8 @@
       el('span', { class: 'dk-turn-lbl' }, [el('span', { class: 'dk-turn-t', text: 'Твой ход' })])
     ]);
     var box = el('div', { class: 'dk-me pk-me' + (turn ? ' turn' : '') + (fresh ? ' pop' : '') + (win > 0 ? ' won' : ''), 'data-seat': String(my.seat) });
-    var hole = holeEl(Object.assign({}, p, { cards: my.hole, hidden: false, folded: my.folded }), true);
+    // спасовал — карты ушли в биту, в рамке пусто
+    var hole = holeEl(Object.assign({}, p, { cards: my.folded ? [] : my.hole, hidden: false, folded: my.folded }), true);
     if (!my.in_hand) hole = el('span', { class: 'pk-hole big none pk-wait', 'data-hole': String(my.seat), text: st.status === 'play' ? 'Со следующей раздачи' : '' });
     var tag = win > 0 ? '+' + fmt(win) : my.in_hand && p.act ? ACTS[p.act] || '' : '';
     // строка с названием моей комбинации есть всегда (пустая, если карт нет) — рамка не прыгает
@@ -609,7 +634,7 @@
       el('div', { class: 'pk-me-top' }, [stackEl(my.stack, 'big'), st.button === my.seat && (st.status === 'play' || st.result) ? el('span', { class: 'pk-d', 'aria-label': 'Дилер', text: 'D' }) : null]),
       // на вскрытии проиграл — моё название серое, оранжевым подсвечен победитель
       el('div', { class: 'pk-combo' + (st.result && st.result.showdown && win <= 0 ? ' off' : ''), text: combo }),
-      el('div', { class: 'pk-me-bot' }, [el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag })])
+      el('div', { class: 'pk-me-bot' }, [betEl(p), el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag })])
     ]);
     box.appendChild(el('div', { class: 'pk-me-row' }, [hole, info]));
     box.appendChild(actionsEl(st, turn));
@@ -646,22 +671,43 @@
   }
 
   // Повышение: ползунок от минимума до всех фишек, быстрые кнопки, подтверждение. Всплывает над кнопками и ничего не сдвигает.
+  // Окошко «Повысить»: сумму можно набрать на клавиатуре, подвинуть ползунком, кнопками «−» / «+» (на 1 ББ) или быстрыми кнопками
   function raisePop(st) {
     var my = st.my;
-    var min = Number(my.min_to), max = Number(my.max_to), cur = Number(st.cur_bet);
+    var min = Number(my.min_to), max = Number(my.max_to), cur = Number(st.cur_bet), bb = Number(st.bb) || 0.02;
     if (K.raiseTo == null || K.raiseTo < min) K.raiseTo = min;
     if (K.raiseTo > max) K.raiseTo = max;
-    var amount = el('span', { class: 'pk-raise-amt' });
+    var input = el('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'done', class: 'pk-raise-in', 'aria-label': 'Сколько поставить' });
+    var coin = null;
+    if (!play()) { coin = el('span', { class: 'duel-coin', 'aria-hidden': 'true' }); setText(coin, '🪙'); }
     var go = el('button', { type: 'button', class: 'btn primary pk-raise-go' });
-    var range = el('input', { type: 'range', min: String(Math.round(min * 100)), max: String(Math.round(max * 100)), step: '1', 'aria-label': 'Сколько поставить' });
-    range.value = String(Math.round(K.raiseTo * 100));
-    function sync() {
+    var range = el('input', { type: 'range', min: String(Math.round(min * 100)), max: String(Math.round(max * 100)), step: '1', 'aria-label': 'Сколько поставить, ползунок' });
+    function setTo(v) { K.raiseTo = Math.max(min, Math.min(max, cents(v))); sync(); }
+    var minus = el('button', { type: 'button', class: 'btn small pk-step', text: '−', 'aria-label': 'Меньше на ' + fmt(bb), onclick: function () { setTo(cents(K.raiseTo) - bb); } });
+    var plus = el('button', { type: 'button', class: 'btn small pk-step', text: '+', 'aria-label': 'Больше на ' + fmt(bb), onclick: function () { setTo(cents(K.raiseTo) + bb); } });
+    // fromInput — набирают сами: поле не трогаем
+    function sync(fromInput) {
       var v = cents(K.raiseTo);
-      setText(amount, money(v));
+      if (!fromInput) input.value = amtText(v);
+      input.classList.remove('bad');
+      range.value = String(Math.round(v * 100));
+      go.disabled = false;
       go.textContent = v >= max ? 'Ва-банк ' + fmt(v) : (cur > 0 ? 'Повысить до ' : 'Ставка ') + fmt(v);
+      minus.disabled = v <= min; plus.disabled = v >= max;
     }
+    input.addEventListener('focus', function () { input.select(); });
+    input.addEventListener('input', function () {
+      var t = input.value.replace(/[^\d.,]/g, '').slice(0, 10);
+      if (t !== input.value) input.value = t;
+      var v = parseAmt(t);
+      if (v != null && v >= min && v <= max) { K.raiseTo = v; sync(true); return; }
+      // пусто, не число или вне границ — подсказка вместо кнопки
+      input.classList.add('bad');
+      go.disabled = true;
+      go.textContent = 'От ' + fmt(min) + ' до ' + fmt(max);
+    });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (!go.disabled) { input.blur(); go.click(); } } });
     range.addEventListener('input', function () { K.raiseTo = Number(range.value) / 100; sync(); });
-    function setTo(v) { K.raiseTo = Math.max(min, Math.min(max, cents(v))); range.value = String(Math.round(K.raiseTo * 100)); sync(); }
     var pot = potTotal(st), call = Number(my.call || 0);
     var quick = el('div', { class: 'pk-raise-quick' }, [
       el('button', { type: 'button', class: 'btn small', text: '½ банка', onclick: function () { setTo(cur + (pot + call) / 2); } }),
@@ -669,13 +715,15 @@
       el('button', { type: 'button', class: 'btn small', text: 'Ва-банк', onclick: function () { setTo(max); } })
     ]);
     go.addEventListener('click', function () {
+      if (go.disabled) return;
       var v = cents(K.raiseTo);
       if (v >= max) move('allin'); else move('raise', v);
     });
     sync();
     if (A.dismissible) A.dismissible('pk-raise', function () { if (K.raise) { K.raise = false; paint(true); } });
     return el('div', { class: 'pk-raise', role: 'dialog', 'aria-label': 'Сколько поставить', 'data-dismiss': 'pk-raise' }, [
-      el('div', { class: 'pk-raise-top' }, [amount, quick]), range, go
+      el('div', { class: 'pk-raise-top' }, [minus, el('span', { class: 'duel-stake-in pk-raise-field' }, [input, coin]), plus]),
+      quick, range, go
     ]);
   }
 
@@ -715,37 +763,58 @@
   }
 
   /* ---------- анимации ---------- */
-  // Что показываем анимацией: раздачу, ставки (фишки едут из стопки игрока на стол), новые общие карты, выигрыш
-  function animated(e) { return e.kind === 'hand' || e.kind === 'street' || e.kind === 'win' || (e.kind === 'act' && Number(e.pay) > 0); }
+  // Что показываем анимацией: раздачу, ставки (фишки едут из стопки игрока в банк), пас (карты — в биту), новые общие карты, выигрыш
+  function animated(e) {
+    return e.kind === 'hand' || e.kind === 'street' || e.kind === 'win' || (e.kind === 'act' && (Number(e.pay) > 0 || e.act === 'fold'));
+  }
   function seatBox(seat) { return K.rootEl.querySelector('[data-seat="' + seat + '"]'); }
   function holeOf(seat) { return K.rootEl.querySelector('[data-hole="' + seat + '"]') || seatBox(seat); }
   function stackOf(seat) { var b = seatBox(seat); return b && (b.querySelector('.pk-stack') || b); }
   function betOf(seat) { return K.rootEl.querySelector('[data-bet="' + seat + '"]'); }
-  function chipEl(i) { return el('span', { class: 'pk-chip' + (i ? ' c' + (i % 3 + 1) : '') }); }
+  function chipEl(i) { return el('span', { class: 'pk-chip' + (i ? ' c' + (i % 4 + 1) : '') }); }
   async function animate(fresh, st) {
     var root = K.rootEl;
     var board = root.querySelector('.pk-board'), pot = root.querySelector('.pk-pot') || board;
-    var deck = root.querySelector('.pk-deck') || board;
+    var deck = root.querySelector('.pk-deck') || board, bita = root.querySelector('.pk-bita') || board;
     var bb = Number(st.bb) || 0.02;
-    var s0 = deck.offsetWidth ? deck.offsetWidth / 46 : 0.55;   // карта в колоде меньше летящей
-    // что сейчас лежит на столе (старый стол), — по ходу анимации считаем, сколько в банке и у кого какая ставка
+    var DW = 26;                                                  // ширина карты в колоде и в бите
+    var s0 = DW / 46;                                             // летящая рубашка — 46 px, в колоде меньше
+    // что сейчас на столе (старый стол); по ходу анимации считаем банк и карты в бите
     var old = K.st || {};
-    var inPot = old.status === 'play' ? Number(old.pot || 0) : 0;
-    var bets = {};
-    players().forEach(function (p) { bets[p.seat] = Number(p.bet || 0); });
-    // фишки из стопки игрока — на стол, к его ставке
-    function chipsToBet(seat, amount, n) {
-      var from = stackOf(seat), to = betOf(seat), all = [];
-      if (!from || !to) { setBet(to, amount); return Promise.resolve(); }
-      for (var j = 0; j < n; j++) all.push(PC.fly(chipEl(j), from, to, { delay: j * 70, ms: 320 }));
-      return Promise.all(all).then(function () { setBet(to, amount); });
+    var inPot = old.status === 'play' ? potTotal(old) : 0;
+    var inBita = Number(bita.getAttribute && bita.getAttribute('data-n')) || 0;
+    function heap() { return pot.querySelector('.pk-pile') || pot; }
+    function chipsFor(pay) { var x = Number(pay) / bb; return x < 2 ? 1 : x < 6 ? 2 : x < 15 ? 3 : x < 40 ? 4 : 5; }
+    // фишки из стопки игрока — сразу в кучу банка; у игрока остаётся подпись ставки
+    function chipsToPot(seat, pay, bet) {
+      var from = stackOf(seat), all = [], to = heap();
+      for (var j = 0; j < (from ? chipsFor(pay) : 0); j++) all.push(PC.fly(chipEl(j), from, to, { delay: j * 60, ms: 340 }));
+      return Promise.all(all).then(function () { inPot = cents(inPot + Number(pay)); fillPot(pot, inPot, bb); setBet(betOf(seat), bet); });
     }
-    // все ставки — в банк
-    function betsToPot(ms) {
+    // карты со стола — в биту (летят копии, сами карты прячем)
+    function toBita(cards, gap) {
       var all = [];
-      root.querySelectorAll('.pk-bet:not(.none)').forEach(function (b, i) { all.push(PC.fly(chipEl(i), b, pot, { ms: ms })); setBet(b, 0); });
-      Object.keys(bets).forEach(function (seat) { inPot += bets[seat]; bets[seat] = 0; });
-      return Promise.all(all).then(function () { fillPot(pot, cents(inPot), bb); });
+      cards.forEach(function (c) {
+        var w = c.getBoundingClientRect().width;
+        if (!w || c.style.visibility === 'hidden') return;
+        var base = c.classList.contains('sm') ? 28 : 46;
+        var node = c.cloneNode(true);
+        node.classList.remove('pk-hit'); node.removeAttribute('style');
+        var r = BITA[(inBita + all.length) % BITA.length][0];
+        all.push(PC.fly(node, c, bita, { s0: w / base, s1: DW / base, rot: r, delay: all.length * (gap || 35), ms: 300 }));
+        c.style.visibility = 'hidden';
+      });
+      var n = all.length;
+      return Promise.all(all).then(function () { inBita += n; fillBita(bita, inBita); });
+    }
+    // колода «тасуется»: верхние карты расходятся в стороны и сходятся
+    function riffle() {
+      var cs = deck.querySelectorAll ? deck.querySelectorAll('.dk-card') : [];
+      if (cs.length < 3) return Promise.resolve();
+      var o = { duration: 230, iterations: 2, easing: 'ease-in-out' };
+      cs[2].animate([{ transform: 'translate(0,0)' }, { transform: 'translate(9px,-1px) rotate(6deg)' }, { transform: 'translate(0,0)' }], o);
+      return cs[1].animate([{ transform: 'translate(-2px,-2px)' }, { transform: 'translate(-11px,-3px) rotate(-6deg)' }, { transform: 'translate(-2px,-2px)' }], o)
+        .finished.catch(function () {});
     }
     // все ва-банк: карты открываются до того, как выложат общие
     var win = fresh.filter(function (e) { return e.kind === 'win'; })[0];
@@ -770,33 +839,47 @@
     for (var k = 0; k < fresh.length; k++) {
       var e = fresh[k];
       if (e.kind === 'hand') {
-        // новая раздача: со стола убираем прошлую — общие карты, банк, подсветку, подписи
+        // 1. прошлая раздача: подписи и подсветку убираем, все карты со стола — в биту
         root.querySelectorAll('.pk-hit').forEach(function (c) { c.classList.remove('pk-hit'); });
         root.querySelectorAll('.pk-combo, .pk-tag').forEach(function (c) { c.textContent = ''; });
         root.querySelectorAll('.won').forEach(function (c) { c.classList.remove('won'); });
-        board.querySelectorAll('.pk-slot').forEach(function (sl) { sl.replaceChildren(); });
         root.querySelectorAll('.pk-bet').forEach(function (b) { setBet(b, 0); });
-        inPot = 0; bets = {};
-        fillPot(pot, 0, bb);
-        // раздача из колоды: по одной карте по кругу, два раза
+        fillPot(pot, 0, bb); inPot = 0;
+        var left = [].slice.call(board.querySelectorAll('.pk-slot .dk-card')).concat([].slice.call(root.querySelectorAll('.pk-hole .dk-card')));
+        await toBita(left, 30);
+        board.querySelectorAll('.pk-slot').forEach(function (sl) { sl.replaceChildren(); });
+        // 2. бита возвращается в колоду, колода тасуется
+        var back = [];
+        for (var j = 0; j < Math.min(inBita, 4); j++) back.push(PC.fly(backEl({ cls: 'dk-fly-back' }), bita, deck, { s0: s0, s1: s0, delay: j * 50, ms: 280 }));
+        if (inBita) { inBita = 0; fillBita(bita, 0); }
+        await Promise.all(back);
+        await riffle();
+        // 3. раздача из колоды: по одной карте по кругу, два раза
         root.querySelectorAll('.pk-hole').forEach(function (h) { h.style.visibility = 'hidden'; });
         var seats = e.seats || [], flights = [];
         for (var r = 0; r < 2; r++) seats.forEach(function (s, i) {
           var to = holeOf(s);
-          if (to) flights.push(PC.fly(backEl({ cls: 'dk-fly-back' }), deck, to, { s0: s0, s1: to.classList.contains('big') ? 1.1 : 0.55, delay: (r * seats.length + i) * 80, ms: 320 }));
+          if (to) flights.push(PC.fly(backEl({ cls: 'dk-fly-back' }), deck, to, { s0: s0, s1: to.classList.contains('big') ? 1.1 : 0.55, delay: (r * seats.length + i) * 70, ms: 300 }));
         });
         await Promise.all(flights);
-        // блайнды: фишки малого и большого блайнда едут на стол
-        bets[e.sb] = Number(st.sb); bets[e.bb] = Number(st.bb);
-        await Promise.all([chipsToBet(e.sb, st.sb, 1), chipsToBet(e.bb, st.bb, 2)]);
+        // 4. блайнды — фишки в банк
+        await Promise.all([chipsToPot(e.sb, st.sb, st.sb), chipsToPot(e.bb, st.bb, st.bb)]);
       } else if (e.kind === 'act') {
-        // ставка, уравнять, повысить, ва-банк: фишки из стопки игрока — на стол
-        bets[e.seat] = Number(e.bet);
-        await chipsToBet(e.seat, e.bet, e.act === 'allin' ? 3 : e.act === 'raise' || e.act === 'bet' ? 2 : 1);
+        if (e.act === 'fold') {
+          // пас: карты игрока — в биту
+          var h = root.querySelector('[data-hole="' + e.seat + '"]');
+          if (h) await toBita([].slice.call(h.querySelectorAll('.dk-card')), 60);
+        } else {
+          // ставка, уравнять, повысить, ва-банк: фишки из стопки игрока — в банк
+          await chipsToPot(e.seat, e.pay, e.bet);
+        }
       } else if (e.kind === 'street') {
         if (win && win.shown && fresh.indexOf(win) > k) await reveal();
-        // ставки уходят в банк
-        await betsToPot(300);
+        // круг ставок окончен: фишки уже в банке, подписи ставок убираем
+        root.querySelectorAll('.pk-bet').forEach(function (b) { setBet(b, 0); });
+        // одна карта сжигается — из колоды в биту
+        await PC.fly(backEl({ cls: 'dk-fly-back' }), deck, bita, { s0: s0, s1: s0, rot: BITA[inBita % BITA.length][0], ms: 260 });
+        inBita += 1; fillBita(bita, inBita);
         // новые общие карты летят из колоды и переворачиваются на месте
         var have = board.querySelectorAll('.pk-slot .dk-card').length;
         var flips = (e.cards || []).map(function (c, i) {
@@ -812,12 +895,12 @@
         await PC.wait(e.street === 'flop' ? 150 : 250);
       } else if (e.kind === 'win') {
         await reveal();
-        await betsToPot(260);
-        // банк — победителю
-        var to = [];
+        root.querySelectorAll('.pk-bet').forEach(function (b) { setBet(b, 0); });
+        // банк — победителю: фишки из кучи к его фишкам
+        var from = heap(), to = [];
         Object.keys(e.win || {}).forEach(function (seat) {
           var box = stackOf(seat);
-          for (var j = 0; j < 4; j++) if (box) to.push(PC.fly(chipEl(j), pot, box, { delay: j * 60, ms: 380 }));
+          for (var j = 0; j < Math.min(6, chipsFor(inPot) + 1); j++) if (box) to.push(PC.fly(chipEl(j), from, box, { delay: j * 55, ms: 380 }));
         });
         fillPot(pot, 0, bb);
         await Promise.all(to);
