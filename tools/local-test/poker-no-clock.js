@@ -37,8 +37,10 @@ const ok = (cond, text) => { console.log((cond ? '✓ ' : '✗ ') + text); if (!
   ok(await A.locator('.pk-bar').count() === 0, 'полоски времени нет ни у меня, ни у соперников');
   await shot(A, 'pk_noclock');
   await A.locator('.pk-acts.on .btn').nth(1).click();
-  await A.waitForFunction(() => !document.querySelector('.pk-acts.on'), null, { timeout: 5000 });
-  ok(Number(q(`select version from public.poker_tables where id = ${t}`)) > Number(v0), 'сходил сам после долгой паузы — ход прошёл');
+  // ход дошёл до базы (кнопки могут и не пропасть: после чека на флопе первым снова хожу я)
+  let moved = false;
+  for (let i = 0; i < 25 && !moved; i++) { await B.sleep(200); moved = Number(q(`select version from public.poker_tables where id = ${t}`)) > Number(v0); }
+  ok(moved, 'сходил сам после долгой паузы — ход прошёл');
   await A.getByRole('button', { name: 'Выйти' }).click();
   if (await A.locator('.dk-quit-pop .btn.danger').count()) await A.locator('.dk-quit-pop .btn.danger').click();
   await B.sleep(800);

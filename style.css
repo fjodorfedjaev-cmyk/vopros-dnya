@@ -1696,9 +1696,12 @@ button.dk-card { cursor: pointer; }
 .pk-tag.win { color: var(--accent); font: 700 13px/14px var(--font-mono); }
 .pk-tag.hot { color: var(--accent); }
 .pk-bet {
+  display: inline-flex; align-items: center; gap: 4px;
   font: 600 11.5px/16px var(--font-mono); color: #fff; white-space: nowrap; min-height: 18px; box-sizing: border-box;
-  background: rgba(242, 120, 44, 0.2); border: 1px solid rgba(242, 120, 44, 0.65); border-radius: 999px; padding: 0 7px;
+  background: rgba(242, 120, 44, 0.2); border: 1px solid rgba(242, 120, 44, 0.65); border-radius: 999px; padding: 0 7px 0 2px;
 }
+.pk-bet b { font-weight: inherit; }
+.pk-bet .pk-chip { width: 13px; height: 13px; border-width: 1.5px; box-shadow: none; }
 .pk-bet.none { visibility: hidden; }
 
 .pk-mid { grid-area: mid; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0; width: 100%; min-width: 0; }
@@ -1711,13 +1714,28 @@ button.dk-card { cursor: pointer; }
 .pk-ring.n0 .pk-slot .dk-card, .pk-ring.n1 .pk-slot .dk-card, .pk-ring.n2 .pk-slot .dk-card { --w: 50px; --h: 70px; border-radius: 7px; }
 .pk-ring.n0 .pk-slot .dk-card .dk-r, .pk-ring.n1 .pk-slot .dk-card .dk-r, .pk-ring.n2 .pk-slot .dk-card .dk-r { font-size: 16px; top: 4px; left: 5px; }
 .pk-ring.n0 .pk-slot .dk-card .dk-s, .pk-ring.n1 .pk-slot .dk-card .dk-s, .pk-ring.n2 .pk-slot .dk-card .dk-s { font-size: 28px; margin-top: 12px; }
-.pk-pot { display: inline-flex; align-items: center; gap: 4px; min-height: 20px; font: 500 13px var(--font-mono); color: var(--muted); text-align: center; }
-.pk-pot.win { color: var(--accent); font: 600 16px var(--font-display); }
+/* над общими картами: колода и банк фишками (на вскрытии вместо банка — выигравшая комбинация); под ними — моя ставка */
+.pk-mid-top { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 40px; max-width: 100%; }
+.pk-mid-bet { display: flex; justify-content: center; min-height: 18px; }
+.pk-deck { position: relative; width: 26px; height: 36px; flex: none; margin: 4px 0 0 4px; }
+.pk-deck .dk-card { position: absolute; left: 0; top: 0; --w: 26px; --h: 36px; border-radius: 4px; border-width: 1.5px; }
+.pk-deck .l1 { transform: translate(-2px, -2px); }
+.pk-deck .l2 { transform: translate(-4px, -4px); }
+.pk-pot { display: inline-flex; align-items: center; gap: 7px; min-width: 44px; min-height: 30px; font: 600 14px var(--font-mono); color: var(--ink); }
+.pk-pot.win { color: var(--accent); font: 600 16px/1.15 var(--font-display); min-width: 0; }
+.pk-pot.wait { color: var(--muted); font: 500 13px var(--font-mono); }
+.pk-pile { display: inline-flex; align-items: flex-end; gap: 2px; }
+.pk-pile-col { display: flex; flex-direction: column-reverse; }
+.pk-pile .pk-chip { width: 17px; height: 17px; }
+.pk-pile .pk-chip:not(:first-child) { margin-bottom: -13px; }
 .pk-ghost { visibility: hidden; }
 .pk-chip {
-  width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box;
+  display: block; flex: none; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box;
   background: radial-gradient(circle, #F4EFE6 0 26%, #F2782C 28% 100%); border: 2px dashed #F4EFE6; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
+/* фишки трёх цветов: оранжевая, светлая, красная */
+.pk-chip.c2 { background: radial-gradient(circle, #F2782C 0 26%, #F4EFE6 28% 100%); border-color: #F2782C; }
+.pk-chip.c3 { background: radial-gradient(circle, #F4EFE6 0 26%, #C8323C 28% 100%); border-color: #F4EFE6; }
 
 /* я: две карты, фишки, ставка, кнопки (кнопки есть всегда — рамка не прыгает) */
 .pk-me { position: relative; gap: 10px; }

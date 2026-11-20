@@ -405,6 +405,7 @@
   async function act(name, args, done) {
     if (K.busy || (K.anim && name === 'poker_act')) return;   // ход — после анимации; встать и докупить можно сразу
     K.busy = true; K.msg = '';
+    if (name === 'poker_act') K.raise = false;   // окошко «Повысить» закрывается сразу — видно, как фишки едут на стол
     paint(true);
     try {
       var r = await rpc(name, Object.assign({ p_table: K.open }, args || {}));
@@ -497,10 +498,39 @@
     setText(s, money(n));
     return s;
   }
+  // Ставка на столе: фишка и сумма (место есть всегда, пустое — невидимое)
   function betEl(p) {
-    var b = el('span', { class: 'pk-bet' + (Number(p.bet) > 0 ? '' : ' none'), 'data-bet': String(p.seat) });
-    b.textContent = Number(p.bet) > 0 ? fmt(p.bet) : '';
+    var b = el('span', { class: 'pk-bet', 'data-bet': String(p.seat) });
+    setBet(b, p.bet);
     return b;
+  }
+  function setBet(b, n) {
+    if (!b) return;
+    var on = Number(n) > 0;
+    b.classList.toggle('none', !on);
+    b.replaceChildren(el('i', { class: 'pk-chip' }), el('b', { text: on ? fmt(n) : '' }));
+  }
+  // Колода на столе: из неё летят карты в руки и на стол
+  function deckEl() {
+    return el('span', { class: 'pk-deck', 'aria-hidden': 'true' }, [backEl({ cls: 'l2' }), backEl({ cls: 'l1' }), backEl()]);
+  }
+  // Банк фишками: чем больше банк (в больших блайндах), тем выше и больше стопок — от 1 до 7 фишек в 1–3 стопках
+  function pileEl(n, bb) {
+    var x = Number(n) / (Number(bb) || 1);
+    var k = x < 2 ? 1 : x < 4 ? 2 : x < 8 ? 3 : x < 16 ? 4 : x < 32 ? 5 : x < 64 ? 6 : 7;
+    var cols = [Math.min(k, 3), Math.min(Math.max(k - 3, 0), 2), Math.min(Math.max(k - 5, 0), 2)].filter(function (c) { return c > 0; });
+    return el('span', { class: 'pk-pile', 'aria-hidden': 'true' }, cols.map(function (c, i) {
+      var chips = [];
+      for (var j = 0; j < c; j++) chips.push(el('i', { class: 'pk-chip c' + (i + 1) }));
+      return el('span', { class: 'pk-pile-col' }, chips);
+    }));
+  }
+  function fillPot(pot, n, bb) {
+    if (!pot) return;
+    pot.classList.remove('win', 'wait');
+    var on = Number(n) > 0;
+    pot.replaceChildren.apply(pot, on ? [pileEl(n, bb), el('span', { class: 'pk-pot-n', text: fmt(n) })] : []);
+    if (on) pot.setAttribute('aria-label', 'Банк ' + fmt(n)); else pot.removeAttribute('aria-label');
   }
   // Две карты игрока: лицом (свои или открытые на вскрытии), рубашкой (в раздаче) или пусто
   function holeEl(p, big) {
@@ -536,27 +566,30 @@
     ]);
   }
 
+  // Середина стола: сверху колода и банк фишками (на вскрытии вместо банка — выигравшая комбинация),
+  // общие карты, под ними — моя ставка (лежит на столе передо мной)
   function midEl(st) {
     var board = st.board || [];
     var slots = [];
     for (var i = 0; i < 5; i++) slots.push(el('span', { class: 'pk-slot', 'data-pos': String(i) }, board[i] != null ? [cardEl(board[i])] : []));
-    var line;
     var n = players().length;
+    var pot = el('span', { class: 'pk-pot' });
     if (st.status === 'play') {
-      line = el('span', { class: 'pk-pot', 'aria-label': 'Банк' }); setText(line, Number(st.pot) > 0 ? 'банк ' + money(st.pot) : '');
+      fillPot(pot, st.pot, st.bb);
     } else if (st.result && st.result.showdown) {
       var names = [];
       (st.result.pots || []).forEach(function (p) { if (p.name && names.indexOf(p.name) < 0) names.push(p.name); });
-      line = el('span', { class: 'pk-pot win', text: names.join(' · ') });
+      pot.classList.add('win'); pot.textContent = names.join(' · ');
     } else if (n < 2 && st.status === 'open') {
-      line = el('span', { class: 'pk-pot', text: st.test && st.creator ? 'Добавь бота' : 'Ждём игроков' });
-    } else {
-      line = el('span', { class: 'pk-pot' });
+      pot.classList.add('wait'); pot.textContent = st.test && st.creator ? 'Добавь бота' : 'Ждём игроков';
     }
-    return el('div', { class: 'pk-mid', style: 'grid-area:mid' }, [el('div', { class: 'pk-board' }, slots), line]);
+    var kids = [el('div', { class: 'pk-mid-top' }, [deckEl(), pot]), el('div', { class: 'pk-board' }, slots)];
+    var me = st.my && playerAt(st.my.seat);
+    if (me) kids.push(el('div', { class: 'pk-mid-bet' }, [betEl(me)]));
+    return el('div', { class: 'pk-mid', style: 'grid-area:mid' }, kids);
   }
 
-  // Я: две карты, фишки, ставка; в свой ход — «Твой ход» и кнопки (время на ход не ограничено). Строка и кнопки есть всегда — рамка не прыгает.
+  // Я: две карты, фишки, комбинация; в свой ход — «Твой ход» и кнопки (время на ход не ограничено; моя ставка лежит на столе — в midEl). Строка и кнопки есть всегда — рамка не прыгает.
   function meBox(st) {
     var my = st.my;
     var p = playerAt(my.seat) || {};
@@ -576,7 +609,7 @@
       el('div', { class: 'pk-me-top' }, [stackEl(my.stack, 'big'), st.button === my.seat && (st.status === 'play' || st.result) ? el('span', { class: 'pk-d', 'aria-label': 'Дилер', text: 'D' }) : null]),
       // на вскрытии проиграл — моё название серое, оранжевым подсвечен победитель
       el('div', { class: 'pk-combo' + (st.result && st.result.showdown && win <= 0 ? ' off' : ''), text: combo }),
-      el('div', { class: 'pk-me-bot' }, [betEl(p), el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag })])
+      el('div', { class: 'pk-me-bot' }, [el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag })])
     ]);
     box.appendChild(el('div', { class: 'pk-me-row' }, [hole, info]));
     box.appendChild(actionsEl(st, turn));
@@ -682,13 +715,38 @@
   }
 
   /* ---------- анимации ---------- */
-  function animated(e) { return e.kind === 'hand' || e.kind === 'street' || e.kind === 'win'; }
+  // Что показываем анимацией: раздачу, ставки (фишки едут из стопки игрока на стол), новые общие карты, выигрыш
+  function animated(e) { return e.kind === 'hand' || e.kind === 'street' || e.kind === 'win' || (e.kind === 'act' && Number(e.pay) > 0); }
   function seatBox(seat) { return K.rootEl.querySelector('[data-seat="' + seat + '"]'); }
   function holeOf(seat) { return K.rootEl.querySelector('[data-hole="' + seat + '"]') || seatBox(seat); }
-  function chipEl() { return el('span', { class: 'pk-chip' }); }
+  function stackOf(seat) { var b = seatBox(seat); return b && (b.querySelector('.pk-stack') || b); }
+  function betOf(seat) { return K.rootEl.querySelector('[data-bet="' + seat + '"]'); }
+  function chipEl(i) { return el('span', { class: 'pk-chip' + (i ? ' c' + (i % 3 + 1) : '') }); }
   async function animate(fresh, st) {
     var root = K.rootEl;
     var board = root.querySelector('.pk-board'), pot = root.querySelector('.pk-pot') || board;
+    var deck = root.querySelector('.pk-deck') || board;
+    var bb = Number(st.bb) || 0.02;
+    var s0 = deck.offsetWidth ? deck.offsetWidth / 46 : 0.55;   // карта в колоде меньше летящей
+    // что сейчас лежит на столе (старый стол), — по ходу анимации считаем, сколько в банке и у кого какая ставка
+    var old = K.st || {};
+    var inPot = old.status === 'play' ? Number(old.pot || 0) : 0;
+    var bets = {};
+    players().forEach(function (p) { bets[p.seat] = Number(p.bet || 0); });
+    // фишки из стопки игрока — на стол, к его ставке
+    function chipsToBet(seat, amount, n) {
+      var from = stackOf(seat), to = betOf(seat), all = [];
+      if (!from || !to) { setBet(to, amount); return Promise.resolve(); }
+      for (var j = 0; j < n; j++) all.push(PC.fly(chipEl(j), from, to, { delay: j * 70, ms: 320 }));
+      return Promise.all(all).then(function () { setBet(to, amount); });
+    }
+    // все ставки — в банк
+    function betsToPot(ms) {
+      var all = [];
+      root.querySelectorAll('.pk-bet:not(.none)').forEach(function (b, i) { all.push(PC.fly(chipEl(i), b, pot, { ms: ms })); setBet(b, 0); });
+      Object.keys(bets).forEach(function (seat) { inPot += bets[seat]; bets[seat] = 0; });
+      return Promise.all(all).then(function () { fillPot(pot, cents(inPot), bb); });
+    }
     // все ва-банк: карты открываются до того, как выложат общие
     var win = fresh.filter(function (e) { return e.kind === 'win'; })[0];
     var revealed = false;
@@ -712,42 +770,56 @@
     for (var k = 0; k < fresh.length; k++) {
       var e = fresh[k];
       if (e.kind === 'hand') {
-        // новая раздача: подсветка и название прошлой комбинации уже не к месту
+        // новая раздача: со стола убираем прошлую — общие карты, банк, подсветку, подписи
         root.querySelectorAll('.pk-hit').forEach(function (c) { c.classList.remove('pk-hit'); });
-        root.querySelectorAll('.pk-combo').forEach(function (c) { c.textContent = ''; });
-        // раздача: по одной карте по кругу, два раза
+        root.querySelectorAll('.pk-combo, .pk-tag').forEach(function (c) { c.textContent = ''; });
+        root.querySelectorAll('.won').forEach(function (c) { c.classList.remove('won'); });
+        board.querySelectorAll('.pk-slot').forEach(function (sl) { sl.replaceChildren(); });
+        root.querySelectorAll('.pk-bet').forEach(function (b) { setBet(b, 0); });
+        inPot = 0; bets = {};
+        fillPot(pot, 0, bb);
+        // раздача из колоды: по одной карте по кругу, два раза
         root.querySelectorAll('.pk-hole').forEach(function (h) { h.style.visibility = 'hidden'; });
         var seats = e.seats || [], flights = [];
         for (var r = 0; r < 2; r++) seats.forEach(function (s, i) {
           var to = holeOf(s);
-          if (to) flights.push(PC.fly(backEl({ cls: 'dk-fly-back' }), board, to, { s0: 0.5, s1: to.classList.contains('big') ? 1 : 0.6, delay: (r * seats.length + i) * 70, ms: 300 }));
+          if (to) flights.push(PC.fly(backEl({ cls: 'dk-fly-back' }), deck, to, { s0: s0, s1: to.classList.contains('big') ? 1.1 : 0.55, delay: (r * seats.length + i) * 80, ms: 320 }));
         });
         await Promise.all(flights);
+        // блайнды: фишки малого и большого блайнда едут на стол
+        bets[e.sb] = Number(st.sb); bets[e.bb] = Number(st.bb);
+        await Promise.all([chipsToBet(e.sb, st.sb, 1), chipsToBet(e.bb, st.bb, 2)]);
+      } else if (e.kind === 'act') {
+        // ставка, уравнять, повысить, ва-банк: фишки из стопки игрока — на стол
+        bets[e.seat] = Number(e.bet);
+        await chipsToBet(e.seat, e.bet, e.act === 'allin' ? 3 : e.act === 'raise' || e.act === 'bet' ? 2 : 1);
       } else if (e.kind === 'street') {
         if (win && win.shown && fresh.indexOf(win) > k) await reveal();
         // ставки уходят в банк
-        var chips = [];
-        root.querySelectorAll('.pk-bet:not(.none)').forEach(function (b) { chips.push(PC.fly(chipEl(), b, pot, { ms: 300 })); b.classList.add('none'); b.textContent = ''; });
-        await Promise.all(chips);
+        await betsToPot(300);
+        // новые общие карты летят из колоды и переворачиваются на месте
         var have = board.querySelectorAll('.pk-slot .dk-card').length;
         var flips = (e.cards || []).map(function (c, i) {
           var slot = board.querySelector('.pk-slot[data-pos="' + (have + i) + '"]');
           if (!slot) return Promise.resolve();
-          slot.appendChild(el('span', { class: 'dk-card back pk-ghost' }));
-          return PC.flipAt(slot, c, 1, { delay: i * 120, ms: 380, hold: 60 }).then(function () { slot.replaceChildren(cardEl(c)); });
+          var s1 = slot.offsetWidth ? slot.offsetWidth / 46 : 1;
+          return PC.fly(backEl({ cls: 'dk-fly-back' }), deck, slot, { s0: s0, s1: s1, delay: i * 110, ms: 300 }).then(function () {
+            slot.appendChild(el('span', { class: 'dk-card back pk-ghost' }));
+            return PC.flipAt(slot, c, s1, { ms: 340, hold: 60 });
+          }).then(function () { slot.replaceChildren(cardEl(c)); });
         });
         await Promise.all(flips);
         await PC.wait(e.street === 'flop' ? 150 : 250);
       } else if (e.kind === 'win') {
         await reveal();
-        var bets = [];
-        root.querySelectorAll('.pk-bet:not(.none)').forEach(function (b) { bets.push(PC.fly(chipEl(), b, pot, { ms: 260 })); b.classList.add('none'); });
-        await Promise.all(bets);
+        await betsToPot(260);
+        // банк — победителю
         var to = [];
         Object.keys(e.win || {}).forEach(function (seat) {
-          var box = seatBox(seat);
-          for (var j = 0; j < 4; j++) if (box) to.push(PC.fly(chipEl(), pot, box, { delay: j * 60, ms: 380 }));
+          var box = stackOf(seat);
+          for (var j = 0; j < 4; j++) if (box) to.push(PC.fly(chipEl(j), pot, box, { delay: j * 60, ms: 380 }));
         });
+        fillPot(pot, 0, bb);
         await Promise.all(to);
       }
     }
