@@ -15,7 +15,9 @@
   var SERIES = 1;               // серия «Начало»
   var K = { catalog: null, my: null, deck: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
             mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0,
-            mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'), mkFilter: saved('mk-filter', ['all', 'sale', 'miss'], 'all'), mkRar: null,
+            mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'), mkFilter: saved('mk-filter', ['all', 'sale', 'miss'], 'all'),
+            mkSort: saved('mk-sort', ['rarity', 'price_desc', 'price_asc', 'count'], 'rarity'),
+            mkSeries: saved('mk-series', ['all', '1'], 'all') === 'all' ? 'all' : 1, mkRars: [],
             dealsTab: 'sell', sellDup: false };
   // выбор, запомненный на этом телефоне (если нет или чужое значение — по умолчанию)
   function saved(key, allowed, def) { try { var v = localStorage.getItem(key); return allowed.indexOf(v) >= 0 ? v : def; } catch (e) { return def; } }
@@ -839,8 +841,41 @@
     if (t === 'deals') refreshHist();
   }
 
-  /* ---------- «Рынок»: каталог — одна строка на карточку ---------- */
+  /* ---------- «Рынок»: каталог — мини-квадратики (как маркет в Standoff 2) ---------- */
+  // Плитка: рисунок на фоне цвета редкости, полоска с названием, «N шт.» в продаже и «от N» — самая низкая цена.
+  // Сортировка (по редкости / дорогие / дешёвые / больше в продаже), коллекция и редкость — в панели «Сортировка».
   var MK_FILTERS = [['all', 'Все'], ['sale', 'В продаже'], ['miss', 'Нет у меня']];
+  var MK_SORTS = [['rarity', 'По редкости'], ['price_desc', 'Сначала дорогие'], ['price_asc', 'Сначала дешёвые'], ['count', 'Больше в продаже']];
+  function sortName(k) { return (MK_SORTS.filter(function (x) { return x[0] === k; })[0] || MK_SORTS[0])[1]; }
+  // Коллекции (серии) карточек. Пока одна — «Начало»; следующие добавятся сюда сами из каталога.
+  function seriesList() {
+    var n = (K.catalog || []).length;
+    return [{ id: SERIES, name: seriesName(), cards: n }];
+  }
+  function filtersOn() { return (K.mkSeries !== 'all' ? 1 : 0) + K.mkRars.length; }
+  function marketCards() {
+    var minOf = function (c) { var l = otherLots(c.card_id)[0]; return l ? cents(l.price) : null; };
+    var rank = function (c) { return R(c.rarity).rank; };
+    var cards = K.catalog.filter(function (c) {
+      if (K.mkSeries !== 'all' && SERIES !== K.mkSeries) return false;      // пока все карточки — из «Начала»
+      if (K.mkRars.length && K.mkRars.indexOf(c.rarity) < 0) return false;
+      if (K.mkFilter === 'sale') return otherLots(c.card_id).length > 0;
+      if (K.mkFilter === 'miss') return !haveCard(c.card_id);
+      return true;
+    });
+    return cards.sort(function (a, b) {
+      var ma = minOf(a), mb = minOf(b);
+      if (K.mkSort === 'price_desc' || K.mkSort === 'price_asc') {
+        if ((ma == null) !== (mb == null)) return ma == null ? 1 : -1;            // без продажи — в конце
+        if (ma != null && ma !== mb) return K.mkSort === 'price_desc' ? mb - ma : ma - mb;
+      } else if (K.mkSort === 'count') {
+        var d = otherLots(b.card_id).length - otherLots(a.card_id).length;
+        if (d) return d;
+        if (ma != null && mb != null && ma !== mb) return ma - mb;
+      }
+      return (rank(b) - rank(a)) || (a.sort - b.sort);                             // редкие — первыми
+    });
+  }
   function catalogView() {
     var chips = el('div', { class: 'ka-filters', role: 'group', 'aria-label': 'Какие карточки показать' }, MK_FILTERS.map(function (f) {
       return el('button', { type: 'button', class: 'ka-filter', 'aria-pressed': String(K.mkFilter === f[0]), text: f[1], onclick: function () {
@@ -848,55 +883,95 @@
         K.mkFilter = f[0]; store('mk-filter', f[0]); draw();
       } });
     }));
-    var rars = el('div', { class: 'mk-rars', role: 'group', 'aria-label': 'Редкость' }, window.Cards.ORDER.map(function (r) {
-      return el('button', { type: 'button', class: 'mk-rar', 'aria-pressed': String(K.mkRar === r), onclick: function () { K.mkRar = K.mkRar === r ? null : r; draw(); } },
-        [el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }), R(r).name]);
-    }));
-    var cards = K.catalog.slice().sort(byRarity).filter(function (c) {
-      if (K.mkRar && c.rarity !== K.mkRar) return false;
-      if (K.mkFilter === 'sale') return otherLots(c.card_id).length > 0;
-      if (K.mkFilter === 'miss') return !haveCard(c.card_id);
-      return true;
+    var n = filtersOn();
+    var sortBtn = el('button', { type: 'button', class: 'mk-sortbtn', 'aria-haspopup': 'dialog', onclick: openSortSheet }, [
+      el('span', { class: 'mk-sort-ic', 'aria-hidden': 'true', text: '⇅' }),
+      el('span', { class: 'mk-sort-t' }, [el('small', { text: 'Сортировка' }), el('b', { text: sortName(K.mkSort) })]),
+      n ? el('span', { class: 'seg-badge', 'aria-label': 'фильтров: ' + n, text: String(n) }) : null,
+      el('span', { class: 'mk-sort-arr', 'aria-hidden': 'true', text: '▾' })
+    ]);
+    // выбранные коллекция и редкости — маленькими метками, нажал — убрал
+    var tags = [];
+    if (K.mkSeries !== 'all') tags.push(el('button', { type: 'button', class: 'mk-ftag', 'aria-label': 'Убрать фильтр: коллекция ' + seriesName(),
+      onclick: function () { K.mkSeries = 'all'; store('mk-series', 'all'); draw(); } }, ['«' + seriesName() + '»', el('span', { 'aria-hidden': 'true', text: '×' })]));
+    K.mkRars.forEach(function (r) {
+      tags.push(el('button', { type: 'button', class: 'mk-ftag', 'aria-label': 'Убрать фильтр: ' + R(r).name,
+        onclick: function () { K.mkRars = K.mkRars.filter(function (x) { return x !== r; }); draw(); } },
+        [el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }), R(r).name, el('span', { 'aria-hidden': 'true', text: '×' })]));
     });
+    var cards = marketCards();
     var forSale = (K.lots || []).filter(function (l) { return !l.mine; }).length;
     return [el('section', { class: 'sect mk-cat' }, [
-      chips, rars,
-      el('p', { class: 'mk-sum', text: forSale ? 'У других в продаже: ' + forSale + ' шт.' : 'Предложений других игроков пока нет' }),
-      cards.length ? el('div', { class: 'mk-list' }, cards.map(catRow)) : el('p', { class: 'kc-note mk-empty', text: 'Под эти фильтры ничего нет.' })
+      chips,
+      el('div', { class: 'mk-ctrl' }, [sortBtn, el('span', { class: 'mk-sum', text: cards.length + ' ' + plural(cards.length, 'вид', 'вида', 'видов') + (forSale ? ' · ' + forSale + ' в продаже' : '') })]),
+      tags.length ? el('div', { class: 'mk-ftags' }, tags) : null,
+      forSale ? null : el('p', { class: 'kc-note mk-none', text: 'Предложений других игроков пока нет — можно создать заявку.' }),
+      cards.length ? el('div', { class: 'mk-grid' }, cards.map(catTile)) : el('p', { class: 'kc-note mk-empty', text: 'Под эти фильтры ничего нет.' })
     ])];
   }
-  // Строка каталога: рисунок · название, редкость, «В продаже: 3 шт.», «У тебя: 2» · «от 120» или «Заявка»
-  function catRow(c) {
-    var lots = otherLots(c.card_id), bb = bidsOf(c.card_id)[0] || null;   // лучшая заявка вообще (и своя тоже)
-    var have = myCopies(c.card_id).length;
+  function plural(n, a, b, c) { return A.plural ? A.plural(n, a, b, c) : c; }
+
+  // Плитка каталога: рисунок, название в полоске цвета редкости, «N шт.» и «от N» (или «нет в продаже»)
+  function catTile(c) {
+    var lots = otherLots(c.card_id), have = myCopies(c.card_id).length;
     var mineLot = myLots().some(function (l) { return l.card_id === c.card_id; });
     var mineBid = myBids().some(function (b) { return b.card_id === c.card_id; });
-    var tags = [];
-    if (have) tags.push(el('span', { class: 'mk-tag', text: 'У тебя: ' + have }));
-    if (mineLot) tags.push(el('span', { class: 'mk-tag mk-tag-me', text: 'Твой лот' }));
-    if (mineBid) tags.push(el('span', { class: 'mk-tag mk-tag-me', text: 'Твоя заявка' }));
-    var right;
-    if (lots.length) {
-      right = el('span', { class: 'mk-right' }, [el('span', { class: 'mk-from', text: 'от' }), coinText(lots[0].price)]);
-      right.lastChild.classList.add('mk-price');
-    } else {
-      right = el('span', { class: 'mk-right' }, [el('span', { class: 'mk-pill', text: 'Заявка' })]);
-    }
-    var sub = lots.length ? 'В продаже: ' + lots.length + ' шт.' : 'Нет в продаже';
-    if (bb) sub += ' · заявка ' + money(bb.price);
+    var art = el('span', { class: 'mk-tl-art', 'aria-hidden': 'true' }, [window.Cards.art(c.code)]);
+    if (have) art.appendChild(el('span', { class: 'mk-tl-have', text: 'у тебя ' + have }));
+    if (mineLot || mineBid) art.appendChild(el('span', { class: 'mk-tl-me', text: mineLot ? 'твой лот' : 'заявка' }));
+    var price = el('span', { class: 'mk-tl-price' });
+    if (lots.length) setText(price, 'от ' + money(lots[0].price) + ' 🪙');
     return el('button', {
-      type: 'button', class: 'mk-lot mk-crow',
-      'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + ', ' + (lots.length ? 'в продаже ' + lots.length + ', от ' + money(lots[0].price) + ' монет' : 'нет в продаже') + (have ? ', у тебя ' + have : ''),
+      type: 'button', class: 'mk-tl r-' + c.rarity,
+      'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + ', ' + (lots.length ? 'в продаже ' + lots.length + ' шт., от ' + money(lots[0].price) + ' монет' : 'нет в продаже') + (have ? ', у тебя ' + have : ''),
       onclick: function () { openMarketCard(c.card_id); }
     }, [
-      pic(c),
-      el('span', { class: 'mk-info' }, [
-        el('span', { class: 'mk-name', text: c.name }),
-        el('span', { class: 'mk-no', text: R(c.rarity).name + ' · ' + sub }),
-        tags.length ? el('span', { class: 'mk-tags' }, tags) : null
-      ]),
-      right
+      art,
+      el('span', { class: 'mk-tl-name', text: c.name }),
+      el('span', { class: 'mk-tl-foot' + (lots.length ? '' : ' none') }, lots.length ? [el('span', { class: 'mk-tl-n', text: lots.length + ' шт.' }), price]
+        : [el('span', { class: 'mk-tl-n', text: 'нет в продаже' })])
     ]);
+  }
+
+  // Панель «Сортировка»: как сортировать, коллекция, редкость. Меняется сразу, «Готово» закрывает.
+  function openSortSheet() {
+    var sheet = bottomSheet('Сортировка и фильтр');
+    sheet.classList.add('mk-sheet');
+    function radio(group, list, cur, pick) {
+      return el('div', { class: 'mk-radios', role: 'radiogroup', 'aria-label': group }, list.map(function (x) {
+        return el('button', { type: 'button', class: 'mk-radio-row', role: 'radio', 'aria-checked': String(cur === x.v), onclick: function () { pick(x.v); } }, [
+          el('span', { class: 'mk-radio', 'aria-hidden': 'true' }), x.icon || null, el('span', { class: 'mk-radio-t', text: x.t }), x.sub ? el('small', { text: x.sub }) : null
+        ]);
+      }));
+    }
+    function body() {
+      var series = seriesList();
+      sheet.replaceChildren(
+        el('span', { class: 'kb-grip', 'aria-hidden': 'true' }),
+        el('button', { type: 'button', class: 'kb-close', 'aria-label': 'Закрыть', text: '×', onclick: closeOverlay }),
+        el('h2', { class: 'kb-title', text: 'Сортировка' }),
+        radio('Сортировать', MK_SORTS.map(function (x) { return { v: x[0], t: x[1] }; }), K.mkSort, function (v) { K.mkSort = v; store('mk-sort', v); draw(); body(); }),
+        el('h3', { class: 'mk-h', text: 'Коллекция' }),
+        radio('Коллекция', [{ v: 'all', t: 'Все коллекции' }].concat(series.map(function (s) { return { v: s.id, t: '«' + s.name + '»', sub: s.cards + ' ' + plural(s.cards, 'карточка', 'карточки', 'карточек'),
+          icon: el('span', { class: 'mk-ser-ic', 'aria-hidden': 'true' }, [window.Cards.art('back')]) }; })),
+          K.mkSeries, function (v) { K.mkSeries = v; store('mk-series', String(v)); draw(); body(); }),
+        el('h3', { class: 'mk-h', text: 'Редкость' }),
+        el('div', { class: 'mk-rars mk-rars-wrap', role: 'group', 'aria-label': 'Редкость' }, window.Cards.ORDER.map(function (r) {
+          var on = K.mkRars.indexOf(r) >= 0;
+          return el('button', { type: 'button', class: 'mk-rar', 'aria-pressed': String(on), onclick: function () {
+            K.mkRars = on ? K.mkRars.filter(function (x) { return x !== r; }) : K.mkRars.concat([r]);
+            draw(); body();
+          } }, [el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }), R(r).name]);
+        })),
+        el('div', { class: 'kc-actions mk-sort-acts' }, [
+          el('button', { type: 'button', class: 'btn primary', text: 'Готово', onclick: closeOverlay }),
+          el('button', { type: 'button', class: 'btn mk-back', text: 'Сбросить', disabled: K.mkSort === 'rarity' && !filtersOn(), onclick: function () {
+            K.mkSort = 'rarity'; K.mkSeries = 'all'; K.mkRars = []; store('mk-sort', 'rarity'); store('mk-series', 'all'); draw(); body();
+          } })
+        ])
+      );
+    }
+    body();
   }
 
   /* ---------- страница карточки на рынке ---------- */

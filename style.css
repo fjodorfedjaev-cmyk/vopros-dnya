@@ -1884,11 +1884,6 @@ button.dk-card { cursor: pointer; }
 .mk-rar[aria-pressed="true"] { border-color: var(--accent); background: rgba(242, 120, 44, 0.12); color: var(--ink); }
 .mk-sum { margin: 0; font: 500 12.5px/1.45 var(--font-mono); color: var(--muted); }
 .mk-empty { padding: 18px 0; }
-.mk-crow { min-height: 72px; }
-.mk-right { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
-.mk-from { font-size: 12px; color: var(--muted); }
-.mk-pill { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font: 500 12.5px var(--font-body); }
-.mk-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .mk-tag { display: inline-flex; width: fit-content; padding: 2px 8px; border-radius: 999px; background: rgba(63, 185, 127, 0.14); color: #7FD9A9; font: 500 11.5px/1.4 var(--font-body); }
 .mk-tag-me { background: rgba(242, 120, 44, 0.14); color: #FFB27A; }
 .mk-plus { color: #7FD9A9; }
@@ -1971,3 +1966,49 @@ body.pf-lock { overflow: hidden; }
 .pf-wait { text-align: center; }
 .pf-zoom { display: flex; justify-content: center; padding-top: 8px; }
 .pf .kb-info { align-self: center; }
+
+/* Лавка → Рынок: мини-квадратики, сортировка и фильтр (20.11, по мотивам маркета Standoff 2) */
+.mk-ctrl { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mk-sortbtn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 12px 4px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: left; }
+.mk-sort-ic { font-size: 16px; color: var(--accent); }
+.mk-sort-t { display: flex; flex-direction: column; line-height: 1.15; }
+.mk-sort-t small { font-size: 11px; color: var(--muted); }
+.mk-sort-t b { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.mk-sort-arr { color: var(--muted); font-size: 12px; }
+.mk-sortbtn .seg-badge { margin-left: 0; }
+.mk-sortbtn { flex: none; }
+.mk-ctrl .mk-sum { flex: 1; min-width: 0; text-align: right; font-size: 11.5px; }
+.mk-ftags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+.mk-ftag { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid rgba(242, 120, 44, 0.45); background: rgba(242, 120, 44, 0.1); color: var(--ink); font: 500 12.5px var(--font-body); }
+.mk-ftag > span:last-child { color: var(--muted); font-size: 15px; line-height: 1; }
+.mk-none { text-align: left; margin-top: -4px; }
+.mk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mk-tl { display: flex; flex-direction: column; min-width: 0; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--kc-line) 55%, transparent);
+  background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mk-tl:active { transform: scale(0.98); }
+.mk-tl-art { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 1 / 0.82;
+  background: radial-gradient(circle at 50% 46%, var(--kc-hi), var(--kc-lo) 78%); }
+.mk-tl-art .kc-art { width: 56%; height: auto; filter: drop-shadow(0 4px 10px var(--kc-glow)); }
+.mk-tl-have, .mk-tl-me { position: absolute; top: 4px; padding: 1px 5px; border-radius: 999px; font: 600 9.5px/1.3 var(--font-body); }
+.mk-tl-have { left: 4px; background: rgba(0, 0, 0, 0.55); color: #F2ECE6; }
+.mk-tl-me { right: 4px; background: rgba(196, 80, 11, 0.92); color: #fff; }
+.mk-tl-name { padding: 3px 6px; background: var(--kc-band); color: var(--kc-band-ink); font: 700 11.5px/1.3 var(--font-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-tl-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; padding: 5px 6px 6px; }
+.mk-tl-n { font: 500 10.5px var(--font-mono); color: var(--muted); white-space: nowrap; }
+.mk-tl-foot.none { justify-content: center; }
+.mk-tl-foot.none .mk-tl-n { opacity: 0.7; }
+.mk-tl-price { display: inline-flex; align-items: center; gap: 2px; font: 700 12px/1.2 var(--font-mono); color: var(--ink); white-space: nowrap; }
+.mk-tl-price img, .mk-tl-price svg { width: 11px; height: 11px; }
+/* панель «Сортировка» */
+.mk-radios { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.mk-radio-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: 500 14px var(--font-body); text-align: left; }
+.mk-radio-row[aria-checked="true"] { border-color: var(--accent); background: rgba(242, 120, 44, 0.08); }
+.mk-radio-row[aria-checked="true"] .mk-radio { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--bg); }
+.mk-radio-t { flex: 1; min-width: 0; }
+.mk-radio-row small { font: 500 11.5px var(--font-mono); color: var(--muted); }
+.mk-ser-ic { display: inline-flex; width: 22px; height: 22px; }
+.mk-ser-ic .kc-art { width: 22px; height: 22px; }
+.mk-rars.mk-rars-wrap { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; width: 100%; }
+.mk-sheet .mk-h { align-self: flex-start; }
+.mk-sort-acts { flex-direction: row; }
+.mk-sort-acts .btn { flex: 1; }

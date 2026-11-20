@@ -82,7 +82,7 @@ const aname = q(`select display_name from public.profiles where id = '${A}'`);
   await p.locator('.bn-item', { hasText: 'Коллекция' }).click();
   await p.locator('.coll-switch button', { hasText: 'Лавка' }).click();
   await p.locator('.mk-tabs button', { hasText: 'Рынок' }).click();
-  await p.locator('.mk-crow', { hasText: 'Ракета' }).click();
+  await p.locator('.mk-tl', { hasText: 'Ракета' }).click();
   await p.waitForSelector('.mk-offer .person');
   await p.locator('.mk-offer .person').first().click();
   await p.waitForSelector('.pf', { timeout: 5000 });
