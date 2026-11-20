@@ -110,10 +110,10 @@ async function openOne(p, first) {
   ok('нажатие на витрину в Профиле открывает Коллекцию', true);
   // лавка (выбор карточки на продажу — старая сетка) по-прежнему открывается
   await p.locator('.coll-switch button', { hasText: 'Лавка' }).click();
-  await p.getByRole('button', { name: 'Продать карточку' }).click();
+  await p.locator('.mk-tabs button', { hasText: 'Продать' }).click();
   await p.waitForSelector('.mk-pick-grid .kt');
   await shot(p, 'cr_market_pick');
-  ok('Лавка: выбор карточки на продажу открывается', await p.locator('.mk-pick-grid .kt').count() >= 1);
+  ok('Лавка → «Продать»: свои карточки видны', await p.locator('.mk-pick-grid .kt').count() >= 1);
   console.log(results.join('\n'));
   console.log(errors.length ? errors.slice(0, 20).join('\n') : 'ошибок на странице нет');
   await browser.close();

@@ -3,15 +3,22 @@
    Что выпало — решает база (функция cards_open) в момент оплаты. Нажатия при открытии ничего не меняют,
    они только красиво раскрывают уже выпавшую карточку. Даже если закрыть приложение посередине,
    карточка уже лежит в коллекции.
-   Лавка: карточки друг другу за монеты. Продавец получает цену минус 10% (не меньше 0,01) — это сгорает.
-   Все деньги считает база (market_list / market_buy …), сайт только показывает расчёт заранее.
+   Лавка: карточки друг другу за монеты — «Рынок» (одна строка на карточку, страница карточки), «Продать», «Мои сделки».
+   Заявка на покупку: «куплю любой номер не дороже N», монеты откладываются; выставили не дороже — продано сразу.
+   Продавец получает цену минус 10% (не меньше 0,01) — это сгорает.
+   Все деньги считает база (market_sell / market_buy / market_bid …), сайт только показывает расчёт заранее.
    Связь с сайтом — через window.AppAPI (sb, el, toast, баланс), рисунки — window.Cards. */
 (function () {
   'use strict';
   var A = null;                 // AppAPI, появляется после запуска сайта
   var root = null;              // корневой элемент вкладки (живёт между перерисовками)
   var SERIES = 1;               // серия «Начало»
-  var K = { catalog: null, my: null, deck: null, lots: null, lotsErr: null, err: null, busy: false, msg: '', mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0 };
+  var K = { catalog: null, my: null, deck: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
+            mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0,
+            mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'), mkFilter: saved('mk-filter', ['all', 'sale', 'miss'], 'all'), mkRar: null,
+            dealsTab: 'sell', sellDup: false };
+  // выбор, запомненный на этом телефоне (если нет или чужое значение — по умолчанию)
+  function saved(key, allowed, def) { try { var v = localStorage.getItem(key); return allowed.indexOf(v) >= 0 ? v : def; } catch (e) { return def; } }
   function savedMode() { try { return localStorage.getItem('coll-mode') === 'market' ? 'market' : 'coll'; } catch (e) { return 'coll'; } }
   // фильтр альбома: все / полученные / не получены (запоминается на этом телефоне)
   function savedFilter() { try { var f = localStorage.getItem('coll-filter'); return f === 'got' || f === 'miss' ? f : 'all'; } catch (e) { return 'all'; } }
@@ -43,6 +50,9 @@
     if (/market_gone/.test(m)) return 'Эту карточку уже купили или сняли с продажи.';
     if (/market_own/.test(m)) return 'Свою карточку купить нельзя.';
     if (/market_bad_price/.test(m)) return 'Цена — от 0,02 до 99 999,99.';
+    if (/market_bid_gone/.test(m)) return 'Этой заявки уже нет: её исполнили или отменили.';
+    if (/market_bids_limit/.test(m)) return 'Не больше 20 заявок сразу. Отмени какую-нибудь в «Моих сделках».';
+    if (/market_no_card/.test(m)) return 'Такой карточки нет.';
     if (/not_member/.test(m)) return 'Сначала войди по коду приглашения.';
     if (/does not exist|could not find|schema cache/i.test(m)) return 'Коллекция ещё не готова: база не обновлена.';
     return 'Не получилось. Проверь интернет и попробуй ещё раз.';
@@ -57,13 +67,16 @@
   async function load() {
     var res = await Promise.all([
       rpc('cards_catalog', { p_series: SERIES }), rpc('cards_my'), rpc('cards_deck', { p_series: SERIES }),
-      rpc('market_lots').catch(function (e) { K.lotsErr = e; return null; }) // лавка не загрузилась — коллекция всё равно работает
+      rpc('market_lots').catch(function (e) { K.lotsErr = e; return null; }), // лавка не загрузилась — коллекция всё равно работает
+      rpc('market_bids').catch(function () { return null; })
     ]);
     K.catalog = res[0] || [];
     K.my = res[1] || [];
     K.deck = one(res[2]) || null;
     K.loadedAt = Date.now();
     if (res[3]) { K.lots = res[3]; K.lotsErr = null; }
+    K.bids = res[4] || [];
+    if (K.mode === 'market' && K.mkTab === 'deals' && K.hist) refreshHist();   // история — только когда её смотрят
   }
 
   /* ---------- «Новая»: какие копии уже видели (помнит этот телефон) ---------- */
@@ -135,15 +148,28 @@
   }
   function stopPoll() { if (pollT) { clearInterval(pollT); pollT = null; } }
   async function refreshLots() {
-    var before = myLots().map(function (l) { return l.listing_id; });
-    var lots;
-    try { lots = (await rpc('market_lots')) || []; } catch (e) { return; }
-    if (JSON.stringify(lots) === JSON.stringify(K.lots)) return;
-    K.lots = lots; K.lotsErr = null;
-    // мой лот исчез сам — значит, его купили: обновим баланс
-    var now = myLots().map(function (l) { return l.listing_id; });
-    if (before.some(function (id) { return now.indexOf(id) < 0; }) && A.loadPoints) { try { await A.loadPoints(); } catch (e) { /* ничего */ } }
+    var before = myLots().map(function (l) { return l.listing_id; }).concat(myBids().map(function (b) { return 'b' + b.bid_id; }));
+    var lots, bids;
+    try { var r = await Promise.all([rpc('market_lots'), rpc('market_bids')]); lots = r[0] || []; bids = r[1] || []; } catch (e) { return; }
+    if (JSON.stringify(lots) === JSON.stringify(K.lots) && JSON.stringify(bids) === JSON.stringify(K.bids)) return;
+    K.lots = lots; K.lotsErr = null; K.bids = bids;
+    // мой лот или моя заявка исчезли сами — значит, сделка прошла: обновим баланс, коллекцию и историю
+    var now = myLots().map(function (l) { return l.listing_id; }).concat(myBids().map(function (b) { return 'b' + b.bid_id; }));
+    if (before.some(function (id) { return now.indexOf(id) < 0; })) {
+      if (A.loadPoints) { try { await A.loadPoints(); } catch (e) { /* ничего */ } }
+      try { K.my = (await rpc('cards_my')) || K.my; } catch (e) { /* ничего */ }
+      if (K.hist) refreshHist();
+    }
     if (!K.busy) draw();
+  }
+  // История сделок (для «Мои сделки → История»)
+  var histBusy = false;
+  async function refreshHist() {
+    if (histBusy) return;
+    histBusy = true;
+    try { K.hist = (await rpc('market_history')) || []; K.histErr = null; } catch (e) { K.histErr = e; }
+    histBusy = false;
+    if (!K.busy && K.mode === 'market' && K.mkTab === 'deals') draw();
   }
 
   function draw() {
@@ -661,174 +687,328 @@
     });
   }
 
+  /* ---------- лавка: данные ---------- */
+  // Лоты (market_lots) идут от дешёвых к дорогим, заявки (market_bids) — от дорогих к дешёвым.
+  function otherLots(cardId) { return (K.lots || []).filter(function (l) { return l.card_id === cardId && !l.mine; }); }
+  function bidsOf(cardId) { return (K.bids || []).filter(function (b) { return b.card_id === cardId; }); }
+  function bestBid(cardId) { return bidsOf(cardId).filter(function (b) { return !b.mine; })[0] || null; }
+  function myBids() { return (K.bids || []).filter(function (b) { return b.mine; }); }
+  function reservedC() { return myBids().reduce(function (s, b) { return s + cents(b.price); }, 0); }
+  function freeCopies(cardId) { return myCopies(cardId).filter(function (k) { return !k.slot; }); } // с витрины не продаём
+  function coinText(v, pre) { var s = el('span'); setText(s, (pre || '') + money(v) + ' 🪙'); return s; }
+  function seriesName() { return (K.deck && K.deck.series_name) || 'Начало'; }
+  function byRarity(a, b) { return (R(a.rarity).rank - R(b.rarity).rank) || (a.sort - b.sort); }
+  function store(key, v) { try { localStorage.setItem(key, v); } catch (e) { /* без хранилища тоже работает */ } }
+  function pic(c, cls) { var p = el('span', { class: 'kt-pic mk-pic r-' + c.rarity + (cls ? ' ' + cls : ''), 'aria-hidden': 'true' }); p.appendChild(window.Cards.art(c.code)); return p; }
+  // Шапка панелей лавки: рисунок, название, «Начало · Редкая», сколько у тебя
+  function cardHead(c) {
+    var have = myCopies(c.card_id).length;
+    return el('div', { class: 'mk-chead' }, [
+      pic(c, 'mk-pic-lg'),
+      el('div', { class: 'mk-chead-t' }, [
+        el('h2', { class: 'kb-title', text: c.name }),
+        el('span', { class: 'mk-sub' }, [seriesName() + ' · ', el('span', { class: 'mk-rar-t r-' + c.rarity, text: R(c.rarity).name })]),
+        have ? el('span', { class: 'mk-tag', text: 'У тебя: ' + have }) : null
+      ])
+    ]);
+  }
+  // Поле цены за одну карточку (для заявки). onChange(копейки или null).
+  function priceField(initC, label, sub, onChange) {
+    var inp = el('input', { type: 'text', id: 'mk-bid', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'done', placeholder: '0', 'aria-describedby': 'mk-bid-hint' });
+    inp._ok = '';
+    if (initC) inp.value = inp._ok = inText(initC);
+    var hint = el('p', { class: 'mk-hint err', id: 'mk-bid-hint', role: 'status', hidden: true });
+    var coin = el('span', { class: 'mk-coin', 'aria-hidden': 'true' }); setText(coin, '🪙');
+    function show() {
+      var c = parseC(inp.value), err = '';
+      if (c && c < MIN_P) err = 'Минимальная цена — 0,02.';
+      hint.hidden = !err; hint.textContent = err;
+      onChange(c && !err && c <= MAX_P ? c : null);
+    }
+    inp.addEventListener('input', function () {
+      if (/^\d{0,5}([.,]\d{0,2})?$/.test(inp.value.replace(/\s/g, ''))) inp._ok = inp.value; else inp.value = inp._ok;
+      show();
+    });
+    var node = el('div', { class: 'mk-form' }, [
+      el('div', { class: 'mk-row' }, [el('label', { for: 'mk-bid' }, [label, el('small', { text: sub })]), el('span', { class: 'mk-in' }, [inp, coin])]),
+      hint
+    ]);
+    setTimeout(show, 0);
+    return { node: node, input: inp };
+  }
+  function noFocusOnPhone() { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); }
+
   /* ---------- лавка: выставить свою карточку ---------- */
-  // back — куда вернуться по «Назад» (из лавки — к выбору карточки, из коллекции — к окну карточки).
-  // keepC — цена, уже вписанная до смены копии.
+  // back — куда вернуться по «Назад» (из лавки — к списку, из коллекции — к окну карточки, со страницы рынка — туда).
+  // keepC — цена, уже вписанная до смены копии. Если есть чужая заявка не ниже цены — продастся сразу, по цене заявки.
   function openSell(cardId, sel, back, keepC) {
     var c = cardById(cardId);
     if (!c) return;
-    var sheet = sheetOverlay('Продать: ' + c.name);
+    var free = freeCopies(cardId);
+    if (!sel || sel.slot) sel = free[0];
+    if (!sel) { if (back) back(); return; }
+    var sheet = bottomSheet('Продать: ' + c.name);
     var msg = el('p', { class: 'msg', role: 'status' });
     var pc = keepC || null;
-    var free = myCopies(cardId).filter(function (k) { return !k.slot; }); // с витрины не продаём
+    var bb = bestBid(cardId), cheap = otherLots(cardId)[0] || null;
     var go = el('button', { type: 'button', class: 'btn primary' });
     function label() {
-      if (pc) setText(go, 'Выставить за ' + money(pc / 100) + ' 🪙'); else go.textContent = 'Выставить в лавку';
+      var now = pc && bb && pc <= cents(bb.price);
+      if (now) setText(go, 'Продать сразу за ' + money(bb.price) + ' 🪙');
+      else if (pc) setText(go, 'Выставить за ' + money(pc / 100) + ' 🪙');
+      else go.textContent = 'Выставить на продажу';
       go.disabled = !pc || K.busy;
     }
     var box = priceBox(pc, function (v) { pc = v; label(); });
-    box.inputs.forEach(function (i) { i.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' && pc) { ev.preventDefault(); doList(c, sel, pc, go, msg); } }); });
-    go.addEventListener('click', function () { doList(c, sel, pc, go, msg); });
+    box.inputs.forEach(function (i) { i.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' && pc) { ev.preventDefault(); doList(c, sel, pc, go, msg, false); } }); });
+    go.addEventListener('click', function () { doList(c, sel, pc, go, msg, false); });
     label();
-    sheet.appendChild(el('div', { class: 'mk-face' }, [window.Cards.face(c, sel.serial, 'md')]));
-    sheet.appendChild(el('h2', { class: 'mk-title', text: 'Продать «' + c.name + '» ' + copyNo(c, sel.serial) }));
+    sheet.appendChild(cardHead(c));
     if (free.length > 1) {
-      // несколько копий — выбираешь, какую продать
       sheet.appendChild(el('div', { class: 'kc-copies', role: 'group', 'aria-label': 'Какую копию продать' }, free.map(function (k) {
         return el('button', {
           type: 'button', class: 'kc-chip', 'aria-pressed': String(k.copy_id === sel.copy_id), text: '№' + k.serial,
           onclick: function () { if (k.copy_id !== sel.copy_id) openSell(cardId, k, back, pc); }
         });
       })));
+    } else {
+      sheet.appendChild(el('p', { class: 'kb-info', text: 'Копия ' + copyNo(c, sel.serial) }));
     }
+    sheet.appendChild(el('div', { class: 'mk-tiles' }, [
+      el('div', { class: 'mk-tile' }, [el('span', { text: 'Продают от' }), cheap ? coinText(cheap.price) : el('b', { text: '—' })]),
+      el('div', { class: 'mk-tile' }, [el('span', { text: 'Лучшая заявка' }), bb ? coinText(bb.price) : el('b', { text: '—' })])
+    ]));
     sheet.appendChild(box.node);
-    sheet.appendChild(el('div', { class: 'kc-actions' }, [go,
-      el('button', { type: 'button', class: 'btn', text: 'Назад', onclick: function () { if (back) back(); else openDetail(cardId, sel.copy_id); } })]));
+    var acts = el('div', { class: 'kc-actions' }, [go]);
+    if (bb) {
+      var now = el('button', { type: 'button', class: 'btn' });
+      twoTap(now, 'Продать сразу за ' + money(bb.price) + ' 🪙 · получишь ' + money(netC(cents(bb.price)) / 100),
+        'Точно? Продать №' + sel.serial + ' за ' + money(bb.price) + ' 🪙', function () { doList(c, sel, cents(bb.price), now, msg, true); });
+      acts.appendChild(now);
+    }
+    acts.appendChild(el('button', { type: 'button', class: 'btn kr-ghost mk-back', text: 'Назад', onclick: function () { if (back) back(); else openDetail(cardId, sel.copy_id); } }));
+    sheet.appendChild(acts);
     sheet.appendChild(msg);
+    if (myCopies(cardId).length === 1) sheet.appendChild(el('p', { class: 'kc-note', text: 'Это твоя единственная «' + c.name + '».' }));
     // на компьютере сразу ставим курсор в поле; на телефоне — нет, чтобы клавиатура не закрыла карточку
-    if (!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) box.focus();
+    if (!noFocusOnPhone()) box.focus();
   }
-  async function doList(c, sel, pc, btn, msg) {
+  // now = «Продать сразу»: только в заявку не ниже цены, иначе база откажет и лот не создаст
+  async function doList(c, sel, pc, btn, msg, now) {
     if (!pc || K.busy) return;
     K.busy = true; btn.disabled = true;
-    setText(msg, 'Выставляю…');
+    setText(msg, now ? 'Продаю…' : 'Выставляю…');
     try {
-      await rpc('market_list', { p_copy: sel.copy_id, p_price: pc / 100 });
+      var r = one(await rpc('market_sell', { p_copy: sel.copy_id, p_price: pc / 100, p_now: !!now }));
+      if (r && r.balance != null) A.setBalance(Number(r.balance));
       K.busy = false;
       await load(); draw(); closeOverlay();
-      A.toast('«' + c.name + '» в лавке за ' + money(pc / 100) + ' 🪙');
+      if (r && r.sold) A.toast('Продано по заявке: «' + c.name + '» №' + sel.serial + ' · +' + money(r.net) + ' 🪙');
+      else A.toast('«' + c.name + '» в лавке за ' + money(pc / 100) + ' 🪙');
     } catch (e) {
       K.busy = false;
-      setText(msg, errText(e)); btn.disabled = false;
+      var t = /market_bid_gone/.test(String(e && e.message)) ? 'Такой заявки уже нет — глянь новую цену.' : errText(e);
+      try { await load(); draw(); } catch (e2) { /* ничего */ }
+      if (ov) openSell(c.card_id, sel, null, null);
+      var m = ov && ov.querySelector('.msg'); if (m) setText(m, t);
     }
-  }
-
-  // Кнопка «Продать карточку» в лавке: сначала выбираешь карточку, потом копию и цену.
-  function openSellPicker() {
-    var sheet = sheetOverlay('Что продать');
-    sheet.appendChild(el('h2', { class: 'mk-title', text: 'Что продать?' }));
-    var cards = (K.catalog || []).filter(function (c) { return myCopies(c.card_id).length; });
-    if (!cards.length) {
-      sheet.appendChild(el('p', { class: 'kc-note', text: 'В коллекции пока нет карточек. Открой первую во вкладке «Коллекция».' }));
-      return;
-    }
-    var msg = el('p', { class: 'msg', role: 'status' });
-    sheet.appendChild(el('div', { class: 'coll-grid mk-pick-grid' }, cards.map(function (c) {
-      var free = myCopies(c.card_id).filter(function (k) { return !k.slot; });
-      var pic = el('span', { class: 'kt-pic' }, [window.Cards.art(c.code)]);
-      if (free.length > 1) pic.appendChild(el('span', { class: 'kt-count', text: '×' + free.length }));
-      if (!free.length) pic.appendChild(el('span', { class: 'kt-tag', text: 'на витрине' }));
-      return el('button', {
-        type: 'button', class: 'kt r-' + c.rarity + (free.length ? '' : ' kt-away'),
-        'aria-label': c.name + (free.length ? (free.length > 1 ? ', копий: ' + free.length : '') : ', на витрине'),
-        onclick: function () {
-          if (!free.length) { setText(msg, 'Эта карточка на витрине. Сначала убери её оттуда в коллекции.'); return; }
-          openSell(c.card_id, free[0], openSellPicker);
-        }
-      }, [pic, el('span', { class: 'kt-name', text: c.name })]);
-    })));
-    sheet.appendChild(msg);
   }
 
   /* ---------- лавка: вкладка ---------- */
+  var MK_TABS = [['market', 'Рынок'], ['sell', 'Продать'], ['deals', 'Мои сделки']];
   function marketView() {
     if (!K.lots) {
       if (K.lotsErr) { var m = el('p', { class: 'msg err', role: 'alert' }); setText(m, errText(K.lotsErr)); return [m]; }
       return [el('p', { class: 'muted', text: 'Загружаю лавку…' })];
     }
-    var mine = myLots();
-    var others = K.lots.filter(function (l) { return !l.mine; });
-    var out = [el('section', { class: 'card mk-head' }, [
-      el('span', { class: 'coll-got', text: others.length ? 'В продаже: ' + others.length : 'Пока никто не продаёт' }),
-      el('button', { type: 'button', class: 'btn primary coll-open', text: 'Продать карточку', onclick: openSellPicker })
-    ])];
-    if (mine.length) {
-      out.push(el('section', { class: 'sect' }, [el('h2', { text: 'Мои лоты' }), el('div', { class: 'mk-list' }, mine.map(lotRow))]));
-    }
-    window.Cards.ORDER.forEach(function (r) {
-      var list = others.filter(function (l) { var c = cardById(l.card_id); return c && c.rarity === r; });
-      if (!list.length) return;
-      out.push(el('section', { class: 'sect coll-group' }, [
-        el('div', { class: 'coll-gh' }, [
-          el('h2', null, [el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }), R(r).plural]),
-          el('span', { class: 'coll-left', text: String(list.length) })
-        ]),
-        el('div', { class: 'mk-list' }, list.map(lotRow))
-      ]));
-    });
-    return out;
+    var nDeals = myLots().length + myBids().length;
+    var tabs = el('div', { class: 'segment three mk-tabs', role: 'group', 'aria-label': 'Разделы лавки' }, MK_TABS.map(function (x) {
+      var badge = x[0] === 'deals' && nDeals;
+      return el('button', {
+        type: 'button', 'aria-pressed': String(K.mkTab === x[0]), 'aria-label': badge ? 'Мои сделки, активных: ' + nDeals : null,
+        onclick: function () { setMkTab(x[0]); }
+      }, [x[1], badge ? el('span', { class: 'seg-badge', 'aria-hidden': 'true', text: String(nDeals) }) : null]);
+    }));
+    var body = K.mkTab === 'sell' ? sellView() : K.mkTab === 'deals' ? dealsView() : catalogView();
+    return [tabs].concat(body);
+  }
+  function setMkTab(t) {
+    if (K.mkTab === t) return;
+    K.mkTab = t; store('mk-tab', t);
+    draw();
+    if (t === 'deals') refreshHist();
   }
 
-  // Строка лота: рисунок, название и номер, кто продаёт, цена
-  function lotRow(l) {
-    var c = cardById(l.card_id);
-    if (!c) return null;
-    var pic = el('span', { class: 'kt-pic mk-pic r-' + c.rarity });
-    pic.appendChild(window.Cards.art(c.code));
-    var price = el('span', { class: 'mk-price' }); setText(price, money(l.price) + ' 🪙');
-    var who = l.mine
-      ? el('span', { class: 'mk-who', text: 'нажми, чтобы изменить цену или снять' })
-      : el('span', { class: 'mk-who' }, [A.avatar ? A.avatar(l.seller_name, l.seller_color, true, l.seller_avatar) : null, el('span', { class: 'mk-who-name', text: l.seller_name || 'Без имени' })]);
+  /* ---------- «Рынок»: каталог — одна строка на карточку ---------- */
+  var MK_FILTERS = [['all', 'Все'], ['sale', 'В продаже'], ['miss', 'Нет у меня']];
+  function catalogView() {
+    var chips = el('div', { class: 'ka-filters', role: 'group', 'aria-label': 'Какие карточки показать' }, MK_FILTERS.map(function (f) {
+      return el('button', { type: 'button', class: 'ka-filter', 'aria-pressed': String(K.mkFilter === f[0]), text: f[1], onclick: function () {
+        if (K.mkFilter === f[0]) return;
+        K.mkFilter = f[0]; store('mk-filter', f[0]); draw();
+      } });
+    }));
+    var rars = el('div', { class: 'mk-rars', role: 'group', 'aria-label': 'Редкость' }, window.Cards.ORDER.map(function (r) {
+      return el('button', { type: 'button', class: 'mk-rar', 'aria-pressed': String(K.mkRar === r), onclick: function () { K.mkRar = K.mkRar === r ? null : r; draw(); } },
+        [el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }), R(r).name]);
+    }));
+    var cards = K.catalog.slice().sort(byRarity).filter(function (c) {
+      if (K.mkRar && c.rarity !== K.mkRar) return false;
+      if (K.mkFilter === 'sale') return otherLots(c.card_id).length > 0;
+      if (K.mkFilter === 'miss') return !haveCard(c.card_id);
+      return true;
+    });
+    var forSale = (K.lots || []).filter(function (l) { return !l.mine; }).length;
+    return [el('section', { class: 'sect mk-cat' }, [
+      chips, rars,
+      el('p', { class: 'mk-sum', text: forSale ? 'У других в продаже: ' + forSale + ' шт.' : 'Предложений других игроков пока нет' }),
+      cards.length ? el('div', { class: 'mk-list' }, cards.map(catRow)) : el('p', { class: 'kc-note mk-empty', text: 'Под эти фильтры ничего нет.' })
+    ])];
+  }
+  // Строка каталога: рисунок · название, редкость, «В продаже: 3 шт.», «У тебя: 2» · «от 120» или «Заявка»
+  function catRow(c) {
+    var lots = otherLots(c.card_id), bb = bidsOf(c.card_id)[0] || null;   // лучшая заявка вообще (и своя тоже)
+    var have = myCopies(c.card_id).length;
+    var mineLot = myLots().some(function (l) { return l.card_id === c.card_id; });
+    var mineBid = myBids().some(function (b) { return b.card_id === c.card_id; });
+    var tags = [];
+    if (have) tags.push(el('span', { class: 'mk-tag', text: 'У тебя: ' + have }));
+    if (mineLot) tags.push(el('span', { class: 'mk-tag mk-tag-me', text: 'Твой лот' }));
+    if (mineBid) tags.push(el('span', { class: 'mk-tag mk-tag-me', text: 'Твоя заявка' }));
+    var right;
+    if (lots.length) {
+      right = el('span', { class: 'mk-right' }, [el('span', { class: 'mk-from', text: 'от' }), coinText(lots[0].price)]);
+      right.lastChild.classList.add('mk-price');
+    } else {
+      right = el('span', { class: 'mk-right' }, [el('span', { class: 'mk-pill', text: 'Заявка' })]);
+    }
+    var sub = lots.length ? 'В продаже: ' + lots.length + ' шт.' : 'Нет в продаже';
+    if (bb) sub += ' · заявка ' + money(bb.price);
     return el('button', {
-      type: 'button', class: 'mk-lot',
-      'aria-label': c.name + ', ' + copyNo(c, l.serial) + ', ' + money(l.price) + ' монет' + (l.mine ? ', твой лот' : ', продаёт ' + (l.seller_name || 'кто-то')),
-      onclick: function () { if (l.mine) openMyLot(l); else openLot(l); }
+      type: 'button', class: 'mk-lot mk-crow',
+      'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + ', ' + (lots.length ? 'в продаже ' + lots.length + ', от ' + money(lots[0].price) + ' монет' : 'нет в продаже') + (have ? ', у тебя ' + have : ''),
+      onclick: function () { openMarketCard(c.card_id); }
     }, [
-      pic,
+      pic(c),
       el('span', { class: 'mk-info' }, [
         el('span', { class: 'mk-name', text: c.name }),
-        el('span', { class: 'mk-no', text: R(c.rarity).name + ' · ' + copyNo(c, l.serial) }),
-        who
+        el('span', { class: 'mk-no', text: R(c.rarity).name + ' · ' + sub }),
+        tags.length ? el('span', { class: 'mk-tags' }, tags) : null
       ]),
-      price
+      right
     ]);
   }
 
-  function metaRow(name, value) {
-    var v = typeof value === 'string' ? el('span', { text: value }) : value;
-    return el('div', { class: 'mk-meta-row' }, [el('span', { text: name }), v]);
-  }
-
-  /* ---------- лавка: купить ---------- */
-  function openLot(l, note) {
-    var c = cardById(l.card_id);
+  /* ---------- страница карточки на рынке ---------- */
+  // Сверху: «Купить от» и «Лучшая заявка». Дальше предложения продавцов (выбираешь номер), купить,
+  // создать заявку; свои заявки на эту карточку; продать свою (сразу в заявку или выставить).
+  function openMarketCard(cardId, note, pickId) {
+    var c = cardById(cardId);
     if (!c) return;
-    var sheet = sheetOverlay(c.name + ' — купить');
+    var lots = otherLots(cardId), mineLots = myLots().filter(function (l) { return l.card_id === cardId; });
+    var bids = bidsOf(cardId), bb = bestBid(cardId), mineB = bids.filter(function (b) { return b.mine; });
+    var free = freeCopies(cardId);
+    var sheet = bottomSheet(c.name + ' — лавка');
+    sheet.classList.add('mk-sheet');
     var msg = el('p', { class: 'msg', role: 'status' });
     if (note) setText(msg, note);
-    var have = myCopies(c.card_id).length;
-    var seller = el('span', { class: 'mk-who' }, [A.avatar ? A.avatar(l.seller_name, l.seller_color, true, l.seller_avatar) : null, el('span', { class: 'mk-who-name', text: l.seller_name || 'Без имени' })]);
-    var last = null;
-    if (l.last_price != null) { last = el('span'); setText(last, money(l.last_price) + ' 🪙'); }
-    sheet.appendChild(window.Cards.face(c, l.serial, 'lg'));
-    sheet.appendChild(el('div', { class: 'mk-meta' }, [
-      metaRow('Продаёт', seller),
-      last ? metaRow('Последняя продажа', last) : null,
-      metaRow('У тебя', have ? (have === 1 ? 'уже есть' : 'уже есть, копий: ' + have) : (haveCard(c.card_id) ? 'есть в твоих лотах' : 'ещё нет'))
+    sheet.appendChild(cardHead(c));
+    sheet.appendChild(el('div', { class: 'mk-tiles' }, [
+      el('div', { class: 'mk-tile' }, [el('span', { text: 'Купить от' }), lots.length ? coinText(lots[0].price) : el('b', { text: '—' })]),
+      el('div', { class: 'mk-tile' }, [el('span', { text: 'Лучшая заявка' }), bids.length ? coinText(bids[0].price) : el('b', { text: '—' }),
+        bids.length && bids[0].mine ? el('small', { text: 'твоя' }) : null])
     ]));
+
+    var sel = lots.filter(function (l) { return l.listing_id === pickId; })[0] || lots[0] || null;
     var buy = el('button', { type: 'button', class: 'btn primary' });
-    var acts = el('div', { class: 'kc-actions' }, [buy]);
-    if (bal() < Number(l.price)) {
-      setText(buy, 'Купить за ' + money(l.price) + ' 🪙');
-      buy.disabled = true;
-      var lack = el('p', { class: 'kc-note' }); setText(lack, 'Не хватает: у тебя ' + money(bal()) + ' 🪙');
-      acts.appendChild(lack);
-    } else {
-      twoTap(buy, 'Купить за ' + money(l.price) + ' 🪙', 'Точно? Купить за ' + money(l.price) + ' 🪙', function () { doBuy(l, c, buy, msg); });
+    var lack = el('p', { class: 'kc-note', hidden: true });
+    function setBuy() {
+      if (!sel) return;
+      var price = Number(sel.price), short = cents(price) - cents(bal());
+      buy.replaceWith(buy = el('button', { type: 'button', class: 'btn primary' }));
+      if (short > 0) {
+        setText(buy, 'Купить №' + sel.serial + ' за ' + money(price) + ' 🪙');
+        buy.disabled = true;
+        lack.hidden = false; setText(lack, 'Не хватает ' + money(short / 100) + ' 🪙 (доступно ' + money(bal()) + ')');
+      } else {
+        lack.hidden = true;
+        var s = sel;
+        twoTap(buy, 'Купить №' + s.serial + ' за ' + money(price) + ' 🪙', 'Точно? Купить №' + s.serial + ' за ' + money(price) + ' 🪙', function () { doBuy(s, c, buy, msg); });
+      }
     }
+    if (lots.length || mineLots.length) {
+      var offers = el('div', { class: 'mk-offers', role: 'radiogroup', 'aria-label': 'Предложения продавцов' });
+      lots.forEach(function (l) {
+        var row = el('button', {
+          type: 'button', class: 'mk-offer', role: 'radio', 'aria-checked': String(l === sel),
+          'aria-label': '№' + l.serial + ', ' + money(l.price) + ' монет, продаёт ' + (l.seller_name || 'кто-то'),
+          onclick: function () {
+            sel = l;
+            offers.querySelectorAll('.mk-offer[role="radio"]').forEach(function (n) { n.setAttribute('aria-checked', String(n === row)); });
+            setBuy();
+          }
+        }, [
+          el('span', { class: 'mk-radio', 'aria-hidden': 'true' }),
+          el('span', { class: 'mk-offer-no', text: copyNo(c, l.serial) }),
+          el('span', { class: 'mk-who' }, [A.avatar ? A.avatar(l.seller_name, l.seller_color, true, l.seller_avatar) : null, el('span', { class: 'mk-who-name', text: l.seller_name || 'Без имени' })]),
+          coinText(l.price)
+        ]);
+        row.lastChild.classList.add('mk-price');
+        offers.appendChild(row);
+      });
+      mineLots.forEach(function (l) {
+        var row = el('button', { type: 'button', class: 'mk-offer mk-offer-me', onclick: function () { openMyLot(l, function () { openMarketCard(cardId); }); } }, [
+          el('span', { class: 'mk-offer-no', text: copyNo(c, l.serial) }),
+          el('span', { class: 'mk-who', text: 'твой лот · изменить' }),
+          coinText(l.price)
+        ]);
+        row.lastChild.classList.add('mk-price');
+        offers.appendChild(row);
+      });
+      sheet.appendChild(el('div', { class: 'mk-block' }, [el('h3', { class: 'mk-h', text: 'Предложения продавцов' }), offers]));
+    } else {
+      sheet.appendChild(el('p', { class: 'kc-note', text: 'Сейчас никто не продаёт. Создай заявку — купится автоматически, когда кто-то выставит.' }));
+    }
+
+    var acts = el('div', { class: 'kc-actions' });
+    if (sel) { acts.appendChild(buy); acts.appendChild(lack); setBuy(); }
+    acts.appendChild(el('button', { type: 'button', class: sel ? 'btn' : 'btn primary', text: 'Создать заявку', onclick: function () { openBidForm(cardId, null); } }));
     sheet.appendChild(acts);
+
+    var top = bids.slice(0, 5);
+    if (bids.length) {
+      sheet.appendChild(el('div', { class: 'mk-block' }, [
+        el('h3', { class: 'mk-h', text: 'Заявки покупателей' + (bids.length > top.length ? ' · всего ' + bids.length : '') }),
+        el('div', { class: 'mk-bids' }, top.map(function (b) {
+          return b.mine
+            ? el('button', { type: 'button', class: 'mk-bid mk-bid-me', onclick: function () { openBidForm(cardId, b); } }, [el('span', { text: 'твоя · изменить' }), coinText(b.price, 'до ')])
+            : el('div', { class: 'mk-bid' }, [el('span', { text: 'любой номер' }), coinText(b.price, 'до ')]);
+        }))
+      ]));
+    }
+    if (mineB.length > top.length) {
+      // свои заявки, не попавшие в пятёрку лучших
+      sheet.appendChild(el('div', { class: 'mk-bids' }, mineB.filter(function (b) { return top.indexOf(b) < 0; }).map(function (b) {
+        return el('button', { type: 'button', class: 'mk-bid mk-bid-me', onclick: function () { openBidForm(cardId, b); } }, [el('span', { text: 'твоя · изменить' }), coinText(b.price, 'до ')]);
+      })));
+    }
+
+    if (myCopies(cardId).length) {
+      var own = el('div', { class: 'kc-actions mk-own' });
+      if (free.length && bb) {
+        own.appendChild(el('button', { type: 'button', class: 'btn', onclick: function () { openSell(cardId, free[0], function () { openMarketCard(cardId); }); } },
+          [coinText(bb.price, 'Продать свою сразу за ')]));
+      }
+      own.appendChild(el('button', {
+        type: 'button', class: 'link mk-link', text: free.length ? 'Выставить свою на продажу' : 'Твоя карточка на витрине — чтобы продать, сначала убери её',
+        disabled: !free.length,
+        onclick: function () { if (free.length) openSell(cardId, free[0], function () { openMarketCard(cardId); }); }
+      }));
+      sheet.appendChild(own);
+    }
     sheet.appendChild(msg);
   }
+
   async function doBuy(l, c, btn, msg) {
     if (K.busy) return;
     K.busy = true; btn.disabled = true;
@@ -839,37 +1019,270 @@
       if (r) A.setBalance(Number(r.balance));
       K.busy = false;
       await load(); draw(); closeOverlay();
-      A.toast((isNew ? 'Новая карточка! «' : 'Куплено: «') + c.name + '» · −' + money(l.price) + ' 🪙');
+      A.toast((isNew ? 'Новая карточка! «' : 'Куплено: «') + c.name + '» №' + l.serial + ' · −' + money(l.price) + ' 🪙');
     } catch (e) {
       K.busy = false;
       var t = errText(e);
       try { await load(); draw(); } catch (e2) { /* ничего */ }
-      var fresh = (K.lots || []).filter(function (x) { return x.listing_id === l.listing_id; })[0];
-      if (fresh && ov) openLot(fresh, t);           // например, цену поменяли — показываем новую
-      else { setText(msg, t); btn.disabled = !!(/market_gone/.test(String(e && e.message))); }
+      if (ov) openMarketCard(c.card_id, t, l.listing_id);   // например, цену поменяли — показываем новую
     }
   }
 
+  /* ---------- заявка на покупку: создать или изменить ---------- */
+  function openBidForm(cardId, bid) {
+    var c = cardById(cardId);
+    if (!c) return;
+    var sheet = bottomSheet((bid ? 'Твоя заявка: ' : 'Заявка на покупку: ') + c.name);
+    sheet.classList.add('mk-sheet');
+    var msg = el('p', { class: 'msg', role: 'status' });
+    var was = bid ? cents(bid.price) : 0;
+    var pc = bid ? was : null;
+    var cheap = otherLots(cardId)[0] || null;
+    var go = el('button', { type: 'button', class: 'btn primary' });
+    var holdV = el('span'), leftV = el('span');
+    var info = el('p', { class: 'kc-note mk-cross', hidden: true });
+    var armed = false, armT = null;
+    function avail() { return cents(bal()) + was; }       // сколько можно отложить (своя заявка уже отложена)
+    function update() {
+      armed = false; clearTimeout(armT);
+      var cross = pc && cheap && pc >= cents(cheap.price);
+      var need = cross ? cents(cheap.price) : (pc || 0);
+      setText(holdV, cross ? '—' : money((pc || 0) / 100) + ' 🪙');
+      setText(leftV, money((avail() - need) / 100) + ' 🪙');
+      leftV.classList.toggle('mk-neg', avail() - need < 0);
+      info.hidden = !cross;
+      if (cross) setText(info, 'Уже продаётся дешевле: №' + cheap.serial + ' за ' + money(cheap.price) + ' 🪙 — купится сразу, по этой цене.');
+      if (!pc) go.textContent = bid ? 'Сохранить заявку' : 'Создать заявку';
+      else if (cross) setText(go, 'Купить сразу за ' + money(cheap.price) + ' 🪙');
+      else if (bid) setText(go, 'Сохранить · до ' + money(pc / 100) + ' 🪙');
+      else setText(go, 'Создать заявку на ' + money(pc / 100) + ' 🪙');
+      go.disabled = !pc || K.busy || avail() - need < 0 || (bid && pc === was);
+    }
+    var field = priceField(was || null, 'Цена за 1 карточку', 'не выше этой суммы', function (v) { pc = v; update(); });
+    go.addEventListener('click', function () {
+      var cross = pc && cheap && pc >= cents(cheap.price);
+      if (cross && !armed) {   // покупка сразу — в два нажатия, как другие покупки
+        armed = true; setText(go, 'Точно? Купить за ' + money(cheap.price) + ' 🪙');
+        armT = setTimeout(update, 3000);
+        return;
+      }
+      doBid(c, bid, pc, go, msg);
+    });
+    field.input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); if (!go.disabled) go.click(); } });
+    sheet.appendChild(cardHead(c));
+    sheet.appendChild(field.node);
+    sheet.appendChild(el('p', { class: 'kc-note mk-any', text: 'Любой номер этой карточки.' }));
+    sheet.appendChild(el('div', { class: 'mk-meta' }, [
+      metaRow(bid ? 'Будет отложено' : 'Отложится', holdV),
+      metaRow('Останется доступно', leftV)
+    ]));
+    sheet.appendChild(info);
+    var acts = el('div', { class: 'kc-actions' }, [go]);
+    if (bid) {
+      var off = el('button', { type: 'button', class: 'btn', text: 'Отменить заявку', onclick: function () { doBidCancel(c, bid, off, msg); } });
+      acts.appendChild(off);
+    }
+    sheet.appendChild(acts);
+    sheet.appendChild(el('p', { class: 'kb-note', text: 'Монеты откладываются, пока заявка висит. Купится автоматически, когда кто-то выставит эту карточку по цене не выше твоей. Отменить можно в «Моих сделках».' }));
+    sheet.appendChild(msg);
+    update();
+    if (!noFocusOnPhone()) { try { field.input.focus({ preventScroll: true }); } catch (e) { field.input.focus(); } }
+  }
+  async function doBid(c, bid, pc, btn, msg) {
+    if (!pc || K.busy) return;
+    K.busy = true; btn.disabled = true;
+    setText(msg, 'Сохраняю…');
+    var isNew = !haveCard(c.card_id);
+    try {
+      var r = one(bid ? await rpc('market_bid_reprice', { p_bid: bid.bid_id, p_price: pc / 100 })
+                      : await rpc('market_bid', { p_card: c.card_id, p_price: pc / 100 }));
+      if (r && r.balance != null) A.setBalance(Number(r.balance));
+      K.busy = false;
+      await load(); draw(); closeOverlay();
+      if (r && r.kind === 'bought') A.toast((isNew ? 'Новая карточка! «' : 'Куплено: «') + c.name + '» №' + r.serial + ' · −' + money(r.price) + ' 🪙');
+      else A.toast((bid ? 'Заявка изменена: ' : 'Заявка: ') + '«' + c.name + '» до ' + money(pc / 100) + ' 🪙');
+    } catch (e) {
+      K.busy = false;
+      setText(msg, errText(e)); btn.disabled = false;
+      try { await load(); draw(); } catch (e2) { /* ничего */ }
+    }
+  }
+  async function doBidCancel(c, bid, btn, msg) {
+    if (K.busy) return;
+    K.busy = true; btn.disabled = true;
+    setText(msg, 'Отменяю…');
+    try {
+      var b = await rpc('market_bid_cancel', { p_bid: bid.bid_id });
+      if (b != null) A.setBalance(Number(one(b)));
+      K.busy = false;
+      await load(); draw(); closeOverlay();
+      A.toast('Заявка отменена · ' + money(bid.price) + ' 🪙 снова доступны');
+    } catch (e) {
+      K.busy = false;
+      setText(msg, errText(e)); btn.disabled = false;
+      try { await load(); draw(); } catch (e2) { /* ничего */ }
+    }
+  }
+
+  /* ---------- «Продать»: свои карточки ---------- */
+  function sellView() {
+    var cards = K.catalog.slice().sort(byRarity).filter(function (c) {
+      var n = myCopies(c.card_id).length;
+      return K.sellDup ? n > 1 : n > 0;
+    });
+    var toggle = el('div', { class: 'ka-filters', role: 'group', 'aria-label': 'Какие показать' }, [['all', 'Все мои'], ['dup', 'Только повторы']].map(function (f) {
+      return el('button', { type: 'button', class: 'ka-filter', 'aria-pressed': String((f[0] === 'dup') === !!K.sellDup), text: f[1], onclick: function () {
+        K.sellDup = f[0] === 'dup'; draw();
+      } });
+    }));
+    var body;
+    if (!cards.length) {
+      body = el('p', { class: 'kc-note mk-empty', text: K.sellDup ? 'Повторов пока нет.' : 'В коллекции пока нет карточек. Открой первую во вкладке «Коллекция».' });
+    } else {
+      body = el('div', { class: 'coll-grid mk-pick-grid' }, cards.map(function (c) {
+        var free = freeCopies(c.card_id), n = myCopies(c.card_id).length, bb = bestBid(c.card_id);
+        var p = el('span', { class: 'kt-pic r-' + c.rarity }, [window.Cards.art(c.code)]);
+        if (n > 1) p.appendChild(el('span', { class: 'kt-count', text: '×' + n }));
+        if (!free.length) p.appendChild(el('span', { class: 'kt-tag', text: 'на витрине' }));
+        else if (bb) { var t = el('span', { class: 'kt-tag mk-bidtag' }); setText(t, money(bb.price) + ' 🪙'); p.appendChild(t); }
+        return el('button', {
+          type: 'button', class: 'kt r-' + c.rarity + (free.length ? '' : ' kt-away'),
+          'aria-label': c.name + (n > 1 ? ', копий: ' + n : '') + (free.length ? '' : ', на витрине') + (bb ? ', есть заявка за ' + money(bb.price) : ''),
+          onclick: function () {
+            if (!free.length) { A.toast('Эта карточка на витрине. Сначала убери её оттуда в коллекции.'); return; }
+            openSell(c.card_id, free[0], closeOverlay);
+          }
+        }, [p, el('span', { class: 'kt-name', text: c.name })]);
+      }));
+    }
+    return [el('section', { class: 'sect mk-sellv' }, [
+      toggle,
+      el('p', { class: 'mk-sum', text: 'Нажми на карточку — выбери номер и цену. Цена на карточке — лучшая заявка: продашь сразу.' }),
+      body
+    ])];
+  }
+
+  /* ---------- «Мои сделки»: продаю, покупаю, история ---------- */
+  var DEAL_TABS = [['sell', 'Продаю'], ['buy', 'Покупаю'], ['hist', 'История']];
+  function dealsView() {
+    var lots = myLots(), bids = myBids();
+    var head = el('p', { class: 'mk-sum mk-bal' });
+    setText(head, 'Доступно: ' + money(bal()) + ' 🪙 · В заявках: ' + money(reservedC() / 100) + ' 🪙');
+    var seg = el('div', { class: 'segment three mk-dtabs', role: 'group', 'aria-label': 'Мои сделки' }, DEAL_TABS.map(function (x) {
+      var n = x[0] === 'sell' ? lots.length : x[0] === 'buy' ? bids.length : 0;
+      return el('button', { type: 'button', 'aria-pressed': String(K.dealsTab === x[0]), onclick: function () {
+        if (K.dealsTab === x[0]) return;
+        K.dealsTab = x[0]; draw();
+        if (x[0] === 'hist') refreshHist();
+      } }, [x[1], n ? el('span', { class: 'seg-badge', 'aria-hidden': 'true', text: String(n) }) : null]);
+    }));
+    var body;
+    if (K.dealsTab === 'buy') {
+      body = bids.length ? el('div', { class: 'mk-list' }, bids.map(bidRow))
+        : el('p', { class: 'kc-note mk-empty', text: 'Заявок нет. Создать — на странице карточки во вкладке «Рынок».' });
+    } else if (K.dealsTab === 'hist') {
+      if (!K.hist && !K.histErr && !histBusy) setTimeout(refreshHist, 0);
+      if (!K.hist) body = el('p', { class: 'muted', text: K.histErr ? 'Историю не получилось загрузить.' : 'Загружаю…' });
+      else body = K.hist.length ? el('div', { class: 'mk-list' }, K.hist.map(histRow)) : el('p', { class: 'kc-note mk-empty', text: 'Сделок пока не было.' });
+    } else {
+      body = lots.length ? el('div', { class: 'mk-list' }, lots.map(lotRow))
+        : el('p', { class: 'kc-note mk-empty', text: 'Ничего не продаёшь. Выставить — во вкладке «Продать».' });
+    }
+    return [el('section', { class: 'sect mk-deals' }, [head, seg, body])];
+  }
+  // Строка моего лота: рисунок, название и номер, цена — нажал, и можно изменить цену или снять
+  function lotRow(l) {
+    var c = cardById(l.card_id);
+    if (!c) return null;
+    var bb = bestBid(c.card_id);
+    var price = coinText(l.price); price.classList.add('mk-price');
+    return el('button', {
+      type: 'button', class: 'mk-lot',
+      'aria-label': c.name + ', ' + copyNo(c, l.serial) + ', ' + money(l.price) + ' монет, твой лот',
+      onclick: function () { openMyLot(l); }
+    }, [
+      pic(c),
+      el('span', { class: 'mk-info' }, [
+        el('span', { class: 'mk-name', text: c.name }),
+        el('span', { class: 'mk-no', text: R(c.rarity).name + ' · ' + copyNo(c, l.serial) }),
+        el('span', { class: 'mk-who', text: bb ? 'есть заявка за ' + money(bb.price) : 'нажми, чтобы изменить или снять' })
+      ]),
+      price
+    ]);
+  }
+  // Строка моей заявки: «до 100», дешевле всех в продаже — нажал, и можно изменить или отменить
+  function bidRow(b) {
+    var c = cardById(b.card_id);
+    if (!c) return null;
+    var cheap = otherLots(c.card_id)[0];
+    var price = coinText(b.price, 'до '); price.classList.add('mk-price');
+    return el('button', {
+      type: 'button', class: 'mk-lot',
+      'aria-label': c.name + ', заявка до ' + money(b.price) + ' монет',
+      onclick: function () { openBidForm(c.card_id, b); }
+    }, [
+      pic(c),
+      el('span', { class: 'mk-info' }, [
+        el('span', { class: 'mk-name', text: c.name }),
+        el('span', { class: 'mk-no', text: 'Любой номер · отложено' }),
+        el('span', { class: 'mk-who', text: cheap ? 'в продаже от ' + money(cheap.price) : 'в продаже нет · ждём продавца' })
+      ]),
+      price
+    ]);
+  }
+  function dateText(s) {
+    var d = new Date(s);
+    if (isNaN(d)) return '';
+    return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+  // Строка истории: продал / купил, с кем, по заявке ли, сколько монет
+  function histRow(h) {
+    var c = cardById(h.card_id);
+    if (!c) return null;
+    var sold = h.side === 'sold';
+    var sum = coinText(sold ? h.net : h.price, sold ? '+' : '−');
+    sum.classList.add('mk-price', sold ? 'mk-plus' : 'mk-minus');
+    return el('div', { class: 'mk-lot mk-hist' }, [
+      pic(c),
+      el('span', { class: 'mk-info' }, [
+        el('span', { class: 'mk-name', text: c.name + ' ' + copyNo(c, h.serial) }),
+        el('span', { class: 'mk-no', text: (sold ? 'Продано' : 'Куплено') + (h.via_bid ? ' по заявке' : '') + ' · ' + dateText(h.at) }),
+        el('span', { class: 'mk-who', text: (sold ? 'покупатель: ' : 'продавец: ') + (h.other_name || 'кто-то') })
+      ]),
+      sum
+    ]);
+  }
+
+  function metaRow(name, value) {
+    var v = typeof value === 'string' ? el('span', { text: value }) : value;
+    return el('div', { class: 'mk-meta-row' }, [el('span', { text: name }), v]);
+  }
+
   /* ---------- лавка: мой лот — изменить цену или снять ---------- */
-  function openMyLot(l) {
+  function openMyLot(l, back) {
     var c = cardById(l.card_id);
     if (!c) return;
-    var sheet = sheetOverlay(c.name + ' — твой лот');
+    var sheet = bottomSheet(c.name + ' — твой лот');
     var msg = el('p', { class: 'msg', role: 'status' });
     var was = cents(l.price), pc = was;
+    var bb = bestBid(c.card_id);
     var save = el('button', { type: 'button', class: 'btn primary' });
     function label() {
-      if (pc && pc !== was) setText(save, 'Сохранить цену · ' + money(pc / 100) + ' 🪙'); else save.textContent = 'Сохранить цену';
+      if (pc && pc !== was && bb && pc <= cents(bb.price)) setText(save, 'Продать по заявке за ' + money(bb.price) + ' 🪙');
+      else if (pc && pc !== was) setText(save, 'Сохранить цену · ' + money(pc / 100) + ' 🪙');
+      else save.textContent = 'Сохранить цену';
       save.disabled = !pc || pc === was || K.busy;
     }
     var box = priceBox(was, function (v) { pc = v; label(); });
     label();
     save.addEventListener('click', function () { doReprice(l, c, pc, save, msg); });
     var off = el('button', { type: 'button', class: 'btn', text: 'Снять с продажи', onclick: function () { doCancel(l, c, off, msg); } });
-    sheet.appendChild(el('div', { class: 'mk-face' }, [window.Cards.face(c, l.serial, 'md')]));
-    sheet.appendChild(el('h2', { class: 'mk-title', text: 'Твой лот: «' + c.name + '» ' + copyNo(c, l.serial) }));
+    sheet.appendChild(cardHead(c));
+    sheet.appendChild(el('p', { class: 'kb-info', text: 'Твой лот: ' + copyNo(c, l.serial) + (bb ? ' · лучшая заявка ' + money(bb.price) : '') }));
     sheet.appendChild(box.node);
-    sheet.appendChild(el('div', { class: 'kc-actions' }, [save, off]));
+    var acts = el('div', { class: 'kc-actions' }, [save, off]);
+    if (back) acts.appendChild(el('button', { type: 'button', class: 'btn kr-ghost mk-back', text: 'Назад', onclick: back }));
+    sheet.appendChild(acts);
     sheet.appendChild(el('p', { class: 'kc-note', text: 'Снятая карточка сразу вернётся в коллекцию.' }));
     sheet.appendChild(msg);
   }
@@ -881,7 +1294,10 @@
       await rpc('market_reprice', { p_listing: l.listing_id, p_price: pc / 100 });
       K.busy = false;
       await load(); draw(); closeOverlay();
-      A.toast('Новая цена: ' + money(pc / 100) + ' 🪙');
+      // лот исчез — значит, нашлась заявка и он продан по её цене
+      var still = (K.lots || []).some(function (x) { return x.listing_id === l.listing_id; });
+      if (still) A.toast('Новая цена: ' + money(pc / 100) + ' 🪙');
+      else { if (A.loadPoints) { try { await A.loadPoints(); } catch (e) { /* ничего */ } } A.toast('Продано по заявке: «' + c.name + '» №' + l.serial); }
     } catch (e) {
       K.busy = false;
       setText(msg, errText(e)); btn.disabled = false;
@@ -903,7 +1319,6 @@
       try { await load(); draw(); } catch (e2) { /* ничего */ }
     }
   }
-
 
   /* ---------- перетаскивание: зажми карточку ---------- */
   // Зажал карточку (≈0,4 с, не двигая палец) — она «поднимается» и едет за пальцем.

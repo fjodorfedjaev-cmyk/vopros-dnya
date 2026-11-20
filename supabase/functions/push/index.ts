@@ -3,7 +3,7 @@
 // Типы вызова: init (создать ключи), test, comment, reminder, sale (купили карточку в лавке), suggest (новое «Свой вопрос» — админу),
 // duel (вызов на дуэль в Секторе, «вызов принят», новая комната, «соперник найден»).
 // durak (новая комната в «Дураке» — всем, кто не в ней; «игра начинается, жми Готов» — тем, кто в комнате),
-// poker (новый стол в «Покере» — всем, кто за ним не сидит).
+// poker (новый стол в «Покере» — всем, кто за ним не сидит), bid (заявка на покупку в лавке исполнилась — покупателю).
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { sendPush, vapidKey, b64u } from './webpush.js';
 
@@ -96,6 +96,16 @@ Deno.serve(async (req) => {
         title: '🛒 Твою карточку купили',
         body: '«' + s.card_name + '» ' + (s.copies === 1 ? '1/1' : '№' + s.serial) + ' · +' + money(s.net) + ' 🪙 · покупатель: ' + cut(s.buyer_name, 40),
         url: SITE + '?tab=market', tag: 'sale' + body.listing_id
+      });
+    }
+  } else if (body.type === 'bid') {
+    const s = one((await db.rpc('push_bid_info', { p_listing: body.listing_id })).data) as
+      { buyer: string; card_name: string; serial: number; copies: number; price: number; seller_name: string } | undefined;
+    if (s && s.buyer) {
+      out.sent = await sendTo(s.buyer, {
+        title: '🛒 Заявка исполнена',
+        body: '«' + s.card_name + '» ' + (s.copies === 1 ? '1/1' : '№' + s.serial) + ' · −' + money(s.price) + ' 🪙 · продавец: ' + cut(s.seller_name, 40),
+        url: SITE + '?tab=market', tag: 'bid' + body.listing_id
       });
     }
   } else if (body.type === 'suggest') {
