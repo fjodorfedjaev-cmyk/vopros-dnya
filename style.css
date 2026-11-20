@@ -1124,7 +1124,9 @@ form.card .msg:empty, .push-card .msg:empty { display: none; }
 .sug-st.st-rejected { background: var(--soft); color: var(--muted); }
 .sug-text { margin: 0; overflow-wrap: anywhere; }
 .sug-optline, .sug-note { margin: 0; font-size: 13px; color: var(--muted); }
-.sug-item textarea { min-height: 64px; }
+.sug-item textarea { min-height: 52px; }
+/* поля предложений не растягиваются рукой — высота сама подстраивается под текст */
+textarea.ta-auto { resize: none; overflow: hidden; }
 .sug-item .msg:empty { display: none; }
 
 /* ===== Коллекционные карточки (cards.js, collection.js) ===== */

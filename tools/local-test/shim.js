@@ -52,6 +52,10 @@
         from: query,
         rpc: function (name, args) {
           if (LOCAL_RPC.test(name)) return post('/mock/rpc', { name: name, args: args || {} }).then(function (r) { return { data: r.data === undefined ? null : r.data, error: r.error || null }; });
+          // ответы для проверки можно положить в localStorage 'mock-rpc': { имя_функции: данные }
+          var fakeRpc = null;
+          try { fakeRpc = JSON.parse(localStorage.getItem('mock-rpc') || 'null'); } catch (e) { fakeRpc = null; }
+          if (fakeRpc && Object.prototype.hasOwnProperty.call(fakeRpc, name)) return Promise.resolve({ data: fakeRpc[name], error: null });
           return Promise.resolve({ data: Object.prototype.hasOwnProperty.call(DEFAULTS, name) ? DEFAULTS[name] : [], error: null });
         },
         channel: chan, removeChannel: function () {},

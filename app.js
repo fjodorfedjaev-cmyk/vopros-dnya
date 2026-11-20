@@ -1479,6 +1479,12 @@
       render();
       try { await loadSuggest(); S.sug.err = null; } catch (e) { S.sug.err = e; }
       if (S.view !== view) return;
+      // пришли из уведомления «Новое предложение» — сразу показываем вид, где оно ждёт
+      if (S.sug.pickPending) {
+        S.sug.pickPending = false;
+        var pend = S.sug.pending || [];
+        if (pend.length && !pend.some(function (x) { return x.s_kind === S.sug.kind; })) S.sug.kind = pend[0].s_kind;
+      }
     }
     if (view === 'profile') {
       render();
@@ -2476,9 +2482,13 @@
   function sugKindName(k) { return k === 'fill' ? 'Слово' : k === 'poll' ? 'Выбор' : 'Вопрос'; }
 
   // Кнопка в шапке карточки «Вопроса», «Слова» и «Выбора». У админа на ней — сколько предложений ждёт проверки.
+  // Сколько предложений этого вида ждёт проверки (только для админа)
+  function sugPendingOf(kind) {
+    return S.sug.admin && S.sug.pending ? S.sug.pending.filter(function (x) { return x.s_kind === kind; }).length : 0;
+  }
   function suggestBtn(kind) {
-    var n = S.sug.admin && S.sug.pending ? S.sug.pending.length : 0;
-    var badge = el('span', { class: 'seg-badge sug-badge', id: 'sug-badge', text: String(n), title: 'Ждут проверки' });
+    var n = sugPendingOf(kind);
+    var badge = el('span', { class: 'seg-badge sug-badge', id: 'sug-badge', 'data-kind': kind, text: String(n), title: 'Ждут проверки' });
     badge.hidden = !n;
     return el('button', {
       type: 'button', class: 'sug-btn', 'aria-label': kind === 'fill' ? 'Предложить свою фразу' : 'Предложить свой вопрос',
@@ -2515,8 +2525,17 @@
   }
   function updateSugBadge() {
     var b = document.getElementById('sug-badge');
-    var n = S.sug.admin && S.sug.pending ? S.sug.pending.length : 0;
-    if (b) { b.textContent = String(n); b.hidden = !n; }
+    if (!b) return;
+    var n = sugPendingOf(b.getAttribute('data-kind') || 'question');
+    b.textContent = String(n); b.hidden = !n;
+  }
+  // Поле для текста предложения: не растягивается рукой, а само подстраивает высоту под текст
+  function autoGrow(ta) {
+    function fit() { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px'; }
+    ta.classList.add('ta-auto');
+    ta.addEventListener('input', fit);
+    requestAnimationFrame(fit);
+    return ta;
   }
 
   // Та же чистка, что в базе: лишние пробелы убираем (и пробел перед точкой или запятой), «____» превращаем в ___.
@@ -2564,11 +2583,19 @@
   function fillSugForm(sect) {
     var k = S.sug.kind, d = S.sug.drafts;
     sect.replaceChildren();
+    // Вид (Вопрос / Слово / Выбор) переключает и форму, и списки ниже: видно только предложения этого вида
     var seg = el('div', { class: 'segment three', role: 'group', 'aria-label': 'Что предложить' }, SUG_KINDS.map(function (x) {
+      var n = sugPendingOf(x[0]);
       return el('button', {
-        type: 'button', text: x[1], 'aria-pressed': String(k === x[0]),
-        onclick: function () { if (S.sug.kind !== x[0]) { S.sug.kind = x[0]; fillSugForm(sect); } }
-      });
+        type: 'button', 'aria-pressed': String(k === x[0]), 'aria-label': n ? x[1] + ', ждут проверки: ' + n : null,
+        onclick: function () {
+          if (S.sug.kind === x[0]) return;
+          S.sug.kind = x[0];
+          fillSugForm(sect);
+          var m = document.getElementById('sug-mine'); if (m) fillSugMine(m);
+          var adm = document.getElementById('sug-admin'); if (adm) fillSugAdmin(adm);
+        }
+      }, [x[1], n ? el('span', { class: 'seg-badge', 'aria-hidden': 'true', text: String(n) }) : null]);
     }));
     var msg = el('p', { class: 'msg', role: 'status' });
     var btn = el('button', { type: 'submit', class: 'btn primary', text: 'Предложить за ' + SUG_PRICE + ' 🪙' });
@@ -2591,8 +2618,8 @@
       fields.push(el('div', { class: 'field' }, [el('span', { class: 'lbl', text: '4 варианта' }), box]));
     } else {
       var isFill = k === 'fill';
-      main = el('textarea', { rows: 3, maxlength: 200, autocapitalize: 'off', 'data-cap': '1',
-        'aria-label': isFill ? 'Фраза с пропуском' : 'Твой вопрос' });
+      main = autoGrow(el('textarea', { rows: 3, maxlength: 200, autocapitalize: 'off', 'data-cap': '1',
+        'aria-label': isFill ? 'Фраза с пропуском' : 'Твой вопрос' }));
       main.value = d[k];
       main.addEventListener('input', function () { d[k] = main.value; sync(); });
       fields.push(el('div', { class: 'field' }, [el('span', { class: 'lbl', text: isFill ? 'Фраза с пропуском' : 'Твой вопрос' }), main]));
@@ -2679,9 +2706,10 @@
       sect.appendChild(m);
       return;
     }
-    var list = S.sug.mine;
-    if (!list) { sect.appendChild(el('p', { class: 'muted', text: 'Загружаю…' })); return; }
-    if (!list.length) { sect.appendChild(el('p', { class: 'empty', text: 'Здесь будут твои предложения и их статус.' })); return; }
+    if (!S.sug.mine) { sect.appendChild(el('p', { class: 'muted', text: 'Загружаю…' })); return; }
+    var list = S.sug.mine.filter(function (x) { return x.s_kind === S.sug.kind; });
+    if (!list.length) { sect.appendChild(el('p', { class: 'empty', text: S.sug.kind === 'fill' ? 'Здесь будут твои фразы для «Слова» и их статус.'
+      : S.sug.kind === 'poll' ? 'Здесь будут твои «Выборы» и их статус.' : 'Здесь будут твои вопросы и их статус.' })); return; }
     sect.appendChild(el('ul', { class: 'list' }, list.map(function (s) {
       return el('li', { class: 'card sug-item' }, [
         el('div', { class: 'sug-head' }, [
@@ -2696,16 +2724,18 @@
   }
 
   // Очередь на проверку (видит только админ). Текст и варианты можно поправить перед «Одобрить».
+  // Видно только предложения выбранного вида (Вопрос / Слово / Выбор); сколько ждёт у других видов — на переключателе.
   function fillSugAdmin(sect) {
-    var list = S.sug.pending || [];
+    var k = S.sug.kind;
+    var list = (S.sug.pending || []).filter(function (x) { return x.s_kind === k; });
     sect.replaceChildren(el('h2', { text: 'Ждут проверки' + (list.length ? ' · ' + list.length : '') }));
-    if (!list.length) { sect.appendChild(el('p', { class: 'muted small', text: 'Новых предложений нет.' })); return; }
+    if (!list.length) { sect.appendChild(el('p', { class: 'muted small', text: k === 'fill' ? 'Новых фраз нет.' : k === 'poll' ? 'Новых «Выборов» нет.' : 'Новых вопросов нет.' })); return; }
     sect.appendChild(el('ul', { class: 'list' }, list.map(function (s) { return sugReviewCard(s, sect); })));
   }
 
   function sugReviewCard(s, sect) {
     var k = s.s_kind, isPoll = k === 'poll';
-    var ta = el('textarea', { rows: 2, maxlength: 200, 'aria-label': 'Текст' });
+    var ta = autoGrow(el('textarea', { rows: 1, maxlength: 200, 'aria-label': 'Текст' }));
     ta.value = s.s_text;
     var opts = (isPoll && Array.isArray(s.s_options) ? s.s_options : []).map(function (v, i) {
       var o = el('input', { type: 'text', maxlength: 60, autocomplete: 'off', 'aria-label': 'Вариант ' + (i + 1) });
@@ -2740,6 +2770,7 @@
         toast(approve ? (isPoll ? 'Одобрено — с завтра будет дополнительным «Выбором»' : 'Одобрено — встало в очередь') : 'Отклонено, монеты вернулись');
         fillSugAdmin(sect);
         updateSugBadge();
+        var f = document.getElementById('sug-form'); if (f) fillSugForm(f);   // цифры на переключателе
         // своё предложение тоже могло поменять статус
         var mr = await sb.rpc('my_suggestions');
         if (!mr.error) { S.sug.mine = mr.data || []; var m = document.getElementById('sug-mine'); if (m) fillSugMine(m); }
@@ -3229,7 +3260,7 @@
     if (!tab) return;
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ничего */ }
     if (tab === 'market') { if (window.Collection && window.Collection.setMode) window.Collection.setMode('market'); tab = 'cards'; }
-    if (tab === 'suggest') { S.sug.from = 'today'; if (tab !== S.view) go('suggest'); return; }
+    if (tab === 'suggest') { S.sug.from = 'today'; S.sug.pickPending = true; if (tab !== S.view) go('suggest'); return; }
     if (tab === 'duel') {
       S.gameMode = 'sector'; try { localStorage.setItem('game-mode', 'sector'); } catch (e) { /* ничего */ }
       if (S.view === 'game') { render(); if (window.Duels) window.Duels.enter(); return; }
