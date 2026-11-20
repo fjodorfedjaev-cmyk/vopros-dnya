@@ -149,6 +149,38 @@
     if (!emoji && isLight(color)) a.style.color = '#1A1A1A'; // на светлом цвете буква тёмная
     return a;
   }
+  // Имя и аватарка человека: нажал — открывается его мини-профиль (people.js). Нажатие не уходит дальше
+  // (не открывает меню ответа и т. п.). opts.cls — свой класс, opts.guard() вернёт false — сейчас открывать нельзя.
+  function person(uid, kids, opts) {
+    opts = opts || {};
+    if (!uid) return el('span', { class: opts.cls || null }, kids);
+    var b = el('button', { type: 'button', class: 'person' + (opts.cls ? ' ' + opts.cls : ''), 'aria-label': opts.label || null }, kids);
+    b.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (opts.guard && opts.guard() === false) return;
+      if (window.People) window.People.open(uid);
+    });
+    return b;
+  }
+  // Что уже есть на телефоне про участника — мини-профиль показывает это сразу, остальное догружает
+  function memberInfo(uid) {
+    var m = (S.members || []).filter(function (x) { return x.id === uid; })[0] || {};
+    var st = (S.stats || []).filter(function (x) { return x.user_id === uid; })[0] || {};
+    if (uid === S.userId && S.profile) m = S.profile;
+    return {
+      name: m.display_name || st.display_name || '', color: m.color || st.color, avatar: m.avatar || st.avatar, zodiac: m.zodiac || null,
+      streak: st.current_streak, best_streak: st.best_streak, answers: st.total_answers, answered_today: st.answered_today,
+      reactions: st.reactions_received, coins: S.coins && S.coins[uid] !== undefined ? S.coins[uid] : (uid === S.userId ? balance() : undefined)
+    };
+  }
+  // Вызвать на дуэль из мини-профиля: Игры → Сектор, форма вызова уже с этим человеком
+  function challenge(uid) {
+    if (S.gameState === 'play') { toast('Сначала доиграй партию'); return; }
+    if (window.Duels && window.Duels.prefill) window.Duels.prefill(uid);
+    if (S.view !== 'game') go('game');
+    if (S.gameMode !== 'sector') setGameMode('sector'); else render();
+    setTimeout(function () { var d = document.getElementById('duel-sect'); if (d) d.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 80);
+  }
 
   function parseDay(s) {
     var p = String(s).split('-');
@@ -671,7 +703,7 @@
           var anchor = el('div', { class: 'menu-anchor' });
           if (menuFor === c.id) anchor.appendChild(commentMenu(c, m, mine));
           return el('li', { class: 'cmt' }, [
-            avatar(m.name, m.color, true, m.avatar),
+            person(c.user_id, [avatar(m.name, m.color, true, m.avatar)], { cls: 'cmt-who', label: 'Профиль: ' + (m.name || 'без имени') }),
             el('div', { class: 'cmt-col' }, [
               main,
               anchor,
@@ -1862,15 +1894,12 @@
       var me = s.user_id === S.userId;
       return el('tr', { class: me ? 'me-row' : null }, [
         el('th', { scope: 'row' }, [
-          el('button', {
-            type: 'button', class: 'who who-btn', 'aria-label': 'Витрина: ' + s.display_name,
-            onclick: function () { if (window.Collection) window.Collection.showFriend(s.user_id, s.display_name); }
-          }, [
+          person(s.user_id, [
             avatar(s.display_name, s.color, true, s.avatar),
             el('span', { class: 'who-name' }, [
               el('span', { text: s.display_name + (me ? ' (ты)' : '') })
             ])
-          ])
+          ], { cls: 'who who-btn', label: 'Профиль: ' + s.display_name })
         ]),
         el('td', { text: s.current_streak ? FIRE + ' ' + s.current_streak : '—' }),
         el('td', { class: 'col-best', text: String(s.best_streak) }),
@@ -2041,8 +2070,10 @@
     return card;
   }
 
-  function chip(name, color, pending, emoji) {
-    return el('span', { class: 'chip' + (pending ? ' pending' : '') }, [avatar(name, color, true, emoji), el('span', { text: name })]);
+  function chip(name, color, pending, emoji, uid) {
+    var kids = [avatar(name, color, true, emoji), el('span', { text: name })];
+    if (uid) return person(uid, kids, { cls: 'chip' + (pending ? ' pending' : ''), label: 'Профиль: ' + name });
+    return el('span', { class: 'chip' + (pending ? ' pending' : '') }, kids);
   }
 
   function ansCard(a, isMine) {
@@ -2051,8 +2082,10 @@
     var cb = commentBlock(a.id, S.comments, S.commentReactions, isMine);
     var li = el('li', { class: 'card ans' + (isMine ? ' mine' : '') }, [
       el('div', { class: 'ans-head' }, [
-        avatar(p.display_name, p.color, false, p.avatar),
-        el('span', { class: 'ans-name', text: isMine ? (p.display_name || 'Ты') + ' (ты)' : (p.display_name || 'Без имени') }),
+        person(a.user_id, [
+          avatar(p.display_name, p.color, false, p.avatar),
+          el('span', { class: 'ans-name', text: isMine ? (p.display_name || 'Ты') + ' (ты)' : (p.display_name || 'Без имени') })
+        ], { cls: 'ans-who', label: 'Профиль: ' + (p.display_name || 'без имени') }),
         el('span', { class: 'ans-time', text: timeLabel(a.created_at) })
       ]),
       answerBody(a.body, S.kind, S.today && S.today.text),
@@ -2072,7 +2105,7 @@
       var kids = [el('p', { text: S.kind === 'fill' ? 'Варианты друзей откроются, когда впишешь свой.' : 'Ответы друзей откроются, когда ответишь сам.' })];
       if (S.who.length) {
         kids.push(el('p', { class: 'lbl', text: 'Уже ответили · ' + S.who.length + ' из ' + total }));
-        kids.push(el('div', { class: 'chips' }, S.who.map(function (w) { return chip(w.display_name, w.color, false, w.avatar); })));
+        kids.push(el('div', { class: 'chips' }, S.who.map(function (w) { return chip(w.display_name, w.color, false, w.avatar, w.user_id); })));
       }
       sect.appendChild(el('div', { class: 'locked' }, kids));
       return;
@@ -2344,10 +2377,10 @@
           var medal = r.rank <= 3 ? el('span', { class: 'medal m' + r.rank, text: String(r.rank) }) : String(r.rank);
           return el('tr', { class: me ? 'me-row' : null }, [
             el('td', { class: 'col-rank' }, [medal]),
-            el('th', { scope: 'row' }, [el('span', { class: 'who' }, [
+            el('th', { scope: 'row' }, [person(r.user_id, [
               avatar(r.display_name, r.color, true, r.avatar),
               el('span', { class: 'who-name' }, [el('span', { text: r.display_name })])
-            ])]),
+            ], { cls: 'who who-btn', label: 'Профиль: ' + r.display_name })]),
             el('td', { class: 'lb-score', text: String(r.best) }),
             el('td', { text: String(r[b.field]) })
           ]);
@@ -2419,8 +2452,10 @@
           var acb = commentBlock(a.id, dayComments, dayCR, isMine);
           var item = el('div', { class: 'ans' }, [
             el('div', { class: 'ans-head' }, [
-              avatar(p.display_name, p.color, true, p.avatar),
-              el('span', { class: 'ans-name', text: (p.display_name || 'Без имени') + (isMine ? ' (ты)' : '') })
+              person(a.user_id, [
+                avatar(p.display_name, p.color, true, p.avatar),
+                el('span', { class: 'ans-name', text: (p.display_name || 'Без имени') + (isMine ? ' (ты)' : '') })
+              ], { cls: 'ans-who', label: 'Профиль: ' + (p.display_name || 'без имени') })
             ]),
             answerBody(a.body, kind, q.q_text),
             actionsRow(abar, acb),
@@ -3265,7 +3300,10 @@
       // для дуэлей
       me: function () { return S.userId; }, members: function () { return S.members || []; },
       setGameState: function (st) { S.gameState = st; }, rerender: function () { render(); },
-      dismissible: dismissible   // временное окошко закрывается нажатием мимо (см. onOutsideClick)
+      dismissible: dismissible,  // временное окошко закрывается нажатием мимо (см. onOutsideClick)
+      // мини-профиль (people.js)
+      person: person, memberInfo: memberInfo, challenge: challenge, go: go,
+      zodiac: function (code) { var z = zodiacOf(code); return z ? { name: z[2], icon: constellation(z[0], 20) } : null; }
     };
     if (window.Duels) window.Duels.init();
     if (window.Durak) window.Durak.init();

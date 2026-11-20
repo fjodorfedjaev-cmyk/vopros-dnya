@@ -352,12 +352,24 @@
     return m;
   }
 
+  // Имя и аватарка игрока: нажал — мини-профиль. Ботов не открываем; в свой ход или пока выбираешь карты — сначала сходи.
+  function canPeek() {
+    var st = K.st;
+    if (st && st.my && st.my.place == null && ((st.status === 'play' && st.turn === st.my.seat) || (st.status === 'choose' && !st.my.chosen))) {
+      A.toast('Сначала сходи'); return false;
+    }
+    return true;
+  }
+  function who(p, kids, cls) {
+    if (p.bot || !p.id || !A.person) return el('span', { class: cls || null }, kids);
+    return A.person(p.id, kids, { cls: cls, label: 'Профиль: ' + p.name, guard: canPeek });
+  }
+
   function seatsList(st, mark) {
     return el('div', { class: 'dk-seats' }, playersBySeat().map(function (p) {
       var tag = mark(p);
       return el('div', { class: 'dk-seat' + (tag.on ? ' on' : '') }, [
-        A.avatar(p.name, p.color, true, p.avatar),
-        el('span', { class: 'dk-seat-name', text: p.me ? p.name + ' (ты)' : p.name }),
+        who(p, [A.avatar(p.name, p.color, true, p.avatar), el('span', { class: 'dk-seat-name', text: p.me ? p.name + ' (ты)' : p.name })], 'dk-who'),
         tag.text ? el('span', { class: 'dk-seat-tag', text: tag.text }) : null,
         tag.remove ? el('button', { type: 'button', class: 'x dk-seat-x', 'aria-label': 'Убрать ' + p.name, text: '×', disabled: K.busy,
           onclick: function () { act('durak_remove_bot', { p_bot: tag.remove }); } }) : null
@@ -457,10 +469,10 @@
     var tag = p.place != null ? outText(p) : choosing && !p.chosen ? 'выбирает' : '';
     var dim = p.place == null && (p.hand > 0 || choosing);
     return el('div', { class: 'dk-opp at-' + spot + (turn ? ' turn' : '') + (p.place != null ? ' out' : ''), 'data-seat': String(p.seat), style: 'grid-area:' + spot }, [
-      el('div', { class: 'dk-opp-head' }, [
+      who(p, [
         A.avatar(p.name, p.color, true, p.avatar),
         el('span', { class: 'dk-opp-name', text: p.name })
-      ]),
+      ], 'dk-opp-head'),
       p.place == null && p.hand > 0 ? fanEl(p.hand) : null,
       tableSlots(p, false, null, false, dim, Date.now() - (K.dropAt[p.seat] || 0) < 1500),
       tag ? el('span', { class: 'dk-opp-tag', text: tag }) : null,
@@ -674,8 +686,8 @@
       setText(money, st.stake ? (net > 0 ? '+' : net < 0 ? '−' : '') + coins(Math.abs(net)) : '');
       return el('div', { class: 'dk-pl' + (p.me ? ' me' : '') }, [
         el('span', { class: 'dk-pl-n', text: p.place === n ? 'дурак' : p.place + '.' }),
-        A.avatar(p.name, p.color, true, p.avatar),
-        el('span', { class: 'dk-pl-name', text: p.name + (p.out === 'afk' ? ' · по времени' : p.out === 'left' ? ' · выход' : '') }),
+        who(p, [A.avatar(p.name, p.color, true, p.avatar),
+          el('span', { class: 'dk-pl-name', text: p.name + (p.out === 'afk' ? ' · по времени' : p.out === 'left' ? ' · выход' : '') })], 'dk-who'),
         money
       ]);
     })));

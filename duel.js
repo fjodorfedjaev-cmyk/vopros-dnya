@@ -440,5 +440,7 @@
 
   // Помощники сайта (window.AppAPI) берём при первом же вызове: вкладка рисуется раньше, чем вызывается enter().
   function withApi(f) { return function () { if (!A) A = window.AppAPI; return f.apply(null, arguments); }; }
-  window.Duels = { section: withApi(section), screen: withApi(screen), isOpen: isOpen, enter: enter, leave: leave, open: withApi(openDuel), init: function () { A = window.AppAPI; } };
+  // Из мини-профиля «Вызвать на дуэль»: форма вызова сразу открыта и человек уже выбран (ставку вписывают сами)
+  function prefill(uid) { D.form = true; D.opp = uid || null; }
+  window.Duels = { section: withApi(section), screen: withApi(screen), isOpen: isOpen, enter: enter, leave: leave, open: withApi(openDuel), prefill: prefill, init: function () { A = window.AppAPI; } };
 })();

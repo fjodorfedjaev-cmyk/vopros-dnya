@@ -457,6 +457,13 @@
     return el('span', { class: 'pk-hole' + (big ? ' big' : '') + (p.folded ? ' folded' : '') + (kids.length ? '' : ' none'), 'data-hole': String(p.seat) }, kids);
   }
 
+  // Имя и аватарка игрока: нажал — мини-профиль. Ботов не открываем; в свой ход — сначала сходи.
+  function canPeek() {
+    var st = K.st;
+    if (st && st.status === 'play' && st.my && st.turn === st.my.seat) { A.toast('Сначала сходи'); return false; }
+    return true;
+  }
+
   function oppBox(p, st, spot) {
     var turn = st.status === 'play' && st.turn === p.seat;
     var win = winOf(st, p.seat);
@@ -468,7 +475,7 @@
     return el('div', { class: 'pk-opp at-' + spot + (turn ? ' turn' : '') + (p.in_hand && p.folded ? ' folded' : '') + (win > 0 ? ' won' : ''),
       'data-seat': String(p.seat), style: 'grid-area:' + spot }, [
       x,
-      el('div', { class: 'dk-opp-head' }, head),
+      !p.bot && p.id && A.person ? A.person(p.id, head, { cls: 'dk-opp-head', label: 'Профиль: ' + p.name, guard: canPeek }) : el('div', { class: 'dk-opp-head' }, head),
       holeEl(p, false),
       stackEl(p.stack),
       el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag }),

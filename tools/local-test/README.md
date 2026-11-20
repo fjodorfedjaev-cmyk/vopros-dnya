@@ -19,6 +19,8 @@
 | `poker-players.js` | «Покер»: 2–6 живых игроков за одним столом через весь сайт; в конце все встают — монеты всех сходятся до копейки. |
 | `cards-stub.sql` | Дополнительные заглушки для «Коллекции» и «Лавки» (`auth.users`, `suggestions`). Ставится сразу после `stub.sql`. |
 | `market-bids.js` | «Лавка: рынок и заявки» — продавец и покупатель через весь сайт: каталог и фильтры, страница карточки, заявка (монеты откладываются), «Продать сразу», покупка выбранного номера, заявка дороже лота — «Купить сразу», «Мои сделки», отмена заявки; монеты сходятся. |
+| `people.js` | «Мини-профиль»: из Участников — окно с аватаркой, знаком, «с нами с …», «сегодня», плитками, витриной (карточка крупно), играми и счётом ваших дуэлей; свой профиль; «Вызвать на дуэль» → Сектор с выбранным человеком; имя в ленте ответов и у продавца в Лавке. |
+| `profile-stub.sql`, `profile-seed.sql` | Заглушки для мини-профиля (ответы, реакции, комментарии, `member_stats`, сессии Сектора и Зигзага) и данные для проверки (серия, рекорды, дуэли, витрина друга). |
 | `coll-redesign.js` | «Коллекция»: блок открытия, «Что может выпасть», открытие по нажатиям и экран результата, «На витрину», альбом (фильтры, «Новая», силуэты), панель карточки снизу, перетаскивание на витрину, витрина в Профиле, выбор карточки в «Лавке». Нужна свежая база. |
 
 ## Как запустить (Claude делает это сам перед выкладкой)
@@ -49,6 +51,18 @@ psql -h /tmp -p 5433 -U postgres -d coll -c "insert into public.points_ledger (u
 DB=coll node server.js &
 DB=coll node coll-redesign.js
 DB=coll node market-bids.js      # на свежей базе
+```
+
+Мини-профиль (база `pf`):
+
+```bash
+./db.sh pf cards-stub.sql profile-stub.sql ../../supabase/cards/01_cards.sql ../../supabase/market/01_market.sql \
+  ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql ../../supabase/poker/02_play_money.sql \
+  ../../supabase/market/02_bids.sql ../../supabase/duels/01_duels.sql ../../supabase/members/02_member_profile.sql
+psql -h /tmp -p 5433 -U postgres -d pf -f profile-seed.sql
+DB=pf node server.js &
+DB=pf node people.js
+psql -h /tmp -p 5433 -U postgres -d pf -f ../../supabase/members/99_profile_test.sql   # тест базы (сам откатывается)
 ```
 
 Тест заявок (SQL с откатом): на базе `t` с теми же миграциями — `psql … -d t -f ../../supabase/market/99_bids_test.sql`.

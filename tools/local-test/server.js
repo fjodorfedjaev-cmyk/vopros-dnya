@@ -22,7 +22,7 @@ function lit(v) {
   return "'" + String(v).replace(/'/g, "''") + "'";
 }
 // функции, которые возвращают таблицу (PostgREST отдаёт их массивом)
-const SETS = { my_points: true, member_coins: true,
+const SETS = { my_points: true, member_coins: true, member_stats: true,
   cards_deck: true, cards_catalog: true, cards_my: true, cards_open: true, cards_melt: true, cards_showcases: true, cards_members: true,
   market_buy: true, market_lots: true, market_sell: true, market_bid: true, market_bid_reprice: true, market_bids: true, market_history: true };
 http.createServer(async (req, res) => {

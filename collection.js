@@ -939,18 +939,21 @@
     if (lots.length || mineLots.length) {
       var offers = el('div', { class: 'mk-offers', role: 'radiogroup', 'aria-label': 'Предложения продавцов' });
       lots.forEach(function (l) {
-        var row = el('button', {
-          type: 'button', class: 'mk-offer', role: 'radio', 'aria-checked': String(l === sel),
+        // строка — выбор номера; имя продавца внутри — отдельная кнопка: открывает его мини-профиль
+        function choose() {
+          sel = l;
+          offers.querySelectorAll('.mk-offer[role="radio"]').forEach(function (n) { n.setAttribute('aria-checked', String(n === row)); });
+          setBuy();
+        }
+        var whoKids = [A.avatar ? A.avatar(l.seller_name, l.seller_color, true, l.seller_avatar) : null, el('span', { class: 'mk-who-name', text: l.seller_name || 'Без имени' })];
+        var row = el('div', {
+          class: 'mk-offer', role: 'radio', tabindex: '0', 'aria-checked': String(l === sel),
           'aria-label': '№' + l.serial + ', ' + money(l.price) + ' монет, продаёт ' + (l.seller_name || 'кто-то'),
-          onclick: function () {
-            sel = l;
-            offers.querySelectorAll('.mk-offer[role="radio"]').forEach(function (n) { n.setAttribute('aria-checked', String(n === row)); });
-            setBuy();
-          }
+          onclick: choose, onkeydown: function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); choose(); } }
         }, [
           el('span', { class: 'mk-radio', 'aria-hidden': 'true' }),
           el('span', { class: 'mk-offer-no', text: copyNo(c, l.serial) }),
-          el('span', { class: 'mk-who' }, [A.avatar ? A.avatar(l.seller_name, l.seller_color, true, l.seller_avatar) : null, el('span', { class: 'mk-who-name', text: l.seller_name || 'Без имени' })]),
+          l.seller_id && A.person ? A.person(l.seller_id, whoKids, { cls: 'mk-who', label: 'Профиль: ' + (l.seller_name || 'продавец') }) : el('span', { class: 'mk-who' }, whoKids),
           coinText(l.price)
         ]);
         row.lastChild.classList.add('mk-price');
@@ -1697,7 +1700,9 @@
   }
 
   /* ---------- витрина друга (из таблицы «Участники») ---------- */
+  // Раньше — окно с витриной друга; теперь открывается мини-профиль (people.js), там и витрина
   async function showFriend(userId, name) {
+    if (window.People) { window.People.open(userId); return; }
     A = window.AppAPI;
     var o = overlay('kc-overlay', 'Витрина: ' + name);
     o._cleanup = onKey(closeOverlay);
