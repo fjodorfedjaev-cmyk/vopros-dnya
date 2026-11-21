@@ -200,7 +200,8 @@
       'Колода и рука кончились — играешь открытыми со стола, потом закрытыми вслепую. Закрытая не подошла — забираешь стопку вместе с ней.',
       'На ход 30 секунд. Время вышло — стопка уходит тебе. Два раза подряд — вне игры, последнее место.',
       'Банк делят по местам: первый удваивает ставку, каждое следующее место получает меньше, дурак — ничего.',
-      '«Выйти» во время игры — поражение: ставка не вернётся.'
+      '«Выйти» во время игры — поражение: ставка не вернётся.',
+      'Если в комнате один человек, через минуту она закрывается — ставка возвращается.'
     ];
     return fold('rulesOpen', 'Правила', [el('ul', { class: 'dk-rules-list' }, items.map(function (t) { return el('li', { text: t }); }))], 'dk-rules');
   }
@@ -288,6 +289,11 @@
     K.rootEl.querySelectorAll('.dk-bar > i').forEach(function (n) {
       var ms = st.deadline_ms - (Date.now() + K.offset);
       n.style.width = Math.max(0, Math.min(100, ms / (total * 10))) + '%';
+    });
+    // один в комнате — через минуту она закроется
+    var alone = st.alone_ms && st.status === 'open' ? Math.max(0, Math.ceil((st.alone_ms - (Date.now() + K.offset)) / 1000)) : null;
+    K.rootEl.querySelectorAll('[data-alone]').forEach(function (n) {
+      n.textContent = alone == null ? '' : 'Закроется через ' + alone + ' с, если никто не зайдёт';
     });
   }
 
@@ -392,6 +398,7 @@
     } else if (st.status === 'open') {
       box.appendChild(el('p', { class: 'duel-big', text: n < 2 ? 'Ждём игроков' : 'В комнате ' + n + ' из 5' }));
       box.appendChild(stakeLine(st));
+      if (st.alone_ms) box.appendChild(el('p', { class: 'muted dk-alone', 'data-alone': '1' }));   // отсчёт — в updateTimers
       box.appendChild(seatsList(st, function (p) { return { text: p.creator ? 'создатель' : '', on: false }; }));
       if (st.creator) acts.push(el('button', { type: 'button', class: 'btn primary', text: 'Начать', disabled: n < 2 || K.busy, onclick: function () { act('durak_start'); } }));
       acts.push(el('button', { type: 'button', class: 'btn', text: st.stake ? 'Выйти — ставка вернётся' : 'Выйти', disabled: K.busy,
@@ -716,10 +723,16 @@
     if (st.status === 'open' || st.status === 'ready') body = waitBox(st);
     else if (st.status === 'choose' || st.status === 'play') body = playBox(st);
     else if (st.status === 'finished') body = resultBox(st);
-    else body = el('div', { class: 'card duel-lobby' }, [
-      el('p', { class: 'duel-big', text: 'Комната закрыта — ставки вернулись' }),
-      el('div', { class: 'duel-acts' }, [el('button', { type: 'button', class: 'btn', text: 'К комнатам', onclick: closeRoom })])
-    ]);
+    else {
+      // закрыта: один в комнате минуту — так и пишем
+      var lastLog = (st.log || [])[(st.log || []).length - 1];
+      var alone = lastLog && lastLog.kind === 'alone';
+      body = el('div', { class: 'card duel-lobby' }, [
+        el('p', { class: 'duel-big', text: alone ? 'Комната закрыта' : 'Комната закрыта — ставки вернулись' }),
+        alone ? el('p', { class: 'muted dk-alone', text: 'За минуту никто не зашёл' + (st.stake ? ' — ставка вернулась' : '') }) : null,
+        el('div', { class: 'duel-acts' }, [el('button', { type: 'button', class: 'btn', text: 'К комнатам', onclick: closeRoom })])
+      ].filter(Boolean));
+    }
     return st.status === 'choose' || st.status === 'play' ? [gameBar(st), body] : [body];
   }
 
