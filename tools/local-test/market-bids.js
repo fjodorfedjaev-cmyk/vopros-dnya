@@ -1,5 +1,5 @@
 // Сценарий «Лавка: рынок и заявки» — два участника через весь сайт:
-// каталог и фильтры, страница карточки, заявка (монеты откладываются), «Продать сразу» в заявку,
+// каталог, кнопки «Коллекция» / «Цена» / «Редкость», страница карточки, заявка (монеты откладываются), «Продать сразу» в заявку,
 // покупка выбранного номера, заявка дороже лота — «Купить сразу», выставление, «Мои сделки» (Продаю / Покупаю / История), отмена заявки.
 // База: как для coll-redesign.js, плюс ../../supabase/market/02_bids.sql. Запуск: DB=coll node market-bids.js
 const { execFileSync } = require('child_process');
@@ -39,27 +39,24 @@ async function twice(p, loc) { const h = await loc.elementHandle(); await h.clic
   await shot(pf, 'mb_catalog');
   ok('каталог: 20 плиток, без надписи «N видов · N в продаже», «В продаже пока ничего нет»', await pf.locator('.mk-tl').count() === 20
     && !(await pf.locator('.mk-cat .mk-sum').count()) && (await pf.locator('.mk-none').textContent()).includes('В продаже пока ничего нет'));
-  ok('первая плитка по редкости — легендарная «Солнце дня»', (await pf.locator('.mk-tl').first().textContent()).includes('Солнце дня'));
-  await pf.locator('.mk-sortbtn').click();
-  await pf.waitForSelector('.kb-sheet .mk-radios');
-  await pf.locator('.kb-sheet .mk-rar', { hasText: 'Легендарная' }).click();
-  await pf.locator('.kb-sheet .mk-radio-row', { hasText: 'Начало' }).click();
+  ok('без продаж и сортировок — порядок альбома: первая плитка обычная', (await pf.locator('.mk-tl').first().getAttribute('class')).includes('r-common'));
+  const chips = await pf.locator('.mk-ctrl .mk-chip').allInnerTexts();
+  ok('кнопки над плитками: Коллекция ▾, Цена ⇅, Редкость ⇅ (старой «Сортировки» и фильтра редкостей нет)',
+    chips.map((t) => t.replace(/\s+/g, ' ').trim()).join('|') === 'Коллекция ▾|Цена ⇅|Редкость ⇅' && !(await pf.locator('.mk-sortbtn, .mk-ftag').count()));
+  // коллекция «Начало»: окошко закрывается само, кнопка подсвечена; все 20 карточек — из «Начала»
+  await pf.locator('.mk-ctrl .mk-chip').nth(0).click();
+  await pf.locator('.mk-pop .mk-pop-row', { hasText: 'Начало' }).click();
   await B.sleep(200);
   await shot(pf, 'mb_sort_sheet');
-  await pf.getByRole('button', { name: 'Готово' }).click();
+  const serOn = (await pf.locator('.mk-ctrl .mk-chip').nth(0).getAttribute('class')).includes(' on');
+  const inSer = await pf.locator('.mk-tl').count();
+  await pf.locator('.mk-ctrl .mk-chip').nth(0).click();
+  await pf.locator('.mk-pop .mk-pop-row', { hasText: 'Все коллекции' }).click();
   await B.sleep(200);
-  const legend = await pf.locator('.mk-tl').count();
-  const tags = await pf.locator('.mk-ftag').count();
-  const badge = (await pf.locator('.mk-sortbtn .seg-badge').textContent()).trim();
-  await pf.locator('.mk-ftag', { hasText: 'Легендарная' }).click();
-  await pf.locator('.mk-ftag').first().click();
   const zero = await pf.locator('.mk-tl', { hasText: 'Ракета' }).locator('.mk-tl-foot').innerText();
-  ok('фильтры: коллекция «Начало» + легендарная — 1 плитка, 2 метки, на кнопке «2»; метки снимаются; кнопок «В продаже» и «Нет у меня» нет; нет в продаже — «0» и «—»',
-    legend === 1 && tags === 2 && badge === '2' && await pf.locator('.mk-ftag').count() === 0 && await pf.locator('.mk-tl').count() === 20
+  ok('коллекция «Начало» — кнопка подсвечена, 20 плиток; «Все коллекции» — снова 20; кнопок «В продаже» и «Нет у меня» нет; нет в продаже — «0» и «—»',
+    serOn && inSer === 20 && !(await pf.locator('.mk-pop').count()) && await pf.locator('.mk-tl').count() === 20
     && !(await pf.locator('.ka-filter').count()) && /^0\s*—$/.test(zero.trim()));
-  await pf.locator('.mk-sortbtn').click();
-  ok('в сортировке нет «Больше в продаже»', !(await pf.locator('.kb-sheet .mk-radio-row', { hasText: 'Больше в продаже' }).count()) && await pf.locator('.kb-sheet .mk-radio-row').count() === 5);
-  await pf.getByRole('button', { name: 'Готово' }).click();
 
   // 2. заявка покупателя на Ракету за 100
   await pf.locator('.mk-tl', { hasText: 'Ракета' }).click();
@@ -121,12 +118,11 @@ async function twice(p, loc) { const h = await loc.elementHandle(); await h.clic
   const tileTxt = await pf.locator('.mk-tl', { hasText: 'Ракета' }).textContent();
   const tileFoot = (await pf.locator('.mk-tl', { hasText: 'Ракета' }).locator('.mk-tl-foot').innerText()).trim();
   ok('плитка Ракеты: «2» и «120» (без «шт.» и «от»), без меток', /^2\s+120/.test(tileFoot) && !/шт|от|у тебя|твой лот|заявка/.test(tileTxt));
-  await pf.locator('.mk-sortbtn').click();
-  await pf.locator('.kb-sheet .mk-radio-row', { hasText: 'Сначала дешёвые' }).click();
-  await pf.getByRole('button', { name: 'Готово' }).click();
+  await pf.locator('.mk-ctrl .mk-chip').nth(1).click();
+  await pf.locator('.mk-ctrl .mk-chip').nth(1).click();
   await B.sleep(200);
-  ok('«Сначала дешёвые» — первой Ракета (единственная в продаже), кнопка «Сортировка: Сначала дешёвые»',
-    (await pf.locator('.mk-tl').first().textContent()).includes('Ракета') && (await pf.locator('.mk-sortbtn').textContent()).includes('Сначала дешёвые'));
+  ok('«Цена ↑» (два нажатия) — первой Ракета (единственная в продаже)',
+    (await pf.locator('.mk-tl').first().textContent()).includes('Ракета') && (await pf.locator('.mk-ctrl .mk-chip').nth(1).innerText()).replace(/\s+/g, ' ').trim() === 'Цена ↑');
   await shot(pf, 'mb_grid');
   await pf.locator('.mk-tl', { hasText: 'Ракета' }).click();
   await pf.waitForSelector('.mk-offers');

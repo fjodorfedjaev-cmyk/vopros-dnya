@@ -16,8 +16,8 @@
   var K = { catalog: null, my: null, deck: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
             mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0,
             mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'),
-            mkSort: saved('mk-sort', ['rarity', 'price_desc', 'price_asc'], 'rarity'),
-            mkSeries: saved('mk-series', ['all', '1'], 'all') === 'all' ? 'all' : 1, mkRars: [],
+            mkSortRar: saved('mk-sort-rar', ['desc', 'asc'], ''), mkSortPrice: saved('mk-sort-price', ['desc', 'asc'], ''), mkPop: null,
+            mkSeries: saved('mk-series', ['all', '1'], 'all') === 'all' ? 'all' : 1,
             dealsTab: 'sell', sellDup: false };
   // выбор, запомненный на этом телефоне (если нет или чужое значение — по умолчанию)
   function saved(key, allowed, def) { try { var v = localStorage.getItem(key); return allowed.indexOf(v) >= 0 ? v : def; } catch (e) { return def; } }
@@ -843,54 +843,88 @@
 
   /* ---------- «Рынок»: каталог — мини-квадратики (как маркет в Standoff 2) ---------- */
   // Плитка: рисунок на фоне цвета редкости, полоска с названием, сколько в продаже (число) и самая низкая цена.
-  // Сортировка (по редкости / дорогие / дешёвые), коллекция и редкость — в панели «Сортировка».
-  var MK_SORTS = [['rarity', 'По редкости'], ['price_desc', 'Сначала дорогие'], ['price_asc', 'Сначала дешёвые']];
-  function sortName(k) { return (MK_SORTS.filter(function (x) { return x[0] === k; })[0] || MK_SORTS[0])[1]; }
+  // Над плитками три кнопки (21.11): «Коллекция ▾» — фильтр с небольшим окошком под кнопкой (закрывается нажатием мимо);
+  // «Цена» и «Редкость» — сортировки: нажатие переключает выкл → ↓ → ↑ → выкл. Включены обе — сначала по редкости, внутри по цене. Без сортировок: сверху то, что в продаже (свежие лоты первыми),
+  // дальше — по порядку альбома.
+  var MK_NEXT = { '': 'desc', desc: 'asc', asc: '' };
+  var MK_SORTS = {
+    mkSortRar: { key: 'mk-sort-rar', label: 'Редкость', desc: 'Сначала редкие', asc: 'Сначала обычные', off: 'Редкость: без сортировки' },
+    mkSortPrice: { key: 'mk-sort-price', label: 'Цена', desc: 'Сначала дорогие', asc: 'Сначала дешёвые', off: 'Цена: без сортировки' }
+  };
   // Коллекции (серии) карточек. Пока одна — «Начало»; следующие добавятся сюда сами из каталога.
   function seriesList() {
     var n = (K.catalog || []).length;
     return [{ id: SERIES, name: seriesName(), cards: n }];
   }
-  function filtersOn() { return (K.mkSeries !== 'all' ? 1 : 0) + K.mkRars.length; }
   function marketCards() {
     var minOf = function (c) { var l = allLots(c.card_id)[0]; return l ? cents(l.price) : null; };
+    // когда выставлен самый свежий лот этой карточки (0 — не продаётся)
+    var freshOf = function (c) { return allLots(c.card_id).reduce(function (t, l) { return Math.max(t, Date.parse(l.listed_at) || 1); }, 0); };
     var rank = function (c) { return R(c.rarity).rank; };
     var cards = K.catalog.filter(function (c) {
       if (K.mkSeries !== 'all' && SERIES !== K.mkSeries) return false;      // пока все карточки — из «Начала»
-      if (K.mkRars.length && K.mkRars.indexOf(c.rarity) < 0) return false;
       return true;
     });
+    var info = {};
+    cards.forEach(function (c) { info[c.card_id] = { min: minOf(c), fresh: freshOf(c) }; });
     return cards.sort(function (a, b) {
-      var ma = minOf(a), mb = minOf(b);
-      if (K.mkSort === 'price_desc' || K.mkSort === 'price_asc') {
-        if ((ma == null) !== (mb == null)) return ma == null ? 1 : -1;            // без продажи — в конце
-        if (ma != null && ma !== mb) return K.mkSort === 'price_desc' ? mb - ma : ma - mb;
+      var ia = info[a.card_id], ib = info[b.card_id];
+      if (K.mkSortRar) {
+        var d = rank(b) - rank(a);
+        if (d) return K.mkSortRar === 'desc' ? d : -d;                        // сначала редкие / сначала обычные
       }
-      return (rank(b) - rank(a)) || (a.sort - b.sort);                             // редкие — первыми
+      if (K.mkSortPrice) {
+        if ((ia.min == null) !== (ib.min == null)) return ia.min == null ? 1 : -1;   // без продажи — всегда в конце
+        if (ia.min != null && ia.min !== ib.min) return K.mkSortPrice === 'desc' ? ib.min - ia.min : ia.min - ib.min;
+      }
+      // по умолчанию: в продаже — сверху, свежие лоты первыми; остальные — по порядку альбома
+      if ((ia.fresh > 0) !== (ib.fresh > 0)) return ia.fresh > 0 ? -1 : 1;
+      if (ia.fresh !== ib.fresh) return ib.fresh - ia.fresh;
+      return byRarity(a, b);
     });
   }
-  function catalogView() {
-    var n = filtersOn();
-    var sortBtn = el('button', { type: 'button', class: 'mk-sortbtn', 'aria-haspopup': 'dialog', onclick: openSortSheet }, [
-      el('span', { class: 'mk-sort-ic', 'aria-hidden': 'true', text: '⇅' }),
-      el('span', { class: 'mk-sort-t' }, [el('small', { text: 'Сортировка' }), el('b', { text: sortName(K.mkSort) })]),
-      n ? el('span', { class: 'seg-badge', 'aria-label': 'фильтров: ' + n, text: String(n) }) : null,
-      el('span', { class: 'mk-sort-arr', 'aria-hidden': 'true', text: '▾' })
-    ]);
-    // выбранные коллекция и редкости — маленькими метками, нажал — убрал
-    var tags = [];
-    if (K.mkSeries !== 'all') tags.push(el('button', { type: 'button', class: 'mk-ftag', 'aria-label': 'Убрать фильтр: коллекция ' + seriesName(),
-      onclick: function () { K.mkSeries = 'all'; store('mk-series', 'all'); draw(); } }, ['«' + seriesName() + '»', el('span', { 'aria-hidden': 'true', text: '×' })]));
-    K.mkRars.forEach(function (r) {
-      tags.push(el('button', { type: 'button', class: 'mk-ftag', 'aria-label': 'Убрать фильтр: ' + R(r).name,
-        onclick: function () { K.mkRars = K.mkRars.filter(function (x) { return x !== r; }); draw(); } },
-        [el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }), R(r).name, el('span', { 'aria-hidden': 'true', text: '×' })]));
+  // Кнопка-сортировка: нажатие — следующее состояние, на кнопке стрелка, коротко всплывает, что выбрано
+  function sortChip(k) {
+    var m = MK_SORTS[k], st = K[k] || '';
+    return el('button', {
+      type: 'button', class: 'mk-chip mk-sorter' + (st ? ' on' : ''),
+      'aria-label': m.label + ': ' + (st ? m[st].toLowerCase() : 'без сортировки') + '. Нажми, чтобы переключить',
+      onclick: function () {
+        var next = MK_NEXT[st];
+        K[k] = next; store(m.key, next); K.mkPop = null; draw();
+        if (A && A.toast) A.toast(next ? m[next] : m.off);
+      }
+    }, [el('span', { text: m.label }), el('span', { class: 'mk-chip-ic', 'aria-hidden': 'true', text: st === 'desc' ? '↓' : st === 'asc' ? '↑' : '⇅' })]);
+  }
+  // Кнопка «Коллекция» с окошком под ней (нажал ещё раз или мимо — окошко закрылось; выбрал — тоже)
+  function seriesChip() {
+    var open = K.mkPop === 'series', on = K.mkSeries !== 'all';
+    var btn = el('button', {
+      type: 'button', class: 'mk-chip mk-popbtn' + (on ? ' on' : '') + (open ? ' open' : ''),
+      'data-dismiss-trigger': 'mk-pop', 'aria-haspopup': 'true', 'aria-expanded': String(open),
+      onclick: function () { K.mkPop = open ? null : 'series'; draw(); }
+    }, [el('span', { text: on ? '«' + seriesName() + '»' : 'Коллекция' }), el('span', { class: 'mk-chip-ic', 'aria-hidden': 'true', text: '▾' })]);
+    var rows = [{ v: 'all', t: 'Все коллекции' }].concat(seriesList().map(function (x) {
+      return { v: x.id, t: '«' + x.name + '»', sub: x.cards + ' ' + plural(x.cards, 'карточка', 'карточки', 'карточек'),
+               icon: el('span', { class: 'mk-ser-ic', 'aria-hidden': 'true' }, [window.Cards.art('back')]) };
+    })).map(function (x) {
+      return el('button', { type: 'button', class: 'mk-pop-row', role: 'radio', 'aria-checked': String(K.mkSeries === x.v), onclick: function () {
+        K.mkSeries = x.v; store('mk-series', String(x.v)); K.mkPop = null; draw();
+      } }, [el('span', { class: 'mk-radio', 'aria-hidden': 'true' }), x.icon || null, el('span', { class: 'mk-pop-t', text: x.t }), x.sub ? el('small', { text: x.sub }) : null]);
     });
+    return el('span', { class: 'mk-popwrap' }, [btn,
+      open ? el('div', { class: 'mk-pop', 'data-dismiss': 'mk-pop', role: 'radiogroup', 'aria-label': 'Коллекция' }, rows) : null]);
+  }
+  function catalogView() {
+    if (A && A.dismissible) A.dismissible('mk-pop', function () { if (K.mkPop) { K.mkPop = null; draw(); } });
     var cards = marketCards();
     var forSale = (K.lots || []).length;
     return [el('section', { class: 'sect mk-cat' }, [
-      el('div', { class: 'mk-ctrl' }, [sortBtn]),
-      tags.length ? el('div', { class: 'mk-ftags' }, tags) : null,
+      el('div', { class: 'mk-ctrl' }, [
+        seriesChip(),
+        sortChip('mkSortPrice'),
+        sortChip('mkSortRar')
+      ]),
       forSale ? null : el('p', { class: 'kc-note mk-none', text: 'В продаже пока ничего нет — можно создать заявку.' }),
       cards.length ? el('div', { class: 'mk-grid' }, cards.map(catTile)) : el('p', { class: 'kc-note mk-empty', text: 'Под эти фильтры ничего нет.' })
     ])];
@@ -913,47 +947,6 @@
       el('span', { class: 'mk-tl-name', text: c.name }),
       el('span', { class: 'mk-tl-foot' + (lots.length ? '' : ' none') }, [el('span', { class: 'mk-tl-n', text: String(lots.length) }), price])
     ]);
-  }
-
-  // Панель «Сортировка»: как сортировать, коллекция, редкость. Меняется сразу, «Готово» закрывает.
-  function openSortSheet() {
-    var sheet = bottomSheet('Сортировка и фильтр');
-    sheet.classList.add('mk-sheet');
-    function radio(group, list, cur, pick) {
-      return el('div', { class: 'mk-radios', role: 'radiogroup', 'aria-label': group }, list.map(function (x) {
-        return el('button', { type: 'button', class: 'mk-radio-row', role: 'radio', 'aria-checked': String(cur === x.v), onclick: function () { pick(x.v); } }, [
-          el('span', { class: 'mk-radio', 'aria-hidden': 'true' }), x.icon || null, el('span', { class: 'mk-radio-t', text: x.t }), x.sub ? el('small', { text: x.sub }) : null
-        ]);
-      }));
-    }
-    function body() {
-      var series = seriesList();
-      sheet.replaceChildren(
-        el('span', { class: 'kb-grip', 'aria-hidden': 'true' }),
-        el('button', { type: 'button', class: 'kb-close', 'aria-label': 'Закрыть', text: '×', onclick: closeOverlay }),
-        el('h2', { class: 'kb-title', text: 'Сортировка' }),
-        radio('Сортировать', MK_SORTS.map(function (x) { return { v: x[0], t: x[1] }; }), K.mkSort, function (v) { K.mkSort = v; store('mk-sort', v); draw(); body(); }),
-        el('h3', { class: 'mk-h', text: 'Коллекция' }),
-        radio('Коллекция', [{ v: 'all', t: 'Все коллекции' }].concat(series.map(function (s) { return { v: s.id, t: '«' + s.name + '»', sub: s.cards + ' ' + plural(s.cards, 'карточка', 'карточки', 'карточек'),
-          icon: el('span', { class: 'mk-ser-ic', 'aria-hidden': 'true' }, [window.Cards.art('back')]) }; })),
-          K.mkSeries, function (v) { K.mkSeries = v; store('mk-series', String(v)); draw(); body(); }),
-        el('h3', { class: 'mk-h', text: 'Редкость' }),
-        el('div', { class: 'mk-rars mk-rars-wrap', role: 'group', 'aria-label': 'Редкость' }, window.Cards.ORDER.map(function (r) {
-          var on = K.mkRars.indexOf(r) >= 0;
-          return el('button', { type: 'button', class: 'mk-rar', 'aria-pressed': String(on), onclick: function () {
-            K.mkRars = on ? K.mkRars.filter(function (x) { return x !== r; }) : K.mkRars.concat([r]);
-            draw(); body();
-          } }, [el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }), R(r).name]);
-        })),
-        el('div', { class: 'kc-actions mk-sort-acts' }, [
-          el('button', { type: 'button', class: 'btn primary', text: 'Готово', onclick: closeOverlay }),
-          el('button', { type: 'button', class: 'btn mk-back', text: 'Сбросить', disabled: K.mkSort === 'rarity' && !filtersOn(), onclick: function () {
-            K.mkSort = 'rarity'; K.mkSeries = 'all'; K.mkRars = []; store('mk-sort', 'rarity'); store('mk-series', 'all'); draw(); body();
-          } })
-        ])
-      );
-    }
-    body();
   }
 
   /* ---------- страница карточки на рынке ---------- */

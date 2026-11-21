@@ -2004,19 +2004,23 @@ body.pf-lock { overflow: hidden; }
 .pf .kb-info { align-self: center; }
 
 /* Лавка → Рынок: мини-квадратики, сортировка и фильтр (20.11, по мотивам маркета Standoff 2) */
-.mk-ctrl { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.mk-sortbtn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 12px 4px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: left; }
-.mk-sort-ic { font-size: 16px; color: var(--accent); }
-.mk-sort-t { display: flex; flex-direction: column; line-height: 1.15; }
-.mk-sort-t small { font-size: 11px; color: var(--muted); }
-.mk-sort-t b { font-size: 14px; font-weight: 600; white-space: nowrap; }
-.mk-sort-arr { color: var(--muted); font-size: 12px; }
-.mk-sortbtn .seg-badge { margin-left: 0; }
-.mk-sortbtn { flex: none; }
+/* Рынок: над плитками «Коллекция ▾» (окошко под кнопкой) и сортировки «Цена», «Редкость» (нажатием) */
+.mk-ctrl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mk-popwrap { position: relative; display: inline-flex; }
+.mk-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 38px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 500 13px var(--font-body); white-space: nowrap; }
+.mk-chip-ic { color: var(--muted); font-size: 12px; line-height: 1; }
+.mk-popbtn.on, .mk-popbtn.open { border-color: var(--accent); }
+.mk-popbtn.on { background: rgba(242, 120, 44, 0.12); }
+.mk-sorter.on { background: var(--btn); border-color: var(--btn); color: #fff; }   /* ширина та же, что выключенной — ряд не прыгает */
+.mk-sorter.on .mk-chip-ic { color: #fff; }
+.mk-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 212px; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
+.mk-pop-row { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 6px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); font: 500 14px var(--font-body); text-align: left; white-space: nowrap; }
+.mk-pop-row:active { background: rgba(255, 255, 255, 0.05); }
+.mk-pop-row[aria-checked="true"] { background: rgba(242, 120, 44, 0.08); }
+.mk-pop-row small { margin-left: auto; padding-left: 10px; color: var(--muted); font-size: 12px; }
+.mk-pop-row .mk-radio { flex: none; }
+.mk-pop-row[aria-checked="true"] .mk-radio { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
 .mk-ctrl .mk-sum { flex: 1; min-width: 0; text-align: right; font-size: 11.5px; }
-.mk-ftags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
-.mk-ftag { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid rgba(242, 120, 44, 0.45); background: rgba(242, 120, 44, 0.1); color: var(--ink); font: 500 12.5px var(--font-body); }
-.mk-ftag > span:last-child { color: var(--muted); font-size: 15px; line-height: 1; }
 .mk-none { text-align: left; margin-top: -4px; }
 .mk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .mk-tl { display: flex; flex-direction: column; min-width: 0; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--kc-line) 55%, transparent);
