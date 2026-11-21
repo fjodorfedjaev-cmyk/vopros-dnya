@@ -21,7 +21,7 @@
 | `poker-combo-ui.js` | «Покер»: подсветка на экране — стол ставится в нужное положение прямо в базе: две пары и стрит с тузом снизу в раздаче, после паса — пусто, вскрытие с победой бота (подсвечен победитель, моё название серое), флеш из шести черв. |
 | `poker-chips.js` | «Покер»: колода, бита и куча фишек — стол в нужном положении (над общими картами колода слева, банк кучей посередине, бита справа; в куче и банк, и ставки круга; ставки — подписи суммы; бита считает сожжённые карты и пасы; большой банк — 40 фишек в 8 стопках, общие карты не сдвигаются); живая игра против ботов — каждый полёт записывается (откуда → куда): в руки и на стол — только из колоды, сжигание (колода → бита), пасы и конец раздачи — в биту, бита → колода перед раздачей, фишки — из стопок сразу в банк, банк — победителю; мой пас — рамка пустая. Кадры — `shots/pk_fx_*.png`. |
 | `poker-raise.js` | «Покер»: сумму повышения набирают на клавиатуре — «−» / «+» на 1 ББ, буквы не набираются, вне границ — «От … до …» вместо кнопки, ползунок следует за набранным, обновление стола не стирает набранное, Enter — повысить ровно до набранного. |
-| `poker-no-clock.js` | «Покер»: время на ход не ограничено — мой ход «идёт» 2 минуты: секунд и полоски нет, база ничего за меня не делает, потом ход проходит. |
+| `poker-clock.js` | «Покер»: на ход 1 минута и один за столом. Двое живых за столом на монеты: один за новым столом — «Ждём игроков» и «закроется через N с»; сел второй — отсчёт пропал; в свой ход — «Твой ход», секунды (~60) и полоска, у соперника — тонкая полоска; время вышло — база сходила за игрока (пас или чек, пропуск 1); второй вышел — снова отсчёт; минута — «Стол закрыт» и «За минуту никто не сел…», монеты двоих сошлись. |
 | `cards-stub.sql` | Дополнительные заглушки для «Коллекции» и «Лавки» (`auth.users`, `suggestions`). Ставится сразу после `stub.sql`. |
 | `market-bids.js` | «Лавка: рынок и заявки» — продавец и покупатель через весь сайт: каталог мини-квадратиками, сортировка, коллекция и редкость, метки фильтров, страница карточки, заявка (монеты откладываются), «Продать сразу», покупка выбранного номера, заявка дороже лота — «Купить сразу», «Мои сделки», отмена заявки; монеты сходятся. |
 | `suggest-kinds.js` | «Свой вопрос» по видам: в очереди админа и в «Моих предложениях» — только выбранный вид (Вопрос / Слово / Выбор), цифры на переключателе и на кнопке «Предложить», поля не растягиваются рукой и сами растут под текст. Данные — через localStorage `mock-rpc`. |
@@ -40,19 +40,20 @@ node durak-players.js 5 --afk    # пятеро, один не ходит — п
 node durak-bots.js 3             # админ против трёх ботов
 ```
 
-«Покер» (база — те же миграции «Дурака» и `../../supabase/poker/01_poker.sql`):
+«Покер» (база — те же миграции «Дурака» и все миграции покера `../../supabase/poker/0[1-4]*.sql`):
 
 ```bash
-./db.sh e2e ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql ../../supabase/poker/02_play_money.sql ../../supabase/poker/03_no_clock.sql
+./db.sh e2e ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/0[1-4]*.sql
 node poker-bots.js 5 6           # админ против пяти ботов, 6 раздач
 node poker-players.js 6 4        # шестеро живых, 4 раздачи
+node poker-clock.js              # на ход 1 минута; один за столом — стол закрывается через минуту
 ```
 
 «Коллекция» и всё сразу (одна база на все сценарии; `DB=` у сценариев должен совпадать с базой сервера):
 
 ```bash
 ./db.sh coll cards-stub.sql ../../supabase/cards/01_cards.sql ../../supabase/market/01_market.sql \
-  ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql ../../supabase/poker/02_play_money.sql ../../supabase/poker/03_no_clock.sql ../../supabase/market/02_bids.sql
+  ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/0[1-4]*.sql ../../supabase/market/02_bids.sql
 psql -h /tmp -p 5433 -U postgres -d coll -c "insert into public.points_ledger (user_id, amount, reason, ref) select id, 5000 - public.coins_of(id)::int, 'game', 'test:coins' from public.profiles"
 DB=coll node server.js &
 DB=coll node coll-redesign.js
@@ -63,7 +64,7 @@ DB=coll node market-bids.js      # на свежей базе
 
 ```bash
 ./db.sh pf cards-stub.sql profile-stub.sql ../../supabase/cards/01_cards.sql ../../supabase/market/01_market.sql \
-  ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql ../../supabase/poker/02_play_money.sql ../../supabase/poker/03_no_clock.sql \
+  ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/0[1-4]*.sql \
   ../../supabase/market/02_bids.sql ../../supabase/duels/01_duels.sql ../../supabase/members/02_member_profile.sql
 psql -h /tmp -p 5433 -U postgres -d pf -f profile-seed.sql
 DB=pf node server.js &
@@ -88,7 +89,7 @@ psql -h /tmp -p 5433 -U postgres -d pf -f ../../supabase/members/99_profile_test
 psql -h /tmp -p 5433 -U postgres -d t -1 -f ../../supabase/durak/99_test.sql
 ```
 
-«Покер»: `./db.sh t ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/01_poker.sql`, потом `99_test.sql` и `99_bots_test.sql` из `supabase/poker/`. После `03_no_clock.sql` (время на ход не ограничено) — `99_no_clock_test.sql`; в старом `99_test.sql` с ней падает только проверка 9 (старое правило «30 секунд на ход»).
+«Покер»: `./db.sh t ../../supabase/durak/0[1-6]*.sql ../../supabase/poker/0[1-4]*.sql`, потом из `supabase/poker/` — `99_test.sql`, `99_bots_test.sql` и `99_clock_test.sql` (на ход 1 минута, один за столом минуту — стол закрывается).
 
 ## Для новой онлайн-функции
 

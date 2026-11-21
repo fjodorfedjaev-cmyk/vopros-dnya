@@ -11,7 +11,7 @@
   var K = {
     list: null, listErr: null, form: false, level: 1, buy: '', test: false, listPoll: null,
     sitFor: null, sitBuy: '',
-    open: null, st: null, poll: null,
+    open: null, st: null, offset: 0, rtt: 1e9, poll: null, timer: null,
     rootEl: null, sig: '', busy: false, msg: '', msgErr: false, admin: false,
     lastI: -1, anim: false, wasTurn: false,
     quitAsk: false, topAsk: false, topBuy: '', raise: false, raiseTo: null
@@ -338,7 +338,8 @@
       'Если у кого-то ва-банк меньше чужой ставки, этот игрок может выиграть только ту часть банка, которую уравнял.',
       'Равные комбинации — банк делится.',
       'За стол садишься с суммой от 40 до 100 больших блайндов — это твои фишки. Встаёшь — остаток сразу на баланс. Комиссии нет.',
-      'Время на ход не ограничено — стол ждёт. Если в раздаче сутки никто не ходит, она отменяется: поставленное возвращается, стол закрывается.'
+      'На ход 1 минута. Время вышло — чек или пас. Два раза подряд — место освобождается, фишки возвращаются.',
+      'Если за столом сидит один человек, через минуту стол закрывается — фишки возвращаются на баланс.'
     ];
     return fold('rulesOpen', 'Правила', [el('ul', { class: 'dk-rules-list' }, items.map(function (t) { return el('li', { text: t }); }))], 'dk-rules');
   }
@@ -346,7 +347,7 @@
   /* ---------- стол ---------- */
   function isOpen() { return !!K.open; }
   function openTable(id) {
-    K.open = id; K.st = null; K.sig = ''; K.msg = ''; K.lastI = -1; K.wasTurn = false;
+    K.open = id; K.st = null; K.sig = ''; K.msg = ''; K.rtt = 1e9; K.lastI = -1; K.wasTurn = false;
     K.quitAsk = false; K.topAsk = false; K.raise = false; K.raiseTo = null; K.sitFor = null;
     stopListPoll();
     paint(true);
@@ -363,9 +364,11 @@
   function startPoll() {
     stopPoll(); tick();
     K.poll = setInterval(function () { if (!document.hidden) tick(); }, 1000);
+    K.timer = setInterval(updateTimers, 250);
   }
   function stopPoll() {
     if (K.poll) { clearInterval(K.poll); K.poll = null; }
+    if (K.timer) { clearInterval(K.timer); K.timer = null; }
   }
   var ticking = false;
   async function tick() {
@@ -373,8 +376,11 @@
     ticking = true;
     var id = K.open;
     try {
+      var t0 = Date.now();
       var st = await rpc('poker_view', { p_table: id });
+      var t1 = Date.now();
       if (!st || K.open !== id) return;
+      if (t1 - t0 <= K.rtt) { K.rtt = t1 - t0; K.offset = st.server_ms - (t0 + t1) / 2; }
       var was = K.st;
       if (was && was.version === st.version && was.status === st.status && !!was.my === !!st.my) { K.st = st; return; }
       // сначала анимацией показываем, что произошло (на старом столе), потом рисуем новый
@@ -400,6 +406,26 @@
     } catch (e) {
       if (/poker_gone/.test(String(e && e.message))) { A.toast('Стола больше нет'); closeTable(); }
     } finally { ticking = false; }
+  }
+
+  // Время по часам базы (offset — разница с часами телефона, по самому быстрому ответу)
+  function msTo(at) { return at ? at - (Date.now() + K.offset) : null; }
+  function secondsLeft() {
+    var st = K.st;
+    if (!st || !st.deadline_ms || st.status !== 'play') return null;
+    return Math.max(0, Math.ceil(msTo(st.deadline_ms) / 1000));
+  }
+  // Каждые 0,25 с: секунды хода и полоски (на ход 60 секунд), отсчёт «стол закроется» у одного за столом
+  function updateTimers() {
+    var st = K.st;
+    if (!st || !K.rootEl) return;
+    var left = secondsLeft();
+    K.rootEl.querySelectorAll('[data-left]').forEach(function (n) { n.textContent = left == null ? '' : left + ' с'; });
+    K.rootEl.querySelectorAll('.pk-bar.on > i').forEach(function (n) {
+      n.style.width = Math.max(0, Math.min(100, msTo(st.deadline_ms) / 600)) + '%';
+    });
+    var alone = st.alone_ms && st.status === 'open' ? Math.max(0, Math.ceil(msTo(st.alone_ms) / 1000)) : null;
+    K.rootEl.querySelectorAll('[data-alone]').forEach(function (n) { n.textContent = alone == null ? '' : 'закроется через ' + alone + ' с'; });
   }
 
   async function act(name, args, done) {
@@ -588,7 +614,8 @@
       holeEl(p, false),
       stackEl(p.stack),
       el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag }),
-      betEl(p)
+      betEl(p),
+      el('div', { class: 'pk-bar sm' + (turn ? ' on' : ''), 'aria-hidden': 'true' }, [el('i')])
     ]);
   }
 
@@ -602,18 +629,21 @@
     var pot = el('span', { class: 'pk-pot' });
     if (st.status === 'play') {
       fillPot(pot, potTotal(st), st.bb);                       // в куче — и банк, и ставки этого круга
+    } else if (n < 2 && st.status === 'open') {
+      // один за столом на монеты — через минуту стол закроется (отсчёт обновляет updateTimers)
+      pot.classList.add('wait');
+      pot.appendChild(el('span', { text: st.test && st.creator ? 'Добавь бота' : 'Ждём игроков' }));
+      if (st.alone_ms) pot.appendChild(el('span', { class: 'pk-alone', 'data-alone': '1' }));
     } else if (st.result && st.result.showdown) {
       var names = [];
       (st.result.pots || []).forEach(function (p) { if (p.name && names.indexOf(p.name) < 0) names.push(p.name); });
       pot.classList.add('win'); pot.textContent = names.join(' · ');
-    } else if (n < 2 && st.status === 'open') {
-      pot.classList.add('wait'); pot.textContent = st.test && st.creator ? 'Добавь бота' : 'Ждём игроков';
     }
     var top = el('div', { class: 'pk-mid-top' }, [deckEl(), pot, bitaEl(st.status === 'play' || st.result ? bitaCount(st) : 0)]);
     return el('div', { class: 'pk-mid', style: 'grid-area:mid' }, [el('div', { class: 'pk-felt' }, [top, el('div', { class: 'pk-board' }, slots)])]);
   }
 
-  // Я: две карты, фишки, комбинация, ставка; в свой ход — «Твой ход» и кнопки (время на ход не ограничено). Строка и кнопки есть всегда — рамка не прыгает.
+  // Я: две карты, фишки, комбинация, ставка; в свой ход — «Твой ход», секунды и кнопки. Строка и кнопки есть всегда — рамка не прыгает.
   function meBox(st) {
     var my = st.my;
     var p = playerAt(my.seat) || {};
@@ -621,7 +651,7 @@
     var fresh = turn && !K.wasTurn;
     var win = winOf(st, my.seat);
     var line = el('div', { class: 'dk-turn-line' + (turn ? ' on' : '') + (fresh ? ' pop' : '') }, [
-      el('span', { class: 'dk-turn-lbl' }, [el('span', { class: 'dk-turn-t', text: 'Твой ход' })])
+      el('span', { class: 'dk-turn-lbl' }, [el('span', { class: 'dk-turn-t', text: 'Твой ход' }), el('span', { class: 'dk-turn-left', 'data-left': '1' })])
     ]);
     var box = el('div', { class: 'dk-me pk-me' + (turn ? ' turn' : '') + (fresh ? ' pop' : '') + (win > 0 ? ' won' : ''), 'data-seat': String(my.seat) });
     // спасовал — карты ушли в биту, в рамке пусто
@@ -637,6 +667,7 @@
       el('div', { class: 'pk-me-bot' }, [betEl(p), el('span', { class: 'pk-tag' + (win > 0 ? ' win' : p.act === 'allin' ? ' hot' : ''), text: tag })])
     ]);
     box.appendChild(el('div', { class: 'pk-me-row' }, [hole, info]));
+    box.appendChild(el('div', { class: 'pk-bar' + (turn ? ' on' : ''), 'aria-hidden': 'true' }, [el('i')]));
     box.appendChild(actionsEl(st, turn));
     if (K.raise && turn) box.appendChild(raisePop(st));
     if (K.msg) box.appendChild(msgLine());
@@ -727,11 +758,16 @@
     ]);
   }
 
-  // Не за столом: почему (фишки кончились / время вышло), «Сесть за стол» или «К столам»
+  // Не за столом: почему (фишки кончились / время вышло / один за столом минуту), «Сесть за стол» или «К столам»
   function sitBox(st) {
     var box = el('div', { class: 'card duel-lobby pk-out' });
     var g = st.gone;
-    if (st.status === 'closed') box.appendChild(el('p', { class: 'duel-big', text: 'Стол закрыт' }));
+    var lastLog = (st.log || [])[(st.log || []).length - 1];
+    if (st.status === 'closed') {
+      box.appendChild(el('p', { class: 'duel-big', text: 'Стол закрыт' }));
+      // сидел один минуту — так и пишем (тем, кто ушёл раньше, — просто «Стол закрыт»)
+      if (g && g.kind === 'closed' && lastLog && lastLog.kind === 'alone') box.appendChild(el('p', { class: 'muted pk-why', text: 'За минуту никто не сел за стол — фишки вернулись на баланс' }));
+    }
     else if (g && g.kind === 'bust') box.appendChild(el('p', { class: 'duel-big', text: 'Фишки закончились' }));
     else if (g && g.kind === 'afk') box.appendChild(el('p', { class: 'duel-big', text: 'Время на ход вышло два раза подряд — фишки вернулись на баланс' }));
     if (g && g.kind !== 'bust' && Number(g.net) !== 0) {
@@ -923,6 +959,7 @@
     if (!force && K.rootEl.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.type !== 'range') return;
     K.sig = sig;
     K.rootEl.replaceChildren.apply(K.rootEl, K.open ? tableScreen() : lobby());
+    updateTimers();
   }
 
   function view() {

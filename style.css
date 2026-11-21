@@ -1701,6 +1701,10 @@ button.dk-card { cursor: pointer; }
   background: rgba(242, 120, 44, 0.2); border: 1px solid rgba(242, 120, 44, 0.65); border-radius: 999px; padding: 0 7px;
 }
 .pk-bet.none { visibility: hidden; }
+.pk-bar { height: 3px; width: 100%; border-radius: 2px; background: var(--line); overflow: hidden; visibility: hidden; }
+.pk-bar.on { visibility: visible; }
+.pk-bar.sm { height: 2px; }
+.pk-bar > i { display: block; height: 100%; width: 100%; background: var(--accent); transition: width 0.25s linear; }
 
 .pk-mid { grid-area: mid; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0; width: 100%; min-width: 0; }
 .pk-board { display: flex; gap: 4px; justify-content: center; }
@@ -1730,6 +1734,8 @@ button.dk-card { cursor: pointer; }
 .pk-pot.win, .pk-pot.wait { justify-content: center; text-align: center; padding-bottom: 6px; box-sizing: border-box; }
 .pk-pot.win { color: var(--accent); font: 600 16px/1.15 var(--font-display); }
 .pk-pot.wait { color: var(--muted); font: 500 13px var(--font-mono); }
+.pk-alone { font-size: 11px; opacity: 0.85; }
+.pk-why { margin: 2px 0 0; font-size: 13px; text-align: center; }
 /* куча фишек: стопки по 5 и меньше, до 4 в ряд; передний ряд чуть ниже и сдвинут — как горка */
 .pk-pile { display: flex; flex-direction: column; align-items: center; }
 .pk-pile-row { display: flex; align-items: flex-end; gap: 1px; }
