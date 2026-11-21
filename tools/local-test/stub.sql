@@ -44,8 +44,32 @@ grant execute on function public.member_coins() to authenticated;
 -- уведомления: вместо отправки — запись в push_calls (видно, что ушло бы)
 create table public.push_subscriptions (endpoint text primary key, user_id uuid, p256dh text, auth text, active boolean default true, created_at timestamptz default now(), updated_at timestamptz);
 create table public.push_calls (payload jsonb, at timestamptz default clock_timestamp());
-create function public.push_call(p_payload jsonb) returns void language sql security definer set search_path to ''
-  as $$ insert into public.push_calls (payload) values (p_payload) $$;
+-- как на рабочей базе: push_call (её копия ниже) → net.http_post, который здесь только записывает запрос
+-- в очередь net.http_request_queue (как pg_net) и в push_calls
+create schema if not exists net;
+create table net.http_request_queue (id bigserial primary key, method text default 'POST', url text, headers jsonb, body bytea, timeout_milliseconds integer);
+create function net.http_post(url text, body jsonb default '{}', params jsonb default '{}', headers jsonb default '{}', timeout_milliseconds integer default 5000)
+  returns bigint language plpgsql as $$
+declare v bigint;
+begin
+  insert into net.http_request_queue (url, headers, body, timeout_milliseconds) values (url, headers, convert_to(body::text, 'utf8'), timeout_milliseconds) returning id into v;
+  insert into public.push_calls (payload) values (body);
+  return v;
+end $$;
+create function public.push_hook_secret() returns text language sql as $$ select 'local-secret' $$;
+-- push_call — как была на рабочей базе до 21.11 (supabase/push/01_no_card_games.sql добавляет в неё запрет для карточных игр)
+create function public.push_call(p_payload jsonb) returns void language plpgsql security definer set search_path to ''
+as $function$
+declare s text := public.push_hook_secret();
+begin
+  if s is null then return; end if;
+  perform net.http_post(
+    url := 'https://zbjhayjnxlvmpzxpiktg.supabase.co/functions/v1/push',
+    body := p_payload,
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-hook-secret', s),
+    timeout_milliseconds := 10000
+  );
+end $function$;
 
 -- шесть выдуманных участников (первый — админ), у каждого 1000 монет и подписка на уведомления
 insert into public.profiles (id, display_name, color, created_at)

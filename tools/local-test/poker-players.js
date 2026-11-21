@@ -55,8 +55,8 @@ const total = () => Number(q(`select sum(public.coins_of(id)) from public.profil
   await B.sleep(1500);
   const open = Number(q(`select count(*) from public.poker_tables where status <> 'closed'`));
   const c1 = total();
-  console.log(`${N} игроков: раздач ${hands - 1}+, ходов ${moves}; уведомлений о столе: ${push}; открытых столов после выхода: ${open}; монеты всех ${c0} → ${c1}`);
+  console.log(`${N} игроков: раздач ${hands - 1}+, ходов ${moves}; уведомлений о столе: ${push} (карточные игры их не шлют — должно быть 0); открытых столов после выхода: ${open}; монеты всех ${c0} → ${c1}`);
   console.log(errors.length ? errors.slice(0, 20).join('\n') : 'ошибок на страницах нет');
   await browser.close();
-  process.exit(hands > HANDS && open === 0 && c0 === c1 && !errors.length ? 0 : 1);
+  process.exit(hands > HANDS && open === 0 && c0 === c1 && push === '0' && !errors.length ? 0 : 1);
 })().catch(e => { console.error('СБОЙ', e); process.exit(1); });
