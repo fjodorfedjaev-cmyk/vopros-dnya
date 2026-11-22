@@ -2,6 +2,8 @@
    Все рисунки — свои SVG в квадрате 24×24, в стиле значков сайта (icons.js).
    Каждый раз id градиентов получают свою приставку: если на странице две одинаковые карточки,
    их градиенты не путаются. Разметка статичная (без данных от людей), поэтому innerHTML безопасен.
+   Анимации: у частей рисунков есть классы am-* (что двигать), а сами движения — в style.css
+   и включаются только внутри карточки .kc (плитки альбома и Лавки остаются неподвижными).
    Подключается после icons.js и до app.js. */
 (function () {
   'use strict';
@@ -70,66 +72,79 @@
 
     // ---- необычные ----
     rocket: { body: '<defs><linearGradient id="fl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE3A3"/><stop offset=".5" stop-color="#FFB347"/><stop offset="1" stop-color="#F2782C" stop-opacity="0"/></linearGradient></defs>' +
-      '<path d="M2.5 21.5C6 20.5 8.5 18.6 10.4 16" fill="none" stroke="#A0968E" stroke-width=".7" stroke-dasharray="1 1.3" stroke-linecap="round"/>' +
-      '<circle cx="4.2" cy="5.2" r=".5" fill="#A0968E"/><circle cx="19.5" cy="19.2" r=".45" fill="#A0968E"/><circle cx="7.5" cy="2.6" r=".35" fill="#A0968E"/>' +
-      '<g transform="rotate(40 13 11)"><path d="M11.7 17.2c.2 2 .7 3.3 1.3 4.4.6-1.1 1.1-2.4 1.3-4.4z" fill="url(#fl)"/>' +
+      '<path class="am-trail" d="M2.5 21.5C6 20.5 8.5 18.6 10.4 16" fill="none" stroke="#A0968E" stroke-width=".7" stroke-dasharray="1 1.3" stroke-linecap="round"/>' +
+      '<circle class="am-tw" cx="4.2" cy="5.2" r=".5" fill="#A0968E"/><circle class="am-tw am-tw2" cx="19.5" cy="19.2" r=".45" fill="#A0968E"/><circle class="am-tw am-tw3" cx="7.5" cy="2.6" r=".35" fill="#A0968E"/>' +
+      '<g class="am-rocket"><g transform="translate(1.6 0) rotate(40 13 11)"><path class="am-flame" d="M11.7 17.2c.2 2 .7 3.3 1.3 4.4.6-1.1 1.1-2.4 1.3-4.4z" fill="url(#fl)"/>' +
       '<path d="M9.7 12.3L7 15.6v1.9l2.7-1.6zM16.3 12.3l2.7 3.3v1.9l-2.7-1.6z" fill="#F2782C"/>' +
       '<path d="M13 2.4c2.4 2 3.4 5 3.4 8.6v5.3H9.6V11c0-3.6 1-6.6 3.4-8.6z" fill="#EDE3D9"/>' +
       '<path d="M13 2.4c1.3 1.1 2.1 2.4 2.7 3.9h-5.4c.6-1.5 1.4-2.8 2.7-3.9z" fill="#F2782C"/>' +
       '<circle cx="13" cy="9.6" r="1.75" fill="#1A1817" stroke="#F2782C" stroke-width=".8"/><circle cx="12.5" cy="9.1" r=".45" fill="#FFE3A3"/>' +
-      '<rect x="10.6" y="16.3" width="4.8" height="1.2" rx=".4" fill="#C4500B"/></g>' },
+      '<rect x="10.6" y="16.3" width="4.8" height="1.2" rx=".4" fill="#C4500B"/></g></g>' },
     bell: { body: '<defs><linearGradient id="b" x1=".2" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="#FFD08A"/><stop offset=".55" stop-color="#F2782C"/><stop offset="1" stop-color="#C4500B"/></linearGradient></defs>' +
-      '<path d="M3.6 8.6a8.6 8.6 0 0 1 2.2-3.6M20.4 8.6a8.6 8.6 0 0 0-2.2-3.6" fill="none" stroke="#A0968E" stroke-width=".9" stroke-linecap="round"/>' +
-      '<circle cx="12" cy="19.6" r="1.9" fill="#C4500B"/>' +
+      '<path class="am-waves" d="M3.6 8.6a8.6 8.6 0 0 1 2.2-3.6M20.4 8.6a8.6 8.6 0 0 0-2.2-3.6" fill="none" stroke="#A0968E" stroke-width=".9" stroke-linecap="round"/>' +
+      '<g class="am-bell"><circle class="am-clap" cx="12" cy="19.6" r="1.9" fill="#C4500B"/>' +
       '<path d="M12 2.6a1.3 1.3 0 0 1 1.3 1.3v.8a6.2 6.2 0 0 1 4.9 6.1v3.9l1.9 2.4v1H3.9v-1l1.9-2.4v-3.9a6.2 6.2 0 0 1 4.9-6.1v-.8A1.3 1.3 0 0 1 12 2.6z" fill="url(#b)"/>' +
-      '<path d="M8.6 9.4a3.6 3.6 0 0 1 2-2.4" fill="none" stroke="#FFF1D6" stroke-opacity=".7" stroke-width=".9" stroke-linecap="round"/>' },
-    cloud: { body: '<path d="M7.4 17.6a4.6 4.6 0 0 1-.7-9.1 5.6 5.6 0 0 1 10.7-1.4 4.8 4.8 0 0 1-.2 10.5z" fill="#EDE3D9"/>' +
+      '<path d="M8.6 9.4a3.6 3.6 0 0 1 2-2.4" fill="none" stroke="#FFF1D6" stroke-opacity=".7" stroke-width=".9" stroke-linecap="round"/></g>' },
+    cloud: { body: '<g class="am-float"><path d="M7.4 17.6a4.6 4.6 0 0 1-.7-9.1 5.6 5.6 0 0 1 10.7-1.4 4.8 4.8 0 0 1-.2 10.5z" fill="#EDE3D9"/>' +
       '<circle cx="5.6" cy="20" r="1.2" fill="#EDE3D9"/><circle cx="3.4" cy="22" r=".7" fill="#EDE3D9"/>' +
-      '<circle cx="8.6" cy="12.6" r="1.25" fill="#F2782C"/><circle cx="12.2" cy="12.6" r="1.25" fill="#F2782C"/><circle cx="15.8" cy="12.6" r="1.25" fill="#F2782C"/>' },
+      '<circle class="am-dot" cx="8.6" cy="12.6" r="1.25" fill="#F2782C"/><circle class="am-dot am-dot2" cx="12.2" cy="12.6" r="1.25" fill="#F2782C"/><circle class="am-dot am-dot3" cx="15.8" cy="12.6" r="1.25" fill="#F2782C"/></g>' },
     silver: { body: '<defs><linearGradient id="se" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C9C3BE"/><stop offset="1" stop-color="#6E6863"/></linearGradient>' +
-      '<linearGradient id="sf" x1=".2" y1=".08" x2=".8" y2=".95"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".5" stop-color="#D2CCC7"/><stop offset="1" stop-color="#9C958F"/></linearGradient></defs>' +
-      '<circle cx="12" cy="12" r="11.5" fill="url(#se)"/><circle cx="12" cy="11.6" r="9.7" fill="url(#sf)"/>' +
+      '<linearGradient id="sf" x1=".2" y1=".08" x2=".8" y2=".95"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".5" stop-color="#D2CCC7"/><stop offset="1" stop-color="#9C958F"/></linearGradient>' +
+      '<linearGradient id="sd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#CFC9C4"/><stop offset=".5" stop-color="#8E8781"/><stop offset="1" stop-color="#55504C"/></linearGradient>' +
+      '<pattern id="sr" width="2" height=".8" patternUnits="userSpaceOnUse"><rect width="2" height=".35" fill="#2E2A27" fill-opacity=".4"/></pattern></defs>' +
+      // ребро монеты: видно только во время поворота (бок — полоса между передней и задней стороной)
+      '<g class="am-edge" opacity="0"><circle class="am-cap" cx="12" cy="12" r="11.5" fill="url(#sd)"/><circle class="am-cap" cx="12" cy="12" r="11.5" fill="url(#sr)"/>' +
+      '<rect class="am-band" x="11.5" y=".5" width="1" height="23" fill="url(#sd)"/><rect class="am-band" x="11.5" y=".5" width="1" height="23" fill="url(#sr)"/></g>' +
+      '<g class="am-spin"><circle cx="12" cy="12" r="11.5" fill="url(#se)"/><circle cx="12" cy="11.6" r="9.7" fill="url(#sf)"/>' +
       '<circle cx="12" cy="11.6" r="7.7" fill="none" stroke="#7D7671" stroke-opacity=".5" stroke-width=".9"/>' +
       '<path d="M12 16.4V10.6" stroke="#5E5853" stroke-width="1.3" stroke-linecap="round"/>' +
       '<path d="M12 11.2c-2.6 0-4-1.6-4.2-3.8 2.5 0 4 1.4 4.2 3.8zM12 12.4c.2-2.6 1.8-4 4.2-4.2-.1 2.5-1.7 4-4.2 4.2z" fill="#5E5853"/>' +
-      '<path d="M5.3 9.3A7.2 7.2 0 0 1 9.3 5.1" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.1" stroke-linecap="round"/>' },
+      '<path d="M5.3 9.3A7.2 7.2 0 0 1 9.3 5.1" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.1" stroke-linecap="round"/>' +
+      '<circle class="am-shade" opacity="0" cx="12" cy="12" r="11.5" fill="#1A1817"/></g>' },
     bronze: { body: '<defs><radialGradient id="m" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#F7BE93"/><stop offset=".58" stop-color="#D9783A"/><stop offset="1" stop-color="#9C4A16"/></radialGradient></defs>' +
-      '<path d="M7.4 1.8h3.6l2.3 6.6H9.7z" fill="#C4500B"/><path d="M16.6 1.8H13l-2.3 6.6h3.6z" fill="#F2782C"/>' +
+      '<g class="am-sway"><path d="M7.4 1.8h3.6l2.3 6.6H9.7z" fill="#C4500B"/><path d="M16.6 1.8H13l-2.3 6.6h3.6z" fill="#F2782C"/>' +
       '<circle cx="12" cy="15" r="6.6" fill="url(#m)"/><circle cx="12" cy="15" r="5" fill="none" stroke="#8A3F12" stroke-opacity=".5" stroke-width=".8"/>' +
-      '<text x="12" y="17.6" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="7.2" fill="#351604">3</text>' },
+      '<text x="12" y="17.6" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="7.2" fill="#351604">3</text></g>' },
 
     // ---- редкие ----
-    trophy: { body: '<defs><linearGradient id="tr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD08A"/><stop offset=".6" stop-color="#F2782C"/><stop offset="1" stop-color="#C4500B"/></linearGradient></defs>' +
-      '<path d="M7 4.5H4.2v1.8a3.6 3.6 0 0 0 3.4 3.6M17 4.5h2.8v1.8a3.6 3.6 0 0 1-3.4 3.6" fill="none" stroke="#F2782C" stroke-width="1.6" stroke-linecap="round"/>' +
+    trophy: { body: '<defs><linearGradient id="tr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD08A"/><stop offset=".6" stop-color="#F2782C"/><stop offset="1" stop-color="#C4500B"/></linearGradient>' +
+      '<clipPath id="tc"><path d="M6.8 3h10.4v5.2a5.2 5.2 0 0 1-10.4 0z"/><path d="M10.6 13.2h2.8l.5 3.6h-3.8z"/><rect x="7.6" y="16.6" width="8.8" height="3.6" rx="1.2"/></clipPath></defs>' +
+      '<g class="am-hop"><path d="M7 4.5H4.2v1.8a3.6 3.6 0 0 0 3.4 3.6M17 4.5h2.8v1.8a3.6 3.6 0 0 1-3.4 3.6" fill="none" stroke="#F2782C" stroke-width="1.6" stroke-linecap="round"/>' +
       '<path d="M6.8 3h10.4v5.2a5.2 5.2 0 0 1-10.4 0z" fill="url(#tr)"/><path d="M10.6 13.2h2.8l.5 3.6h-3.8z" fill="#C4500B"/>' +
-      '<rect x="7.6" y="16.6" width="8.8" height="3.6" rx="1.2" fill="#F2782C"/><path d="M9.2 5v3" stroke="#FFE3A3" stroke-width="1.3" stroke-linecap="round"/>' },
-    streak30: { body: '<defs>' + FIRE_GRAD + '</defs><g transform="translate(2.2 -.4) scale(.82)">' + FIRE + '</g>' +
+      '<rect x="7.6" y="16.6" width="8.8" height="3.6" rx="1.2" fill="#F2782C"/><path d="M9.2 5v3" stroke="#FFE3A3" stroke-width="1.3" stroke-linecap="round"/>' +
+      '<g clip-path="url(#tc)"><g transform="skewX(-20)"><rect class="am-glint" x="0" y="0" width="2.4" height="24" fill="#FFF6DA" fill-opacity=".6"/></g></g></g>' },
+    streak30: { body: '<defs>' + FIRE_GRAD + '</defs><g transform="translate(2.2 -.4) scale(.82)"><g class="am-fire">' + FIRE + '</g></g>' +
       '<rect x="6.6" y="15.6" width="10.8" height="6.4" rx="3.2" fill="#1A1817" stroke="#F2782C" stroke-width="1.1"/>' +
       '<text x="12" y="20.4" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="5" fill="#FFD08A">30</text>' },
     first: { body: '<defs><radialGradient id="m" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#FFE7AE"/><stop offset=".58" stop-color="#F2B33D"/><stop offset="1" stop-color="#B9800F"/></radialGradient></defs>' +
-      '<path d="M7.4 1.8h3.6l2.3 6.6H9.7z" fill="#3D6FD1"/><path d="M16.6 1.8H13l-2.3 6.6h3.6z" fill="#4C95F5"/>' +
+      '<g class="am-swing"><path d="M7.4 1.8h3.6l2.3 6.6H9.7z" fill="#3D6FD1"/><path d="M16.6 1.8H13l-2.3 6.6h3.6z" fill="#4C95F5"/>' +
       '<circle cx="12" cy="15" r="6.6" fill="url(#m)"/><circle cx="12" cy="15" r="5" fill="none" stroke="#9A6A08" stroke-opacity=".5" stroke-width=".8"/>' +
       '<text x="12" y="17.6" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="7.2" fill="#3D2604">1</text>' +
-      '<path d="M8.2 12.6a4.4 4.4 0 0 1 2.2-2" fill="none" stroke="#FFF6DA" stroke-opacity=".8" stroke-width=".8" stroke-linecap="round"/>' },
+      '<path d="M8.2 12.6a4.4 4.4 0 0 1 2.2-2" fill="none" stroke="#FFF6DA" stroke-opacity=".8" stroke-width=".8" stroke-linecap="round"/>' +
+      '<path class="am-star" opacity="0" d="M9 9.4l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z" fill="#FFFBEA"/></g>' },
     x10: { body: '<path d="M3 21h18M3 21V3" stroke="#3A3634" stroke-width=".8" stroke-linecap="round"/>' +
-      '<path d="M3 20.6c6.5-.4 11.2-3.2 16.4-12.4" fill="none" stroke="#F2782C" stroke-width="1.7" stroke-linecap="round"/>' +
-      '<circle cx="19.4" cy="8.2" r="1.7" fill="#FFE3A3"/><circle cx="19.4" cy="8.2" r="3" fill="#FFB347" fill-opacity=".25"/>' +
+      '<path class="am-draw" pathLength="1" d="M3 20.6c6.5-.4 11.2-3.2 16.4-12.4" fill="none" stroke="#F2782C" stroke-width="1.7" stroke-linecap="round"/>' +
+      '<circle class="am-pop" cx="19.4" cy="8.2" r="1.7" fill="#FFE3A3"/><circle class="am-pop am-burst" cx="19.4" cy="8.2" r="3" fill="#FFB347" fill-opacity=".25"/>' +
       '<text x="4.4" y="10.4" font-family="Literata, Georgia, serif" font-weight="600" font-size="7.6" fill="#F2ECE6">×10</text>' },
 
     // ---- эпические ----
-    ramp: { body: '<rect x="1" y="16" width="9.4" height="3.2" rx="1" fill="#3E3757"/><rect x="15.8" y="16" width="7.2" height="3.2" rx="1" fill="#3E3757"/>' +
-      '<path d="M4.4 16h6v-4.6z" fill="#9B7BFF"/><path d="M5.6 15.2l3.9-2.7" stroke="#C9B8FF" stroke-width=".6" stroke-linecap="round"/>' +
-      '<path d="M10.6 11.1Q14.2 2.2 18.2 15.3" fill="none" stroke="#9B7BFF" stroke-width=".8" stroke-dasharray="1 1.3" stroke-linecap="round"/>' +
-      '<circle cx="14.1" cy="6.9" r="2" fill="#F2ECE6"/><circle cx="13.4" cy="6.2" r=".55" fill="#fff"/>' +
-      '<path d="M10.4 6.2h-1.8M10.8 8.2h-2.4" stroke="#ADA3C8" stroke-width=".6" stroke-linecap="round"/>' },
+    // трамплин: фиолетовая дорожка разбега, пунктир — ровно половина круга (по нему идёт низ шарика), тёмная площадка приземления
+    ramp: { body: '<rect x="1" y="14.6" width="8.2" height="3.2" rx="1" fill="#9B7BFF"/><path d="M2.2 15.4h5.8" stroke="#C9B8FF" stroke-width=".6" stroke-linecap="round"/>' +
+      '<rect x="17.6" y="14.6" width="5.4" height="3.2" rx="1" fill="#3E3757"/>' +
+      '<path d="M9.2 14.6A5.5 5.5 0 0 1 20.2 14.6" fill="none" stroke="#9B7BFF" stroke-width=".8" stroke-dasharray="1 1.3" stroke-linecap="round"/>' +
+      '<g class="am-jump"><circle cx="14.7" cy="7.1" r="2" fill="#F2ECE6"/><circle cx="14" cy="6.4" r=".55" fill="#fff"/>' +
+      '<path d="M11 6.4h-1.8M11.4 8.4h-2.4" stroke="#ADA3C8" stroke-width=".6" stroke-linecap="round"/></g>' },
+    // разворот: стрелка тонкая, усики наконечника расставлены поровну от линии — не сливаются с ней
     reverse: { body: RING +
-      '<path d="M8.92 3.54A9 9 0 0 1 15.08 3.54L14.05 6.36A6 6 0 0 0 9.95 6.36Z" fill="#9B7BFF"/>' +
-      '<path d="M15.6 12a3.6 3.6 0 1 1-1.05-2.55" fill="none" stroke="#F2ECE6" stroke-width="1.5" stroke-linecap="round"/>' +
-      '<path d="M15.9 7.4l-.9 2.7-2.6-.9" fill="none" stroke="#F2ECE6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' },
+      '<path class="am-flipseg" d="M8.92 3.54A9 9 0 0 1 15.08 3.54L14.05 6.36A6 6 0 0 0 9.95 6.36Z" fill="#9B7BFF"/>' +
+      '<g class="am-rev"><path d="M15.6 12A3.6 3.6 0 1 1 14.41 9.32" fill="none" stroke="#F2ECE6" stroke-width="1.1" stroke-linecap="round"/>' +
+      '<path d="M15.1 7.3L14.93 9.79 12.47 10.23" fill="none" stroke="#F2ECE6" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></g>' },
 
     // ---- легендарная ----
-    sun: { vb: '-1 -1 26 26', body: '<defs><linearGradient id="s" x1=".2" y1=".1" x2=".8" y2=".95"><stop offset="0" stop-color="#FFE08A"/><stop offset=".5" stop-color="#F5A33F"/><stop offset="1" stop-color="#E0661F"/></linearGradient></defs>' +
-      '<path d="' + SUN_RAYS + '" stroke="#F5A33F" stroke-width="1.2" stroke-linecap="round"/>' +
+    sun: { vb: '-1 -1 26 26', body: '<defs><linearGradient id="s" x1=".2" y1=".1" x2=".8" y2=".95"><stop offset="0" stop-color="#FFE08A"/><stop offset=".5" stop-color="#F5A33F"/><stop offset="1" stop-color="#E0661F"/></linearGradient>' +
+      '<radialGradient id="sh"><stop offset=".55" stop-color="#FFC75A" stop-opacity=".7"/><stop offset="1" stop-color="#FFC75A" stop-opacity="0"/></radialGradient></defs>' +
+      '<circle class="am-halo" opacity="0" cx="12" cy="12" r="12" fill="url(#sh)"/>' +
+      '<path class="am-rays" d="' + SUN_RAYS + '" stroke="#F5A33F" stroke-width="1.2" stroke-linecap="round"/>' +
       '<circle cx="12" cy="12" r="7.3" fill="url(#s)"/><path d="M7.6 9.2A5 5 0 0 1 10.6 6.2" fill="none" stroke="#FFF4D6" stroke-opacity=".7" stroke-width=".8" stroke-linecap="round"/>' +
       QMARK(12, 15.6, 10.5, '#2A1608') }
   };
@@ -175,6 +190,14 @@
     k.appendChild(a);
     k.appendChild(node('div', 'kc-name', card.name));
     k.appendChild(node('div', 'kc-band', 'Начало'));
+    // Слой эффектов редкости (под рисунком): у эпической — туманность и искры, у легендарной — звёздочки.
+    var dots = card.rarity === 'epic' ? 6 : card.rarity === 'legendary' ? 5 : 0;
+    if (dots) {
+      var fx = node('span', 'kc-fx');
+      fx.setAttribute('aria-hidden', 'true');
+      for (var i = 0; i < dots; i++) fx.appendChild(node('i'));
+      k.insertBefore(fx, k.firstChild);
+    }
     if (card.rarity === 'legendary') { var sh = node('span', 'kc-shine'); sh.setAttribute('aria-hidden', 'true'); k.appendChild(sh); }
     return k;
   }

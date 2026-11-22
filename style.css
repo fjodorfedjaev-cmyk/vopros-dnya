@@ -1152,8 +1152,334 @@ textarea.ta-auto { resize: none; overflow: hidden; }
 .kc-name { font: 600 22px/1.15 var(--font-display); padding: 0 14px 14px; }
 .kc-legendary .kc-name { color: #FFE7B8; }
 .kc-band { flex: none; height: 26px; background: var(--kc-band); color: var(--kc-band-ink); display: flex; align-items: center; justify-content: center; font: 600 10.5px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
-.kc-shine { position: absolute; top: -20%; left: 0; width: 34%; height: 140%; background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 244, 214, 0.16), rgba(255, 255, 255, 0)); pointer-events: none; animation: kcShine 3.2s ease-in-out infinite; }
-@keyframes kcShine { 0% { transform: translateX(-160%) rotate(18deg); } 55%, 100% { transform: translateX(300%) rotate(18deg); } }
+.kc-shine { position: absolute; z-index: 2; top: -20%; left: 0; width: 34%; height: 140%; background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 244, 214, 0.26), rgba(255, 255, 255, 0)); pointer-events: none; animation: kcShine 4.4s linear infinite; }
+/* Блик повёрнут, поэтому его края выступают вбок: от −200% до 400% он целиком за карточкой — не видно, где он появляется и где кончается.
+   Скорость ровная (linear): у краёв он не тормозит. */
+@keyframes kcShine { 0% { transform: translateX(-200%) rotate(18deg); } 40%, 100% { transform: translateX(400%) rotate(18deg); } }
+
+/* ===== Анимации карточек =====
+   Два слоя. 1) Редкость — вся карточка: обычная — ничего, необычная — свечение «дышит», редкая — по рамке бежит огонёк,
+   эпическая — внутри плывёт туманность и поднимаются искры, легендарная — переливается золотая рамка, мерцают звёздочки, проходит блик.
+   2) Рисунок — у каждой карточки (кроме обычных) своё движение: классы am-* в cards.js.
+   Всё работает только внутри .kc (крупно, витрина, открытие); плитки альбома и Лавки — неподвижные.
+   Двигаются только transform и opacity (дёшево для телефона); при «уменьшить движение» всё стоит. */
+.kc { --k: 1; }
+.kc.kc-md { --k: 0.45; }
+.kc-top, .kc-mid, .kc-name, .kc-band { position: relative; z-index: 1; }
+.kc-fx { position: absolute; inset: 0; z-index: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }
+.kc-fx i { position: absolute; display: block; opacity: 0; }
+
+/* необычная: свечение вокруг то сильнее, то слабее */
+.kc.kc-uncommon { animation: kcBreath 4.2s ease-in-out infinite; }
+@keyframes kcBreath { 0%, 100% { box-shadow: 0 0 12px rgba(63, 185, 127, 0.08); } 50% { box-shadow: 0 0 34px rgba(63, 185, 127, 0.42), inset 0 0 26px rgba(63, 185, 127, 0.16); } }
+
+/* редкая: огонёк с хвостом бежит по рамке; легендарная: вся рамка переливается золотом */
+@property --kc-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.kc.kc-rare::before, .kc.kc-legendary::before { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: inherit; padding: 2px; pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.kc.kc-rare::before { background: conic-gradient(from var(--kc-a), transparent 0 60%, rgba(141, 189, 251, 0.55) 80%, #EAF3FF 88%, transparent 93%); animation: kcRun 4.6s linear infinite; }
+.kc.kc-legendary::before { background: conic-gradient(from var(--kc-a), #F2782C, #FFE08A 14%, #FFFBEA 22%, #F5A33F 34%, #F2782C 50%, #FFE08A 64%, #FFFBEA 72%, #F5A33F 84%, #F2782C); animation: kcRun 6s linear infinite; }
+@keyframes kcRun { to { --kc-a: 360deg; } }
+.kc.kc-legendary { animation: kcGold 3.6s ease-in-out infinite; }
+@keyframes kcGold { 0%, 100% { box-shadow: 0 0 22px rgba(242, 150, 60, 0.3); } 50% { box-shadow: 0 0 46px rgba(255, 190, 90, 0.58); } }
+
+/* эпическая: медленно вращается фиолетовая туманность, снизу поднимаются искры */
+.kc-epic .kc-fx::before { content: ''; position: absolute; left: -50%; top: -30%; width: 200%; height: 160%;
+  background: radial-gradient(circle at 40% 43%, rgba(155, 123, 255, 0.36), rgba(155, 123, 255, 0) 17%), radial-gradient(circle at 60% 58%, rgba(118, 86, 240, 0.34), rgba(118, 86, 240, 0) 15%), radial-gradient(circle at 58% 38%, rgba(214, 200, 255, 0.18), rgba(214, 200, 255, 0) 11%);
+  animation: kcHaze 14s linear infinite; }
+@keyframes kcHaze { to { transform: rotate(360deg); } }
+.kc-epic .kc-fx i { top: 76%; width: calc(4px * var(--k) + 1px); height: calc(4px * var(--k) + 1px); border-radius: 50%; background: #E2D8FF; box-shadow: 0 0 calc(7px * var(--k)) #9B7BFF; animation: kcRise 4.2s ease-out infinite; }
+.kc-epic .kc-fx i:nth-child(1) { left: 20%; animation-delay: 0s; }
+.kc-epic .kc-fx i:nth-child(2) { left: 34%; animation-delay: -2.9s; animation-duration: 4.8s; }
+.kc-epic .kc-fx i:nth-child(3) { left: 49%; animation-delay: -1.4s; animation-duration: 3.8s; }
+.kc-epic .kc-fx i:nth-child(4) { left: 63%; animation-delay: -3.6s; }
+.kc-epic .kc-fx i:nth-child(5) { left: 76%; animation-delay: -0.7s; animation-duration: 4.6s; }
+.kc-epic .kc-fx i:nth-child(6) { left: 86%; animation-delay: -2.2s; animation-duration: 3.6s; }
+@keyframes kcRise { 0% { opacity: 0; transform: translate(0, 0) scale(0.6); } 15% { opacity: 1; } 70% { opacity: 0.8; } 100% { opacity: 0; transform: translate(calc(-10px * var(--k)), calc(-150px * var(--k))) scale(1); } }
+
+/* легендарная: четырёхлучевые звёздочки вспыхивают по очереди */
+.kc-legendary .kc-fx i { width: calc(var(--s) * var(--k)); height: calc(var(--s) * var(--k)); margin: calc(var(--s) * var(--k) / -2) 0 0 calc(var(--s) * var(--k) / -2); background: #FFF3CC;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%); filter: drop-shadow(0 0 3px #FFC75A); animation: kcTwinkle 3.4s ease-in-out infinite; }
+.kc-legendary .kc-fx i:nth-child(1) { --s: 14px; left: 13%; top: 27%; }
+.kc-legendary .kc-fx i:nth-child(2) { --s: 18px; left: 86%; top: 22%; animation-delay: -2.5s; }
+.kc-legendary .kc-fx i:nth-child(3) { --s: 11px; left: 17%; top: 64%; animation-delay: -1.6s; }
+.kc-legendary .kc-fx i:nth-child(4) { --s: 15px; left: 83%; top: 60%; animation-delay: -0.8s; }
+.kc-legendary .kc-fx i:nth-child(5) { --s: 12px; left: 50%; top: 12%; animation-delay: -2.1s; }
+@keyframes kcTwinkle { 0%, 55%, 100% { opacity: 0; transform: scale(0.2) rotate(0); } 70% { opacity: 1; transform: scale(1) rotate(45deg); } 85% { opacity: 0; transform: scale(0.3) rotate(90deg); } }
+
+/* --- свои движения рисунков --- */
+/* Ракета летит: покачивается вперёд-назад, пламя дрожит, след бежит, звёзды мигают */
+.kc .am-rocket { animation: amFly 1.6s ease-in-out infinite alternate; }
+@keyframes amFly { from { transform: translate(-0.3px, 0.35px); } to { transform: translate(0.5px, -0.6px); } }
+.kc .am-flame { transform-box: fill-box; transform-origin: 50% 0; animation: amFlame 0.3s ease-in-out infinite alternate; }
+@keyframes amFlame { from { transform: scale(0.85, 0.7); } to { transform: scale(1.1, 1.3); } }
+.kc .am-trail { animation: amTrail 0.9s linear infinite; }
+@keyframes amTrail { to { stroke-dashoffset: 4.6; } }
+.kc .am-tw { animation: amTw 2.4s ease-in-out infinite; }
+.kc .am-tw.am-tw2 { animation-delay: -0.8s; }
+.kc .am-tw.am-tw3 { animation-delay: -1.6s; }
+@keyframes amTw { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
+/* Колокольчик звенит раз в несколько секунд: качается, язычок догоняет, дуги вспыхивают */
+.kc .am-bell { transform-box: view-box; transform-origin: 12px 3.2px; animation: amRing 3.6s ease-in-out infinite; }
+@keyframes amRing { 0%, 34%, 100% { transform: rotate(0); } 4% { transform: rotate(16deg); } 10% { transform: rotate(-13deg); } 16% { transform: rotate(9deg); } 22% { transform: rotate(-6deg); } 28% { transform: rotate(3deg); } }
+.kc .am-clap { animation: amClap 3.6s ease-in-out infinite; }
+@keyframes amClap { 0%, 36%, 100% { transform: translateX(0); } 6% { transform: translateX(-1.1px); } 12% { transform: translateX(1px); } 18% { transform: translateX(-0.7px); } 24% { transform: translateX(0.5px); } 30% { transform: translateX(-0.2px); } }
+.kc .am-waves { transform-box: fill-box; transform-origin: center; animation: amWaves 3.6s ease-out infinite; }
+@keyframes amWaves { 0%, 34%, 100% { opacity: 0.3; transform: scale(1); } 5%, 22% { opacity: 1; transform: scale(1.12); } }
+/* Облачко «печатает…»: точки подпрыгивают по очереди */
+.kc .am-float { animation: amFloat 4s ease-in-out infinite; }
+@keyframes amFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.6px); } }
+.kc .am-dot { animation: amType 1.4s ease-in-out infinite; }
+.kc .am-dot.am-dot2 { animation-delay: 0.18s; }
+.kc .am-dot.am-dot3 { animation-delay: 0.36s; }
+@keyframes amType { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; } 25% { transform: translateY(-1.5px); opacity: 1; } }
+/* Серебро: монета с толщиной делает полный оборот. Лицо сжимается (scaleX = cos угла) и сдвигается,
+   рядом проступает ребро (полоса шириной толщина × sin угла и задний край), лицо темнеет, когда отворачивается.
+   Кадры посчитаны заранее; на 90° и 270° сторона меняется мгновенно (два кадра подряд). */
+.kc .am-spin, .kc .am-cap, .kc .am-band { transform-box: view-box; transform-origin: 12px 12px; animation: amSpin 4.8s linear infinite; }
+.kc .am-cap { animation-name: amCap; }
+.kc .am-band { animation-name: amBand; }
+.kc .am-shade { animation: amShade 4.8s linear infinite; }
+.kc .am-edge { animation: amEdge 4.8s linear infinite; }
+@keyframes amSpin {
+  0%, 55% { transform: translateX(0) scaleX(1); }
+  56.11% { transform: translateX(0.019px) scaleX(1); }
+  57.22% { transform: translateX(0.073px) scaleX(0.998); }
+  58.33% { transform: translateX(0.16px) scaleX(0.992); }
+  59.44% { transform: translateX(0.278px) scaleX(0.977); }
+  60.56% { transform: translateX(0.421px) scaleX(0.946); }
+  61.67% { transform: translateX(0.583px) scaleX(0.894); }
+  62.78% { transform: translateX(0.756px) scaleX(0.814); }
+  63.89% { transform: translateX(0.926px) scaleX(0.702); }
+  65% { transform: translateX(1.081px) scaleX(0.556); }
+  66.11% { transform: translateX(1.204px) scaleX(0.376); }
+  67.22% { transform: translateX(1.281px) scaleX(0.169); }
+  68.05% { transform: translateX(1.3px) scaleX(0.002); }
+  68.06% { transform: translateX(-1.3px) scaleX(-0.002); }
+  68.33% { transform: translateX(-1.298px) scaleX(-0.058); }
+  69.44% { transform: translateX(-1.244px) scaleX(-0.291); }
+  70.56% { transform: translateX(-1.114px) scaleX(-0.515); }
+  71.67% { transform: translateX(-0.913px) scaleX(-0.712); }
+  72.78% { transform: translateX(-0.648px) scaleX(-0.867); }
+  73.89% { transform: translateX(-0.336px) scaleX(-0.966); }
+  75% { transform: translateX(0px) scaleX(-1); }
+  76.11% { transform: translateX(0.336px) scaleX(-0.966); }
+  77.22% { transform: translateX(0.648px) scaleX(-0.867); }
+  78.33% { transform: translateX(0.913px) scaleX(-0.712); }
+  79.44% { transform: translateX(1.114px) scaleX(-0.515); }
+  80.56% { transform: translateX(1.244px) scaleX(-0.291); }
+  81.67% { transform: translateX(1.298px) scaleX(-0.058); }
+  81.95% { transform: translateX(1.3px) scaleX(-0.002); }
+  81.96% { transform: translateX(-1.3px) scaleX(0.002); }
+  82.78% { transform: translateX(-1.281px) scaleX(0.169); }
+  83.89% { transform: translateX(-1.204px) scaleX(0.376); }
+  85% { transform: translateX(-1.081px) scaleX(0.556); }
+  86.11% { transform: translateX(-0.926px) scaleX(0.702); }
+  87.22% { transform: translateX(-0.756px) scaleX(0.814); }
+  88.33% { transform: translateX(-0.583px) scaleX(0.894); }
+  89.44% { transform: translateX(-0.421px) scaleX(0.946); }
+  90.56% { transform: translateX(-0.278px) scaleX(0.977); }
+  91.67% { transform: translateX(-0.16px) scaleX(0.992); }
+  92.78% { transform: translateX(-0.073px) scaleX(0.998); }
+  93.89% { transform: translateX(-0.019px) scaleX(1); }
+  95%, 100% { transform: translateX(0) scaleX(1); }
+}
+@keyframes amCap {
+  0%, 55% { transform: translateX(0) scaleX(1); }
+  56.11% { transform: translateX(-0.019px) scaleX(1); }
+  57.22% { transform: translateX(-0.073px) scaleX(0.998); }
+  58.33% { transform: translateX(-0.16px) scaleX(0.992); }
+  59.44% { transform: translateX(-0.278px) scaleX(0.977); }
+  60.56% { transform: translateX(-0.421px) scaleX(0.946); }
+  61.67% { transform: translateX(-0.583px) scaleX(0.894); }
+  62.78% { transform: translateX(-0.756px) scaleX(0.814); }
+  63.89% { transform: translateX(-0.926px) scaleX(0.702); }
+  65% { transform: translateX(-1.081px) scaleX(0.556); }
+  66.11% { transform: translateX(-1.204px) scaleX(0.376); }
+  67.22% { transform: translateX(-1.281px) scaleX(0.169); }
+  68.05% { transform: translateX(-1.3px) scaleX(0.002); }
+  68.06% { transform: translateX(1.3px) scaleX(0.002); }
+  68.33% { transform: translateX(1.298px) scaleX(0.058); }
+  69.44% { transform: translateX(1.244px) scaleX(0.291); }
+  70.56% { transform: translateX(1.114px) scaleX(0.515); }
+  71.67% { transform: translateX(0.913px) scaleX(0.712); }
+  72.78% { transform: translateX(0.648px) scaleX(0.867); }
+  73.89% { transform: translateX(0.336px) scaleX(0.966); }
+  75% { transform: translateX(0px) scaleX(1); }
+  76.11% { transform: translateX(-0.336px) scaleX(0.966); }
+  77.22% { transform: translateX(-0.648px) scaleX(0.867); }
+  78.33% { transform: translateX(-0.913px) scaleX(0.712); }
+  79.44% { transform: translateX(-1.114px) scaleX(0.515); }
+  80.56% { transform: translateX(-1.244px) scaleX(0.291); }
+  81.67% { transform: translateX(-1.298px) scaleX(0.058); }
+  81.95% { transform: translateX(-1.3px) scaleX(0.002); }
+  81.96% { transform: translateX(1.3px) scaleX(0.002); }
+  82.78% { transform: translateX(1.281px) scaleX(0.169); }
+  83.89% { transform: translateX(1.204px) scaleX(0.376); }
+  85% { transform: translateX(1.081px) scaleX(0.556); }
+  86.11% { transform: translateX(0.926px) scaleX(0.702); }
+  87.22% { transform: translateX(0.756px) scaleX(0.814); }
+  88.33% { transform: translateX(0.583px) scaleX(0.894); }
+  89.44% { transform: translateX(0.421px) scaleX(0.946); }
+  90.56% { transform: translateX(0.278px) scaleX(0.977); }
+  91.67% { transform: translateX(0.16px) scaleX(0.992); }
+  92.78% { transform: translateX(0.073px) scaleX(0.998); }
+  93.89% { transform: translateX(0.019px) scaleX(1); }
+  95%, 100% { transform: translateX(0) scaleX(1); }
+}
+@keyframes amBand {
+  0%, 55% { transform: scaleX(0); }
+  56.11% { transform: scaleX(0.037); }
+  57.22% { transform: scaleX(0.146); }
+  58.33% { transform: scaleX(0.321); }
+  59.44% { transform: scaleX(0.556); }
+  60.56% { transform: scaleX(0.842); }
+  61.67% { transform: scaleX(1.167); }
+  62.78% { transform: scaleX(1.511); }
+  63.89% { transform: scaleX(1.852); }
+  65% { transform: scaleX(2.162); }
+  66.11% { transform: scaleX(2.409); }
+  67.22% { transform: scaleX(2.563); }
+  68.05% { transform: scaleX(2.6); }
+  68.06% { transform: scaleX(2.6); }
+  68.33% { transform: scaleX(2.596); }
+  69.44% { transform: scaleX(2.487); }
+  70.56% { transform: scaleX(2.229); }
+  71.67% { transform: scaleX(1.825); }
+  72.78% { transform: scaleX(1.295); }
+  73.89% { transform: scaleX(0.672); }
+  75% { transform: scaleX(0); }
+  76.11% { transform: scaleX(0.672); }
+  77.22% { transform: scaleX(1.295); }
+  78.33% { transform: scaleX(1.825); }
+  79.44% { transform: scaleX(2.229); }
+  80.56% { transform: scaleX(2.487); }
+  81.67% { transform: scaleX(2.596); }
+  81.95% { transform: scaleX(2.6); }
+  81.96% { transform: scaleX(2.6); }
+  82.78% { transform: scaleX(2.563); }
+  83.89% { transform: scaleX(2.409); }
+  85% { transform: scaleX(2.162); }
+  86.11% { transform: scaleX(1.852); }
+  87.22% { transform: scaleX(1.511); }
+  88.33% { transform: scaleX(1.167); }
+  89.44% { transform: scaleX(0.842); }
+  90.56% { transform: scaleX(0.556); }
+  91.67% { transform: scaleX(0.321); }
+  92.78% { transform: scaleX(0.146); }
+  93.89% { transform: scaleX(0.037); }
+  95%, 100% { transform: scaleX(0); }
+}
+@keyframes amShade {
+  0%, 55% { opacity: 0; }
+  56.11% { opacity: 0; }
+  57.22% { opacity: 0.001; }
+  58.33% { opacity: 0.003; }
+  59.44% { opacity: 0.01; }
+  60.56% { opacity: 0.024; }
+  61.67% { opacity: 0.048; }
+  62.78% { opacity: 0.084; }
+  63.89% { opacity: 0.134; }
+  65% { opacity: 0.2; }
+  66.11% { opacity: 0.281; }
+  67.22% { opacity: 0.374; }
+  68.05% { opacity: 0.45; }
+  68.06% { opacity: 0.45; }
+  68.33% { opacity: 0.424; }
+  69.44% { opacity: 0.319; }
+  70.56% { opacity: 0.218; }
+  71.67% { opacity: 0.129; }
+  72.78% { opacity: 0.06; }
+  73.89% { opacity: 0.015; }
+  75% { opacity: 0; }
+  76.11% { opacity: 0.015; }
+  77.22% { opacity: 0.06; }
+  78.33% { opacity: 0.129; }
+  79.44% { opacity: 0.218; }
+  80.56% { opacity: 0.319; }
+  81.67% { opacity: 0.424; }
+  81.95% { opacity: 0.45; }
+  81.96% { opacity: 0.45; }
+  82.78% { opacity: 0.374; }
+  83.89% { opacity: 0.281; }
+  85% { opacity: 0.2; }
+  86.11% { opacity: 0.134; }
+  87.22% { opacity: 0.084; }
+  88.33% { opacity: 0.048; }
+  89.44% { opacity: 0.024; }
+  90.56% { opacity: 0.01; }
+  91.67% { opacity: 0.003; }
+  92.78% { opacity: 0.001; }
+  93.89% { opacity: 0; }
+  95%, 100% { opacity: 0; }
+}
+@keyframes amEdge {
+  0%, 55% { opacity: 0; }
+  55.3%, 94.7% { opacity: 1; }
+  95%, 100% { opacity: 0; }
+}
+/* Бронза: медаль тихо покачивается на ленте */
+.kc .am-sway { transform-box: view-box; transform-origin: 12px 1.8px; animation: amSway 3.4s ease-in-out infinite alternate; }
+@keyframes amSway { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
+/* Кубок подпрыгивает, потом по нему пробегает блик */
+.kc .am-hop { animation: amHop 4.4s ease-in-out infinite; }
+@keyframes amHop { 0%, 18%, 100% { transform: translateY(0); } 6% { transform: translateY(-1.4px); } 12% { transform: translateY(0); } 15% { transform: translateY(-0.4px); } }
+.kc .am-glint { animation: amGlint 4.4s ease-in-out infinite; }
+@keyframes amGlint { 0%, 20% { transform: translateX(-4px); } 46%, 100% { transform: translateX(26px); } }
+/* 30 дней: огонь колышется */
+.kc .am-fire { transform-box: fill-box; transform-origin: 50% 100%; animation: amFire 1.5s ease-in-out infinite; }
+@keyframes amFire { 0%, 100% { transform: scale(1, 1) skewX(0); } 25% { transform: scale(0.97, 1.07) skewX(-3deg); } 50% { transform: scale(1.03, 0.95) skewX(1.5deg); } 75% { transform: scale(0.98, 1.05) skewX(3deg); } }
+/* Первое место: медаль качается сильнее бронзы, на ней вспыхивает звёздочка */
+.kc .am-swing { transform-box: view-box; transform-origin: 12px 1.8px; animation: amSwing 2.4s ease-in-out infinite alternate; }
+@keyframes amSwing { from { transform: rotate(-8deg); } to { transform: rotate(8deg); } }
+.kc .am-star { transform-box: fill-box; transform-origin: center; animation: amStar 4.8s ease-in-out infinite; }
+@keyframes amStar { 0%, 40%, 100% { opacity: 0; transform: scale(0.2) rotate(0); } 50% { opacity: 1; transform: scale(1.25) rotate(45deg); } 60% { opacity: 0; transform: scale(0.2) rotate(90deg); } }
+/* ×10: линия графика рисуется заново, в конце вспыхивает точка */
+.kc .am-draw { stroke-dasharray: 1 1.1; animation: amDraw 3.6s ease-in-out infinite; }
+@keyframes amDraw { 0% { stroke-dashoffset: 1.05; opacity: 1; } 40% { stroke-dashoffset: 0; } 86% { stroke-dashoffset: 0; opacity: 1; } 96%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+.kc .am-pop { transform-box: fill-box; transform-origin: center; animation: amPop 3.6s ease-out infinite; }
+@keyframes amPop { 0%, 36% { transform: scale(0); opacity: 0; } 44% { transform: scale(1.35); opacity: 1; } 52%, 86% { transform: scale(1); opacity: 1; } 96%, 100% { transform: scale(0); opacity: 0; } }
+.kc .am-pop.am-burst { animation-name: amBurst; }
+@keyframes amBurst { 0%, 38% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.7); opacity: 1; } 62%, 86% { transform: scale(1); opacity: 0.8; } 96%, 100% { transform: scale(0); opacity: 0; } }
+/* Трамплин: шарик разгоняется по фиолетовой дорожке, летит по пунктирному полукругу (у краёв быстрее, наверху медленнее),
+   приземляется с отскоком и пропадает. Кадры — точки того же полукруга, что нарисован пунктиром. */
+.kc .am-jump { animation: amJump 3.2s linear infinite; }
+@keyframes amJump {
+  0% { transform: translate(-11.5px, 5.5px); opacity: 0; }
+  5% { transform: translate(-11.5px, 5.5px); opacity: 1; animation-timing-function: ease-in; }
+  17% { transform: translate(-5.5px, 5.5px); }
+  18.78% { transform: translate(-5.315px, 4.086px); }
+  20.56% { transform: translate(-4.801px, 2.816px); }
+  22.33% { transform: translate(-4.061px, 1.791px); }
+  24.11% { transform: translate(-3.225px, 1.044px); }
+  25.89% { transform: translate(-2.402px, 0.552px); }
+  27.67% { transform: translate(-1.663px, 0.257px); }
+  29.44% { transform: translate(-1.03px, 0.097px); }
+  31.22% { transform: translate(-0.489px, 0.022px); }
+  33% { transform: translate(0px, 0px); }
+  34.78% { transform: translate(0.489px, 0.022px); }
+  36.56% { transform: translate(1.03px, 0.097px); }
+  38.33% { transform: translate(1.663px, 0.257px); }
+  40.11% { transform: translate(2.402px, 0.552px); }
+  41.89% { transform: translate(3.225px, 1.044px); }
+  43.67% { transform: translate(4.061px, 1.791px); }
+  45.44% { transform: translate(4.801px, 2.816px); }
+  47.22% { transform: translate(5.315px, 4.086px); }
+  49% { transform: translate(5.5px, 5.5px); animation-timing-function: ease-out; }
+  53% { transform: translate(6px, 4.5px); animation-timing-function: ease-in; }
+  57% { transform: translate(6.4px, 5.5px); opacity: 1; }
+  68%, 100% { transform: translate(6.9px, 5.5px); opacity: 0; }
+}
+/* Разворот: стрелка делает оборот и крутится обратно, кусок кольца переезжает на другую сторону и назад */
+.kc .am-rev { transform-box: view-box; transform-origin: 12px 12px; animation: amRev 5s ease-in-out infinite; }
+@keyframes amRev { 0%, 10% { transform: rotate(0); } 40%, 60% { transform: rotate(360deg); } 90%, 100% { transform: rotate(0); } }
+.kc .am-flipseg { transform-box: view-box; transform-origin: 12px 12px; animation: amSeg 5s ease-in-out infinite; }
+@keyframes amSeg { 0%, 10% { transform: rotate(0); } 40%, 60% { transform: rotate(180deg); } 90%, 100% { transform: rotate(0); } }
+/* Солнце дня: лучи медленно вращаются, вокруг дышит тёплый ореол */
+.kc .am-rays { transform-box: view-box; transform-origin: 12px 12px; animation: amRays 24s linear infinite; }
+@keyframes amRays { to { transform: rotate(360deg); } }
+.kc .am-halo { transform-box: view-box; transform-origin: 12px 12px; animation: amHalo 3.6s ease-in-out infinite; }
+@keyframes amHalo { 0%, 100% { opacity: 0.25; transform: scale(0.82); } 50% { opacity: 0.8; transform: scale(1.04); } }
 /* на витрине — поменьше и без подписей сверху и снизу */
 .kc.kc-md { width: 100%; height: auto; aspect-ratio: 5 / 7; border-radius: 12px; }
 .kc-md .kc-top, .kc-md .kc-band { display: none; }
@@ -1255,6 +1581,8 @@ body.kc-lock { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .kr-l, .kr-flip, .kr-result { transition: none; }
   .kr-shake, .kr-wait .kc-back, .kc-shine, .kr-spark { animation: none; }
+  .kc, .kc::before, .kc-fx::before, .kc-fx i { animation: none !important; }
+  .kc.kc-rare::before { display: none; }
 }
 
 /* перетаскивание карточек: зажал — карточка «поднялась» и едет за пальцем */
