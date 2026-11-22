@@ -58,6 +58,16 @@ async function openBluff(p) {
   await p.waitForSelector('.bf', { timeout: 5000 });
 }
 
+// «Верю — не верю», новая комната: колода «от low до high» и джокеры — двигаем ползунки (значение + событие input, как пальцем)
+async function bluffDeck(p, low, high, jokers) {
+  await p.evaluate(([l, h, j]) => {
+    const ins = document.querySelectorAll('.bf-range input');
+    const set = (inp, v) => { inp.value = String(v); inp.dispatchEvent(new Event('input', { bubbles: true })); };
+    if (l > Number(ins[1].value)) { set(ins[1], h); set(ins[0], l); } else { set(ins[0], l); set(ins[1], h); }
+    set(ins[2], j);
+  }, [low, high, jokers]);
+}
+
 // «Верю — не верю»: сходить, если мой ход. Новый круг — 1–3 карты (обычно одного номинала, иногда враньё);
 // ответ — «Не верю» / «Верю» / доложить 1–2 карты. Возвращает, что сделано.
 async function bluffMove(p, opts) {
@@ -153,4 +163,4 @@ function shooter(dir) {
   return (p, name) => p.screenshot({ path: path.join(dir, name + '.png'), fullPage: true });
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-module.exports = { launch, phone, openDurak, openPoker, openBluff, bluffMove, pokerMove, moveIfMyTurn, chooseOpen, shooter, sleep };
+module.exports = { launch, phone, openDurak, openPoker, openBluff, bluffMove, bluffDeck, pokerMove, moveIfMyTurn, chooseOpen, shooter, sleep };

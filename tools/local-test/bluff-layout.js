@@ -3,7 +3,7 @@
 const { execFileSync } = require('child_process');
 const B = require('./browser');
 const BOTS = Math.max(2, Math.min(5, parseInt(process.argv[2], 10) || 5));
-const LOW = process.env.LOW || '2', JOKERS = process.env.JOKERS || '0', TAG = process.env.TAG || ('n' + BOTS);
+const LOW = process.env.LOW || '2', HIGH = process.env.HIGH || '14', JOKERS = process.env.JOKERS || '0', TAG = process.env.TAG || ('n' + BOTS);
 const dir = __dirname + '/shots/';
 const q = (sql) => execFileSync('psql', ['-h', '/tmp', '-p', '5433', '-U', 'postgres', '-d', process.env.DB || 'e2e', '-qAt', '-c', sql]).toString().trim();
 const admin = q('select user_id from public.admins limit 1');
@@ -13,8 +13,7 @@ const admin = q('select user_id from public.admins limit 1');
   await B.openBluff(A);
   await A.getByRole('button', { name: 'Новая комната' }).click();
   await A.waitForSelector('.dk-test-chip', { timeout: 5000 });
-  await A.locator('.bf-chips').nth(0).locator('button[data-v="' + LOW + '"]').click();
-  await A.locator('.bf-chips').nth(1).locator('button[data-v="' + JOKERS + '"]').click();
+  await B.bluffDeck(A, +LOW, +HIGH, +JOKERS);
   await A.locator('.dk-test-chip').click();
   await A.getByRole('button', { name: 'Открыть тестовую комнату' }).click();
   await A.waitForSelector('.duel-lobby');

@@ -1,4 +1,4 @@
--- «ВЕРЮ — НЕ ВЕРЮ»: самоотменяющийся тест. Запускать одним запросом вместе с миграцией (01_bluff.sql).
+-- «ВЕРЮ — НЕ ВЕРЮ»: самоотменяющийся тест. Запускать одним запросом вместе с миграциями (01_bluff.sql и 02_range.sql — колода «от … до …»).
 -- Часть 1 — правила по одному (карты раскладываем вручную), часть 2 — много партий: случайные ходы людей и боты;
 -- после каждого хода проверяем, что карты не потерялись и не задвоились, в конце — что монеты сходятся.
 -- В конце тест падает — всё откатывается.
@@ -14,7 +14,7 @@ create function pg_temp.hand(r bigint, s integer) returns integer[] language sql
 create function pg_temp.cards_ok(r bigint) returns boolean language sql as $$
   with c as (select unnest(hand) x from public.bluff_players where room_id = r union all select unnest(pile) from public.bluff_rooms where id = r)
   select (select count(*) from c) + (select bita from public.bluff_rooms where id = r)
-           = (select public.bluff_deck_n(low_rank, jokers) from public.bluff_rooms where id = r)
+           = (select public.bluff_deck_n(low_rank, high_rank, jokers) from public.bluff_rooms where id = r)
      and (select count(*) from c) = (select count(distinct x) from c) $$;
 -- разложить карты вручную: руки по местам, ход, пустой стол
 create function pg_temp.setup(r bigint, h0 integer[], h1 integer[], h2 integer[], t integer) returns void language plpgsql as $$
@@ -22,7 +22,7 @@ begin
   update public.bluff_players set hand = case seat when 0 then h0 when 1 then h1 when 2 then h2 else hand end, place = null, out_kind = null, misses = 0
    where room_id = r;
   update public.bluff_rooms set pile = '{}', claim_rank = null, last_seat = null, last_n = 0, turn_seat = t, status = 'play',
-         bita = public.bluff_deck_n(low_rank, jokers) - cardinality(h0) - cardinality(h1) - cardinality(h2), deadline = now() + interval '30 seconds'
+         bita = public.bluff_deck_n(low_rank, high_rank, jokers) - cardinality(h0) - cardinality(h1) - cardinality(h2), deadline = now() + interval '30 seconds'
    where id = r;
 end $$;
 create function pg_temp.st(r bigint) returns public.bluff_rooms language sql as $$ select * from public.bluff_rooms where id = r $$;
@@ -84,7 +84,7 @@ begin
   if public.coins_of(u[1]) = c0[1] - 10 and public.coins_of(u[2]) = c0[2] - 10 then n := n + 1; end if;
   -- колода «одни тузы» без джокеров — мест 4
   perform pg_temp.login(u[4]); k := public.bluff_create(0, 14, 0);
-  if public.bluff_max_seats(k) = 4 and public.bluff_deck_n(14, 0) = 4 and public.bluff_deck_n(2, 4) = 56 then n := n + 1; end if;
+  if public.bluff_max_seats(k) = 4 and public.bluff_deck_n(14, 14, 0) = 4 and public.bluff_deck_n(2, 14, 4) = 56 then n := n + 1; end if;
   perform public.bluff_leave(k);
   if (pg_temp.st(k)).status = 'cancelled' then n := n + 1; end if;
   -- чужие карты телефон не получает: у игрока — своя рука, у остальных — только число
@@ -264,7 +264,7 @@ begin
   -- ===== 11. Партии со случайными ходами (3–4 человека, разные колоды) =====
   for games in 1..40 loop
     lo := 2 + floor(random() * 13)::integer; jk := floor(random() * 5)::integer;
-    nb := least(3 + floor(random() * 2)::integer, public.bluff_deck_n(lo, jk));
+    nb := least(3 + floor(random() * 2)::integer, public.bluff_deck_n(lo, 14, jk));
     perform pg_temp.login(u[1]); r := public.bluff_create(7, lo, jk);
     for i in 2..nb loop perform pg_temp.login(u[i]); perform public.bluff_join(r); end loop;
     perform pg_temp.login(u[1]); perform public.bluff_start(r);

@@ -7,12 +7,15 @@
   var A = null;
   function savedInt(key, lo, hi, def) { try { var v = parseInt(localStorage.getItem(key), 10); return v >= lo && v <= hi ? v : def; } catch (e) { return def; } }
   var K = {
-    list: null, listErr: null, form: false, stake: '', low: savedInt('bf-low', 2, 14, 6), jokers: savedInt('bf-jokers', 0, 4, 0), listPoll: null,
+    list: null, listErr: null, form: false, stake: '', low: savedInt('bf-low', 2, 14, 6), high: savedInt('bf-high', 2, 14, 14),
+    jokers: savedInt('bf-jokers', 0, 4, 0), listPoll: null,
     open: null, st: null, offset: 0, rtt: 1e9, poll: null, timer: null,
     rootEl: null, sig: '', sel: [], rank: null, busy: false, msg: '', msgErr: false,
     admin: false, test: false,           // админ может открыть тестовую комнату с ботами
     lastI: -1, anim: false, wasTurn: false, quitAsk: false
   };
+
+  if (K.low > K.high) K.low = K.high;
 
   var PC = window.PlayingCards;
   // Номиналы во множественном числе — так называют круг: «Дамы», «Тузы»
@@ -24,11 +27,16 @@
   function coins(n) { return A.fmt(n) + ' 🪙'; }
   function plural(n, a, b, c) { return A.plural ? A.plural(n, a, b, c) : c; }
   function cardsWord(n) { return n + ' ' + plural(n, 'карта', 'карты', 'карт'); }
-  function deckN(low, jokers) { return (15 - low) * 4 + jokers; }
-  // «полная колода» / «от 6» и джокеры
-  function deckText(low, jokers) {
-    return (low === 2 ? 'полная колода' : 'от ' + PC.rankName(low)) + (jokers ? ' + ' + jokers + ' ' + plural(jokers, 'джокер', 'джокера', 'джокеров') : '');
+  function deckN(low, high, jokers) { return (high - low + 1) * 4 + jokers; }
+  // «от 5 до 10», «от 6 до туза», «полная колода», «только тузы»
+  var GEN = { 11: 'валета', 12: 'дамы', 13: 'короля', 14: 'туза' };
+  function rankGen(r) { return GEN[r] || String(r); }
+  function rangeText(low, high) {
+    high = high || 14;
+    return low === 2 && high === 14 ? 'полная колода' : low === high ? 'только ' + MANY[low].toLowerCase() : 'от ' + rankGen(low) + ' до ' + rankGen(high);
   }
+  function jokersText(j) { return j + ' ' + plural(j, 'джокер', 'джокера', 'джокеров'); }
+  function deckText(low, high, jokers) { return rangeText(low, high) + (jokers ? ' + ' + jokersText(jokers) : ''); }
   async function rpc(name, args) {
     var r = await A.sb().rpc(name, args || {});
     if (r.error) throw r.error;
@@ -96,7 +104,7 @@
     var n = players.length;
     var msg = el('p', { class: 'msg', role: 'status' });
     var acts = [], line, title, cls = '';
-    var info = deckText(r.low, r.jokers) + ' · ' + (r.stake ? 'ставка ' + coins(r.stake) : 'без ставки');
+    var info = deckText(r.low, r.high, r.jokers) + ' · ' + (r.stake ? 'ставка ' + coins(r.stake) : 'без ставки');
     if (r.status === 'finished') {
       var net = Number(r.my_payout || 0) - Number(r.stake || 0);
       var lastOne = r.my_place === n;
@@ -105,7 +113,7 @@
       cls = lastOne ? ' lose' : r.my_place === 1 ? ' win' : '';
     } else if (r.mine) {
       title = r.status === 'play' ? 'Идёт игра' : r.status === 'ready' ? 'Сейчас начнётся' : r.test ? 'Тестовая комната' : 'Твоя комната';
-      line = n + ' из ' + r.max_seats + ' · ' + (r.test ? 'с ботами · ' + deckText(r.low, r.jokers) : info);
+      line = n + ' из ' + r.max_seats + ' · ' + (r.test ? 'с ботами · ' + deckText(r.low, r.high, r.jokers) : info);
       cls = ' incoming';
       acts.push(el('button', { type: 'button', class: 'btn primary', text: r.status === 'play' ? 'Вернуться' : 'Открыть', onclick: function () { openRoom(r.id); } }));
     } else {
@@ -133,20 +141,68 @@
     catch (e) { msg.className = 'msg err'; msg.textContent = errText(e); btn.disabled = false; loadList(); }
   }
 
-  // Новая комната: ставка, колода «от … до туза», джокеры (выбор колоды запоминается)
+  // Ползунок с одной или двумя ручками (две — «от … до …»). vals — [значение] или [низ, верх];
+  // label(v) — подпись деления (нажал на подпись — туда встаёт ближайшая ручка); onChange(vals) — при каждом сдвиге.
+  function slider(min, max, vals, label, aria, onChange) {
+    vals = vals.slice();
+    var two = vals.length > 1;
+    var fill = el('i', { class: 'bf-fill' });
+    var box = el('div', { class: 'bf-range' }, [el('div', { class: 'bf-track' }, [fill])]);
+    var ticks = el('div', { class: 'bf-ticks' });
+    function pct(v) { return (v - min) / (max - min) * 100; }
+    var inputs = vals.map(function (v, i) {
+      var inp = el('input', { type: 'range', min: String(min), max: String(max), step: '1', 'aria-label': aria[i] });
+      inp.value = String(v);
+      inp.addEventListener('input', function () {
+        var x = Number(inp.value);
+        if (two && i === 0 && x > vals[1]) { x = vals[1]; inp.value = String(x); }
+        if (two && i === 1 && x < vals[0]) { x = vals[0]; inp.value = String(x); }
+        vals[i] = x; draw(); onChange(vals.slice());
+      });
+      box.appendChild(inp);
+      return inp;
+    });
+    function draw() {
+      var a = two ? pct(vals[0]) : 0, b = pct(vals[vals.length - 1]);
+      fill.style.left = a + '%'; fill.style.width = (b - a) + '%';
+      if (two) inputs[0].style.zIndex = vals[0] >= max - 1 ? '4' : '2';   // обе ручки справа — нижнюю можно увести влево
+      ticks.querySelectorAll('span').forEach(function (t) {
+        var v = Number(t.dataset.v);
+        t.classList.toggle('on', two ? v >= vals[0] && v <= vals[1] : v <= vals[0]);
+      });
+    }
+    for (var v = min; v <= max; v++) {
+      (function (v) {
+        var t = el('span', { 'data-v': String(v), text: label(v), style: 'left:' + pct(v) + '%' });
+        t.addEventListener('click', function () {
+          var i = !two || v <= vals[0] ? 0 : v >= vals[1] ? 1 : (v - vals[0] <= vals[1] - v ? 0 : 1);
+          vals[i] = v; inputs[i].value = String(v); draw(); onChange(vals.slice());
+        });
+        ticks.appendChild(t);
+      })(v);
+    }
+    draw();
+    return el('div', { class: 'bf-slider' }, [box, ticks]);
+  }
+
+  // Новая комната: ставка, колода «от … до …» (ползунок с двумя ручками), джокеры (ползунок); колода запоминается
   function createForm() {
     var msg = el('p', { class: 'msg', role: 'status' });
     var go = el('button', { type: 'button', class: 'btn primary duel-go' });
     var sum = el('p', { class: 'muted bf-deck-sum' });
+    var deckVal = el('b', { class: 'bf-sl-val' }), jkVal = el('b', { class: 'bf-sl-val' });
     function val() { var v = String(K.stake).replace(/\s/g, ''); if (v === '') return null; var n = Number(v); return Number.isInteger(n) ? n : null; }
+    function save() {
+      try { localStorage.setItem('bf-low', String(K.low)); localStorage.setItem('bf-high', String(K.high)); localStorage.setItem('bf-jokers', String(K.jokers)); }
+      catch (e) { /* ничего */ }
+    }
     function sync() {
       var n = val();
       var ok = n !== null && n >= 0 && n <= 100000;
-      var dn = deckN(K.low, K.jokers);
-      sum.textContent = (K.low === 2 ? 'Полная колода' : 'От ' + PC.rankName(K.low) + ' до туза') + ': ' + cardsWord(dn - K.jokers)
-        + (K.jokers ? ' + ' + K.jokers + ' ' + plural(K.jokers, 'джокер', 'джокера', 'джокеров') : '') + ' · мест до ' + Math.min(6, dn);
-      lowRow.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(Number(b.dataset.v) === K.low)); });
-      jkRow.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(Number(b.dataset.v) === K.jokers)); });
+      var dn = deckN(K.low, K.high, K.jokers);
+      deckVal.textContent = rangeText(K.low, K.high);
+      jkVal.textContent = K.jokers ? String(K.jokers) : 'нет';
+      sum.textContent = cardsWord(dn - K.jokers) + (K.jokers ? ' + ' + jokersText(K.jokers) : '') + ' · мест до ' + Math.min(6, dn);
       stakeBox.hidden = K.test;
       if (K.test) { setText(go, 'Открыть тестовую комнату'); go.disabled = false; if (msg.classList.contains('err')) { msg.className = 'msg'; msg.textContent = ''; } return; }
       setText(go, !ok ? 'Открыть комнату' : n ? 'Открыть комнату · ставка ' + coins(n) : 'Открыть комнату · без ставки');
@@ -169,21 +225,15 @@
       el('label', { class: 'duel-label', for: 'bf-stake', text: 'Ставка с каждого' }),
       el('div', { class: 'duel-stake' }, [el('span', { class: 'duel-stake-in' }, [input, coin]), quick])
     ]);
-    var ranks = []; for (var r = 2; r <= 14; r++) ranks.push(r);
-    var lowRow = el('div', { class: 'bf-chips', role: 'group', 'aria-label': 'Колода: с какой карты' }, ranks.map(function (x) {
-      return el('button', { type: 'button', class: 'bf-chip', 'data-v': String(x), 'aria-label': 'от ' + PC.rankName(x), text: PC.rankName(x),
-        onclick: function () { K.low = x; try { localStorage.setItem('bf-low', String(x)); } catch (e) { /* ничего */ } sync(); } });
-    }));
-    var jkRow = el('div', { class: 'bf-chips', role: 'group', 'aria-label': 'Джокеры' }, [0, 1, 2, 3, 4].map(function (x) {
-      return el('button', { type: 'button', class: 'bf-chip', 'data-v': String(x), text: String(x),
-        onclick: function () { K.jokers = x; try { localStorage.setItem('bf-jokers', String(x)); } catch (e) { /* ничего */ } sync(); } });
-    }));
+    var deckSl = slider(2, 14, [K.low, K.high], PC.rankName, ['Колода: с какой карты', 'Колода: до какой карты'],
+      function (v) { K.low = v[0]; K.high = v[1]; save(); sync(); });
+    var jkSl = slider(0, 4, [K.jokers], String, ['Джокеры'], function (v) { K.jokers = v[0]; save(); sync(); });
     go.addEventListener('click', async function () {
       var n = K.test ? 0 : val();
       if (n === null) return;
       go.disabled = true;
       try {
-        var id = await rpc('bluff_create', { p_stake: n, p_low: K.low, p_jokers: K.jokers, p_test: !!K.test });
+        var id = await rpc('bluff_create', { p_stake: n, p_low: K.low, p_high: K.high, p_jokers: K.jokers, p_test: !!K.test });
         A.loadPoints();
         K.form = false; K.stake = '';
         openRoom(typeof id === 'number' ? id : Number(id));
@@ -196,8 +246,9 @@
       testRow = el('div', { class: 'dk-test-row' }, [tb]);
     }
     var deckBox = el('div', { class: 'bf-deck-box' }, [
-      el('span', { class: 'duel-label', text: 'Колода: с какой карты до туза' }), lowRow,
-      el('span', { class: 'duel-label', text: 'Джокеры' }), jkRow, sum
+      el('div', { class: 'bf-sl-head' }, [el('span', { class: 'duel-label', text: 'Колода' }), deckVal]), deckSl,
+      el('div', { class: 'bf-sl-head' }, [el('span', { class: 'duel-label', text: 'Джокеры' }), jkVal]), jkSl,
+      sum
     ]);
     sync();
     if (A.dismissible) A.dismissible('bf-form', function () { if (K.form && !K.busy) { K.form = false; paint(true); } });
@@ -207,6 +258,7 @@
   function rulesBlock() {
     var items = [
       'Цель — избавиться от всех карт. Последний с картами проигрывает.',
+      'Колоду выбирает создатель комнаты: любой отрезок номиналов (например, от 5 до 10) и до 4 джокеров.',
       'Все карты раздаются. Четыре карты одного номинала на руках сразу уходят в биту.',
       'Начало круга: положи рубашкой вверх сколько угодно карт и назови номинал — можно соврать.',
       'Следующий: «Доложить» — кладёт свои карты к тому же номиналу; «Не верю» или «Верю» — открываются последние положенные карты.',
@@ -343,7 +395,7 @@
   function stakeLine(st) {
     var b = el('span', { class: 'duel-bank dk-stake' });
     setText(b, (st.test ? 'тестовая комната · с ботами' : st.stake ? 'ставка ' + coins(st.stake) + ' · банк ' + coins(bank(st)) : 'без ставки')
-      + ' · ' + deckText(st.low, st.jokers));
+      + ' · ' + deckText(st.low, st.high, st.jokers));
     return b;
   }
 
@@ -353,7 +405,7 @@
     var myP = playerAt(me.seat) || {};
     var already = myP.place != null || !st.my;
     var b = el('span', { class: 'dk-bank' });
-    setText(b, (st.test ? 'тестовая · с ботами' : st.stake ? 'банк ' + coins(bank(st)) : 'без ставки') + ' · ' + deckText(st.low, st.jokers));
+    setText(b, (st.test ? 'тестовая · с ботами' : st.stake ? 'банк ' + coins(bank(st)) : 'без ставки') + ' · ' + deckText(st.low, st.high, st.jokers));
     var quit = el('button', { type: 'button', class: 'dk-quit', text: 'Выйти', 'aria-expanded': String(!!K.quitAsk && !already), 'data-dismiss-trigger': 'bf-quit',
       onclick: function () { if (already) { closeRoom(); return; } K.quitAsk = !K.quitAsk; paint(true); } });
     var kids = [b, quit];
@@ -453,7 +505,7 @@
   function oppBox(p, st, spot) {
     var turn = st.status === 'play' && st.turn === p.seat && p.place == null;
     var last = st.claim != null && st.last_seat === p.seat;
-    var tag = p.place != null ? outText(p) : last ? 'ход: ' + cardsWord(st.last_n) : '';
+    var tag = p.place != null ? outText(p) : last ? '+' + cardsWord(st.last_n) : '';
     return el('div', { class: 'dk-opp bf-opp at-' + spot + (turn ? ' turn' : '') + (p.place != null ? ' out' : '') + (last ? ' last' : ''),
       'data-seat': String(p.seat), style: 'grid-area:' + spot }, [
       who(p, [A.avatar(p.name, p.color, true, p.avatar), el('span', { class: 'dk-opp-name', text: p.name })], 'dk-opp-head'),
@@ -464,14 +516,15 @@
   }
 
   var BITA_R = [-28, 14, -6, 37, -41, 22, 3], BITA_X = [-3, 4, 1, -5, 3, -2, 5], BITA_Y = [2, -3, 4, 0, -4, 3, -1];
-  // Середина: названный номинал (крупно) и кто сколько положил; бита слева, стопка справа (рубашки, сверху — последние)
+  // Середина: названный номинал крупно, под ним «кто · +N карт»; ниже по центру — стопка (рубашки, сверху — последние)
+  // и на ней общее число карт
   function midEl(st) {
     var claim;
     if (st.claim != null) {
       var lp = playerAt(st.last_seat) || {};
       claim = el('div', { class: 'bf-claim' }, [
         el('b', { text: MANY[st.claim] }),
-        el('span', { text: (lp.me ? 'ты' : lp.name || '') + ' · ' + cardsWord(st.last_n) })
+        el('span', { text: (lp.me ? 'ты' : lp.name || '') + ' · +' + cardsWord(st.last_n) })
       ]);
     } else {
       var tp = playerAt(st.turn) || {};
@@ -480,20 +533,22 @@
         el('span', { text: tp.me ? 'называешь ты' : (tp.name ? 'называет ' + tp.name : '') })
       ]);
     }
-    var bitaKids = [];
-    for (var b = 0, nb = st.bita ? Math.min(7, 2 + Math.floor(st.bita / 6)) : 0; b < nb; b++) {
-      var bk = backEl({ small: true, label: b === nb - 1 ? 'Бита' : null });
-      bk.style.transform = 'translate(' + BITA_X[b] + 'px,' + BITA_Y[b] + 'px) rotate(' + BITA_R[b] + 'deg)';
-      bitaKids.push(bk);
-    }
-    var bita = el('div', { class: 'dk-bita bf-bita' + (st.bita ? '' : ' is-empty'), 'aria-label': 'Бита: ' + st.bita }, bitaKids);
-    // стопка: под низом — сколько-то рубашек, сверху веером — последние положенные (до 4)
     var pileKids = [], under = Math.min(3, Math.max(0, st.pile_n - st.last_n)), top = Math.min(4, st.last_n || 0);
     for (var u = 0; u < under; u++) { var ub = backEl({ cls: 'u' }); ub.style.transform = 'rotate(' + [-8, 5, -2][u] + 'deg)'; pileKids.push(ub); }
     for (var t = 0; t < top; t++) { var tb = backEl({ cls: 'top' }); tb.style.transform = 'translate(' + (t - (top - 1) / 2) * 9 + 'px,' + (-2 - t) + 'px) rotate(' + (t - (top - 1) / 2) * 9 + 'deg)'; pileKids.push(tb); }
     if (st.pile_n) pileKids.push(el('span', { class: 'bf-pile-n', text: String(st.pile_n) }));
     var pile = el('div', { class: 'bf-pile' + (st.pile_n ? '' : ' is-empty'), 'aria-label': 'Стопка: ' + cardsWord(st.pile_n || 0) }, pileKids);
-    return el('div', { class: 'dk-mid bf-mid', style: 'grid-area:mid' }, [claim, el('div', { class: 'bf-mid-row' }, [bita, pile])]);
+    return el('div', { class: 'dk-mid bf-mid', style: 'grid-area:mid' }, [claim, pile]);
+  }
+  // Бита — сбоку, в углу стола (рубашки вразнобой, без числа)
+  function bitaEl(st) {
+    var kids = [];
+    for (var b = 0, nb = st.bita ? Math.min(7, 2 + Math.floor(st.bita / 6)) : 0; b < nb; b++) {
+      var bk = backEl({ small: true, label: b === nb - 1 ? 'Бита' : null });
+      bk.style.transform = 'translate(' + BITA_X[b] + 'px,' + BITA_Y[b] + 'px) rotate(' + BITA_R[b] + 'deg)';
+      kids.push(bk);
+    }
+    return el('div', { class: 'dk-bita bf-bita' + (st.bita ? '' : ' is-empty'), 'aria-label': 'Бита: ' + st.bita }, kids);
   }
 
   // Номинал, который предлагается по выбранным картам (если все обычные карты в выборе одного номинала)
@@ -559,7 +614,7 @@
       if (hand.length) box.appendChild(handEl(hand, turn));
       else box.appendChild(el('p', { class: 'muted bf-empty-hand', text: 'Карт больше нет — ждём, поверят ли тебе' }));
       if (turn && me.new_round) {
-        var ranks = []; for (var r = st.low; r <= 14; r++) ranks.push(r);
+        var ranks = []; for (var r = st.low; r <= (st.high || 14); r++) ranks.push(r);
         box.appendChild(el('div', { class: 'bf-ranks', style: '--c:' + (ranks.length <= 9 ? ranks.length : Math.ceil(ranks.length / 2)),
           role: 'radiogroup', 'aria-label': 'Какой номинал называешь' }, ranks.map(function (x) {
           return el('button', { type: 'button', class: 'bf-chip', role: 'radio', 'aria-checked': String(rank === x), 'aria-label': MANY[x], text: PC.rankName(x),
@@ -579,7 +634,7 @@
       return ((a.seat - mySeat + 12) % 12) - ((b.seat - mySeat + 12) % 12);
     });
     var spots = { 1: ['top'], 2: ['tl', 'tr'], 3: ['l', 'top', 'r'], 4: ['l', 'tl', 'tr', 'r'], 5: ['l', 'tl', 'top', 'tr', 'r'] }[opps.length] || [];
-    var ring = el('div', { class: 'dk-ring bf-ring n' + opps.length }, opps.map(function (p, i) { return oppBox(p, st, spots[i]); }).concat([midEl(st)]));
+    var ring = el('div', { class: 'dk-ring bf-ring n' + opps.length }, opps.map(function (p, i) { return oppBox(p, st, spots[i]); }).concat([midEl(st), bitaEl(st)]));
     return el('div', { class: 'dk-table bf-table' }, [ring, st.my ? meBox(st) : null]);
   }
 
@@ -616,7 +671,7 @@
       if (!src) return;
       var mine = box && box.classList.contains('dk-me');
       await flyBacks(src, pile, e.n || 1, { s0: mine ? 0.9 : 0.6, s1: 0.8 });
-      if (e.new) flash(pile, MANY[e.rank]);
+      flash(pile, '+' + cardsWord(e.n || 1), 'bf-plus');
     } else if (e.kind === 'reveal') {
       var whoBox = seatEl(e.seat);
       if (whoBox) flash(whoBox, e.call === 'doubt' ? 'Не верю!' : 'Верю!');

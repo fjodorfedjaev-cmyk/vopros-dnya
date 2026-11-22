@@ -8,7 +8,7 @@ const { execFileSync } = require('child_process');
 const B = require('./browser');
 const N = Math.max(3, Math.min(6, parseInt(process.argv[2], 10) || 4));
 const AFK = process.argv.includes('--afk'), LEAVE = process.argv.includes('--leave');
-const LOW = process.env.LOW || '6', JOKERS = process.env.JOKERS || '1';
+const LOW = process.env.LOW || '6', HIGH = process.env.HIGH || '14', JOKERS = process.env.JOKERS || '1';
 const shot = B.shooter(__dirname + '/shots');
 const q = (sql) => execFileSync('psql', ['-h', '/tmp', '-p', '5433', '-U', 'postgres', '-d', process.env.DB || 'e2e', '-qAt', '-c', sql]).toString().trim();
 const ids = q('select id from public.profiles order by created_at limit ' + N).split('\n');
@@ -22,8 +22,7 @@ const total = () => q(`select sum(public.coins_of(id)) from public.profiles wher
   const [A] = pages, idle = AFK ? pages[pages.length - 1] : null, quitter = LEAVE ? pages[1] : null;
   await A.getByRole('button', { name: 'Новая комната' }).click();
   await A.fill('#bf-stake', '10');
-  await A.locator('.bf-chips').nth(0).locator('button[data-v="' + LOW + '"]').click();
-  await A.locator('.bf-chips').nth(1).locator('button[data-v="' + JOKERS + '"]').click();
+  await B.bluffDeck(A, +LOW, +HIGH, +JOKERS);
   await A.getByRole('button', { name: /Открыть комнату/ }).click();
   await A.waitForSelector('.duel-lobby');
   await shot(A, 'bfp_alone');
