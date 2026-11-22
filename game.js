@@ -633,11 +633,11 @@
         row.appendChild(stat(best, 'рекорд'));
         panel.appendChild(row);
         if (info && info.valid === false) panel.appendChild(h('p', 'sector-warn', 'Этот результат не прошёл проверку и не попадёт в рейтинг.'));
-        // баллы за игру (их начисляет база: 1 балл за 10 очков, без ограничений)
+        // баллы за игру (их начисляет база: 1 монета за 5 очков, без ограничений)
         if (info && info.valid !== false && typeof info.points === 'number') {
           var txt = info.points > 0
             ? '+' + info.points + ' 🪙 за эту игру'
-            : 'Монеты: 1 за каждые 10 очков';
+            : 'Монеты: 1 за каждые 5 очков';
           panel.appendChild(h('p', 'sector-points' + (info.points > 0 ? ' got' : ''), txt));
         }
         var again = h('button', 'btn primary sector-play', 'Играть ещё');

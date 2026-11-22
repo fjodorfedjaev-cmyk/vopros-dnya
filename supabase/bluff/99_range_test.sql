@@ -21,7 +21,9 @@ begin
   select * into g from public.bluff_rooms where id = r;
   select * into me from public.bluff_players where room_id = r and user_id = u;
   k := 1 + floor(random() * least(3, cardinality(me.hand)))::integer;
-  if g.claim_rank is null then
+  if cardinality(me.hand) = 0 then                -- без карт (последние уже положены, круг ещё идёт): только «верю» / «не верю»
+    perform public.bluff_move(r, u, case when roll < 0.5 then 'doubt' else 'trust' end, null, null, false);
+  elsif g.claim_rank is null then
     perform public.bluff_move(r, u, 'put', array(select c from unnest(me.hand) c order by random() limit k),
                               g.low_rank + floor(random() * (g.high_rank - g.low_rank + 1))::integer, false);
   elsif roll < 0.4 then

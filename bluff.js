@@ -296,8 +296,8 @@
       '«Не верю», а там враньё — всю стопку забирает тот, кто соврал, а новый круг начинаешь ты. Там правда — стопку забираешь ты и пропускаешь ход.',
       '«Верю», а там правда — стопка уходит в биту, новый круг начинаешь ты. Там враньё — стопку забираешь ты и пропускаешь ход.',
       'Джокер — любая карта: положить его всегда правда.',
-      'Последние карты положены и через «Не верю» не разоблачены — ты без карт и занимаешь место.',
-      'На ход 30 секунд. Не успел — база кладёт за тебя одну карту. Два раза подряд — вне игры, последнее место.',
+      'Последние карты положены — ты ещё в игре, пока не кончится круг. Стопка ушла в биту или её забрал кто-то другой — ты без карт и занимаешь место. Круг дошёл до тебя — выбираешь «Верю» или «Не верю».',
+      'На ход 30 секунд. Время вышло — база кладёт за тебя одну карту (без карт — отвечает «Верю»). Два раза подряд — вне игры, последнее место.',
       'Банк делят по местам: первый удваивает ставку, каждое следующее место получает меньше, последний — ничего.',
       '«Выйти» во время игры — поражение: ставка не вернётся.',
       'Если в комнате один человек, через минуту она закрывается — ставка возвращается.'
@@ -540,7 +540,7 @@
   function oppBox(p, st, spot) {
     var turn = st.status === 'play' && st.turn === p.seat && p.place == null;
     var last = st.claim != null && st.last_seat === p.seat;
-    var tag = p.place != null ? outText(p) : last ? '+' + cardsWord(st.last_n) : '';
+    var tag = p.place != null ? outText(p) : last ? '+' + cardsWord(st.last_n) : st.status === 'play' && !p.n ? 'без карт' : '';
     return el('div', { class: 'dk-opp bf-opp at-' + spot + (turn ? ' turn' : '') + (p.place != null ? ' out' : '') + (last ? ' last' : ''),
       'data-seat': String(p.seat), style: 'grid-area:' + spot }, [
       who(p, [A.avatar(p.name, p.color, true, p.avatar), el('span', { class: 'dk-opp-name', text: p.name })], 'dk-opp-head'),
@@ -627,7 +627,8 @@
         text: !n ? 'Выбери карты' : rank == null ? 'Выбери номинал' : 'Положить ' + n + ' · ' + MANY[rank].toLowerCase(),
         onclick: function () { if (!K.anim) act('bluff_put', { p_cards: K.sel.slice(), p_rank: rank }); } }));
     } else if (turn && me.can_call) {
-      acts.push(el('button', { type: 'button', class: 'btn bf-add', disabled: !n || K.busy,
+      // без карт доложить нечего — только «Верю» / «Не верю»
+      if ((me.hand || []).length) acts.push(el('button', { type: 'button', class: 'btn bf-add', disabled: !n || K.busy,
         text: n ? 'Доложить ' + n : 'Доложить',
         onclick: function () { if (!K.anim) act('bluff_put', { p_cards: K.sel.slice() }); } }));
       acts.push(el('button', { type: 'button', class: 'btn bf-trust', text: 'Верю', disabled: K.busy, onclick: function () { if (!K.anim) act('bluff_call', { p_kind: 'trust' }); } }));
@@ -647,7 +648,8 @@
       box.appendChild(el('div', { class: 'dk-bar' + (turn ? '' : ' off'), 'aria-hidden': 'true' }, [el('i')]));
       var hand = me.hand || [];
       if (hand.length) box.appendChild(handEl(hand, turn));
-      else box.appendChild(el('p', { class: 'muted bf-empty-hand', text: 'Карт больше нет — ждём, поверят ли тебе' }));
+      else box.appendChild(el('p', { class: 'muted bf-empty-hand', text: turn ? 'Карт нет — круг дошёл до тебя: веришь?'
+        : st.claim != null && st.last_seat === me.seat ? 'Карт больше нет — ждём, поверят ли тебе' : 'Карт больше нет — ждём конца круга' }));
       if (turn && me.new_round) {
         var ranks = []; for (var r = st.low; r <= (st.high || 14); r++) ranks.push(r);
         box.appendChild(el('div', { class: 'bf-ranks', style: '--c:' + (ranks.length <= 9 ? ranks.length : Math.ceil(ranks.length / 2)),

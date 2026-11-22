@@ -1,4 +1,5 @@
--- «ВЕРЮ — НЕ ВЕРЮ»: самоотменяющийся тест. Запускать одним запросом вместе с миграциями (01_bluff.sql и 02_range.sql — колода «от … до …»).
+-- «ВЕРЮ — НЕ ВЕРЮ»: самоотменяющийся тест. Запускать одним запросом вместе с миграциями (01_bluff.sql, 02_range.sql — колода «от … до …»,
+-- 04_last_cards.sql — последние карты: в игре до конца круга).
 -- Часть 1 — правила по одному (карты раскладываем вручную), часть 2 — много партий: случайные ходы людей и боты;
 -- после каждого хода проверяем, что карты не потерялись и не задвоились, в конце — что монеты сходятся.
 -- В конце тест падает — всё откатывается.
@@ -35,7 +36,9 @@ begin
   select * into g from public.bluff_rooms where id = r;
   select * into me from public.bluff_players where room_id = r and user_id = u;
   k := 1 + floor(random() * least(3, cardinality(me.hand)))::integer;
-  if g.claim_rank is null then
+  if cardinality(me.hand) = 0 then                -- без карт (последние уже положены, круг ещё идёт): только «верю» / «не верю»
+    perform public.bluff_move(r, u, case when roll < 0.5 then 'doubt' else 'trust' end, null, null, false);
+  elsif g.claim_rank is null then
     perform public.bluff_move(r, u, 'put', array(select c from unnest(me.hand) c order by random() limit k), g.low_rank + floor(random() * (15 - g.low_rank))::integer, false);
   elsif roll < 0.4 then
     perform public.bluff_move(r, u, 'put', array(select c from unnest(me.hand) c order by random() limit k), null, false);
@@ -179,26 +182,35 @@ begin
   res := res || case when n = 1 then E'ok   7 забрал стопку и собрал четыре семёрки — они ушли в биту (видно всем)\n'
                      else E'FAIL 7 (' || n || E'/1)\n' end;
 
-  -- ===== 8. Последние карты, выход, итог и выплаты =====
+  -- ===== 8. Последние карты: в игре до конца круга; итог и выплаты =====
   n := 0;
   perform pg_temp.setup(r, '{28}', '{24,32}', '{33,48}', 0);
+  update public.bluff_rooms set log = '[]' where id = r;
   perform public.bluff_move(r, s0, 'put', '{28}', 9, false);           -- последняя карта, правда — ждёт ответа
   if (select place from public.bluff_players where room_id = r and seat = 0) is null then n := n + 1; end if;
-  perform public.bluff_move(r, s1, 'put', '{24}', null, false);        -- доложил (враньё) — ход нулевого принят: вышел первым
-  if (select place from public.bluff_players where room_id = r and seat = 0) = 1 and (pg_temp.lastlog(r, 'out') ->> 'seat')::int = 0 and (pg_temp.st(r)).turn_seat = 2 then n := n + 1; end if;
-  perform public.bluff_move(r, s2, 'doubt', null, null, false);        -- враньё: первый забрал [28, 24], новый круг — второй
-  if pg_temp.hand(r, 1) @> '{24,28,32}' and (pg_temp.st(r)).turn_seat = 2 then n := n + 1; end if;
-  perform public.bluff_move(r, s2, 'put', '{33,48}', 10, false);       -- последние: 10♥ и туз под видом десяток
-  if (pg_temp.st(r)).turn_seat = 1 then n := n + 1; end if;          -- выбывший (место 0) пропускается
-  perform public.bluff_move(r, s1, 'trust', null, null, false);        -- поверил враню: забрал, а второй вышел
+  perform public.bluff_move(r, s1, 'put', '{24}', null, false);        -- доложил (враньё) — нулевой без карт, но ещё в игре
+  perform public.bluff_move(r, s2, 'put', '{33}', null, false);        -- доложил (враньё) — круг дошёл до нулевого
+  g := pg_temp.st(r);
+  if (select place from public.bluff_players where room_id = r and seat = 0) is null and pg_temp.lastlog(r, 'out') is null
+     and g.turn_seat = 0 and g.last_seat = 2 then n := n + 1; end if;
+  perform pg_temp.login(s0); v := public.bluff_view(r);
+  if (v -> 'my' ->> 'can_call')::boolean and jsonb_array_length(v -> 'my' -> 'hand') = 0
+     and pg_temp.try(format('select public.bluff_move(%s, %L, %L, %L, null, false)', r, s0, 'put', '{28}')) like '%bluff_bad_move%' then n := n + 1; end if;
+  perform public.bluff_move(r, s0, 'doubt', null, null, false);        -- враньё: второй забрал [28, 24, 33], нулевой — первое место
+  if (select place from public.bluff_players where room_id = r and seat = 0) = 1 and (pg_temp.lastlog(r, 'out') ->> 'seat')::int = 0
+     and pg_temp.hand(r, 2) @> '{24,28,33,48}' and (pg_temp.st(r)).turn_seat = 1 then n := n + 1; end if;   -- угадавший уже вне круга — начинает следующий
+  perform public.bluff_move(r, s1, 'put', '{32}', 10, false);          -- первый: последняя, правда
+  perform public.bluff_move(r, s2, 'put', '{33}', null, false);        -- второй доложил (правда) — круг дошёл до первого
+  if (pg_temp.st(r)).turn_seat = 1 then n := n + 1; end if;          -- занявший место (0) пропускается
+  perform public.bluff_move(r, s1, 'trust', null, null, false);        -- поверил правде: стопка в биту — первый без карт, второй последний
   g := pg_temp.st(r);
   if g.status = 'finished' and (select string_agg(seat || ':' || place || ':' || out_kind || ':' || payout, ',' order by seat) from public.bluff_players where room_id = r)
-       = '0:1:done:20.00,1:3:last:0.00,2:2:done:10.00' then n := n + 1; end if;
-  if public.coins_of(s0) = c0[1] + 10 and public.coins_of(s1) = c0[2] - 10 and public.coins_of(s2) = c0[3] then n := n + 1; end if;
+       = '0:1:done:20.00,1:2:done:10.00,2:3:last:0.00' then n := n + 1; end if;
+  if public.coins_of(s0) = c0[1] + 10 and public.coins_of(s1) = c0[2] and public.coins_of(s2) = c0[3] - 10 then n := n + 1; end if;
   perform pg_temp.login(u[1]);
   if pg_temp.try('select public.bluff_create(0, 2, 0)') = 'ok' then n := n + 1; end if;   -- закончилась — можно открыть новую
-  res := res || case when n = 7 then E'ok   8 последние карты: «доложили» — вышел; «верю» на вранье с последних — вышел; итог 20/10/0, монеты сошлись\n'
-                     else E'FAIL 8 (' || n || E'/7)\n' end;
+  res := res || case when n = 8 then E'ok   8 последние карты: после «доложить» — ещё в игре, круг дошёл — только «верю» / «не верю»; круг кончился — место; итог 20/10/0, монеты сошлись\n'
+                     else E'FAIL 8 (' || n || E'/8)\n' end;
   perform public.bluff_leave((select max(id) from public.bluff_rooms where creator = u[1]));
 
   -- ===== 9. Время: пропуск — база кладёт за игрока одну карту; второй подряд — выбыл последним; «Выйти» — поражение =====
