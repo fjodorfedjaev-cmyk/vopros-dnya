@@ -43,6 +43,15 @@ const checks = []; const ok = (name, cond, extra) => { checks.push([name, !!cond
      && /^24 карты · мест до 6$/.test(await text('.bf-deck-sum')), await text('.bf-deck-sum'));
   await drag(0, 0, 12);
   ok('нижнюю нельзя увести выше верхней', JSON.stringify((await vals()).slice(0, 2)) === '[10,10]', await text('.bf-sl-val'));
+  // ручки в одной точке: тянешь влево — едет нижняя, вправо — верхняя, вторая стоит
+  await drag(0, 1, 7);
+  ok('обе на 10 — потянул влево: нижняя на 7, верхняя осталась на 10', JSON.stringify((await vals()).slice(0, 2)) === '[7,10]', await text('.bf-sl-val'));
+  await drag(0, 0, 10);
+  ok('снова обе на 10', JSON.stringify((await vals()).slice(0, 2)) === '[10,10]', await text('.bf-sl-val'));
+  await drag(0, 0, 13);
+  ok('обе на 10 — потянул вправо: верхняя на 13, нижняя осталась на 10', JSON.stringify((await vals()).slice(0, 2)) === '[10,13]', await text('.bf-sl-val'));
+  await drag(0, 1, 10); await drag(0, 1, 4);
+  ok('обе на 10 — влево до упора не дальше пальца: нижняя на 4', JSON.stringify((await vals()).slice(0, 2)) === '[4,10]', await text('.bf-sl-val'));
   await drag(0, 1, 14); await drag(0, 0, 14);
   ok('обе на тузе — «только тузы», 4 места', JSON.stringify((await vals()).slice(0, 2)) === '[14,14]' && (await text('.bf-sl-val')) === 'только тузы'
      && /мест до 4/.test(await text('.bf-deck-sum')), await text('.bf-deck-sum'));

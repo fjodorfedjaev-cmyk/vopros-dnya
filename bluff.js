@@ -162,11 +162,30 @@
     var box = el('div', { class: 'bf-range' }, [el('div', { class: 'bf-track' }, [fill])]);
     var ticks = el('div', { class: 'bf-ticks' });
     function pct(v) { return (v - min) / (max - min) * 100; }
+    // Ручки стоят в одной точке: палец на верхней из двух ручек, но куда тянуть — решает первое движение:
+    // влево — едет нижняя ручка, вправо — верхняя; вторая остаётся на месте до конца движения
+    var grab = null;
+    function release() { grab = null; }
+    function hold() {
+      grab = two && vals[0] === vals[1] ? { at: vals[0], side: null } : null;
+      if (grab) { window.addEventListener('pointerup', release, { once: true }); window.addEventListener('touchend', release, { once: true }); }
+    }
     var inputs = vals.map(function (v, i) {
       var inp = el('input', { type: 'range', min: String(min), max: String(max), step: '1', 'aria-label': aria[i] });
       inp.value = String(v);
+      inp.addEventListener('pointerdown', hold);
+      inp.addEventListener('touchstart', function () { if (!grab) hold(); }, { passive: true });
+      inp.addEventListener('change', release);           // отпустили ручку
       inp.addEventListener('input', function () {
         var x = Number(inp.value);
+        if (grab) {
+          if (!grab.side && x !== grab.at) grab.side = x < grab.at ? 0 : 1;
+          if (grab.side === 0) { vals[0] = Math.min(x, grab.at); vals[1] = grab.at; }
+          else if (grab.side === 1) { vals[1] = Math.max(x, grab.at); vals[0] = grab.at; }
+          inputs[0].value = String(vals[0]); inputs[1].value = String(vals[1]);
+          draw(); onChange(vals.slice());
+          return;
+        }
         if (two && i === 0 && x > vals[1]) { x = vals[1]; inp.value = String(x); }
         if (two && i === 1 && x < vals[0]) { x = vals[0]; inp.value = String(x); }
         vals[i] = x; draw(); onChange(vals.slice());

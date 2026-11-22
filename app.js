@@ -190,12 +190,12 @@
     if (m.indexOf('bad_code') >= 0) text = 'Код приглашения не подошёл. Проверь его и попробуй ещё раз.';
     else if (m.indexOf('bad_name') >= 0) text = 'Введи имя, под которым тебя увидят друзья.';
     else if (m.indexOf('not_member') >= 0) text = 'Сначала нужно ввести код приглашения.';
-    else if (m.indexOf('sug_not_enough') >= 0) text = 'Не хватает монет: нужно ' + sugPrice(S.sug && S.sug.kind) + ' 🪙.';
+    else if (m.indexOf('sug_limit') >= 0) text = 'На проверке уже ' + SUG_LIMIT + ' твоих предложений — новое можно после проверки.';
     else if (m.indexOf('sug_need_blank') >= 0) text = 'Нужен ровно один пропуск ___ — туда друзья впишут слово.';
     else if (m.indexOf('sug_bad_text') >= 0) text = 'Текст должен быть от 5 до 200 символов.';
     else if (m.indexOf('sug_same_options') >= 0) text = 'Варианты не должны повторяться.';
     else if (m.indexOf('sug_bad_options') >= 0) text = 'Нужно 4 варианта, каждый до 60 символов.';
-    else if (m.indexOf('sug_duplicate') >= 0) text = 'Такой уже есть или его уже предложили. Монеты не списаны.';
+    else if (m.indexOf('sug_duplicate') >= 0) text = 'Такой уже есть или его уже предложили.';
     else if (m.indexOf('sug_reviewed') >= 0) text = 'Это предложение уже проверено.';
     else if (m.indexOf('not_admin') >= 0) text = 'Проверять предложения может только админ.';
     else if (m.indexOf('invalid login credentials') >= 0) text = 'Почта или пароль не подошли.';
@@ -2497,11 +2497,11 @@
     return d;
   }
 
-  /* ----- «Свой вопрос»: предложить вопрос или фразу для «Слова» за 100 монет, «Выбор» — за 50 ----- */
+  /* ----- «Свой вопрос»: предложить вопрос, фразу для «Слова» или «Выбор» — бесплатно, на проверке не больше 5 сразу ----- */
   // Предложение уходит на проверку админу. Одобрил — выйдет одним из следующих (раньше обычных), автора никто не увидит.
   // Не подошло — монеты вернутся. Списывает и возвращает монеты только база, сайт лишь показывает.
-  // Цена — как в базе (suggest_question): «Выбор» — 50, Вопрос и Слово — 100
-  function sugPrice(kind) { return kind === 'poll' ? 50 : 100; }
+  var SUG_LIMIT = 5;     // как в базе (suggest_question): столько предложений одного человека может ждать проверки
+  function sugMinePending() { return (S.sug.mine || []).filter(function (x) { return x.s_status === 'pending'; }).length; }
   var SUG_KINDS = [['question', 'Вопрос'], ['fill', 'Слово'], ['poll', 'Выбор']];
   var SUG_STATUS = { pending: 'На проверке', approved: 'Одобрено', rejected: 'Не подошло' };
   function sugKindName(k) { return k === 'fill' ? 'Слово' : k === 'poll' ? 'Выбор' : 'Вопрос'; }
@@ -2623,9 +2623,8 @@
       }, [x[1], n ? el('span', { class: 'seg-badge', 'aria-hidden': 'true', text: String(n) }) : null]);
     }));
     var msg = el('p', { class: 'msg', role: 'status' });
-    var price = sugPrice(k);
-    var btn = el('button', { type: 'submit', class: 'btn primary', text: 'Предложить за ' + price + ' 🪙' });
-    var short = balance() < price;
+    var btn = el('button', { type: 'submit', class: 'btn primary', text: 'Предложить' });
+    var full = sugMinePending() >= SUG_LIMIT;
     var fields = [];
     var main, preview = null, counter = el('span', { class: 'count' });
 
@@ -2689,7 +2688,6 @@
         ev.preventDefault();
         var c = sugCheck(k, d);
         if (c.err) { showMsg(msg, 'err', c.err); return; }
-        if (balance() < price) { showMsg(msg, 'err', 'Не хватает монет: нужно ' + price + ' 🪙.'); return; }
         btn.disabled = true;
         showMsg(msg, '', 'Отправляю…');
         try {
@@ -2711,16 +2709,16 @@
       }
     }, fields.concat([
       el('div', { class: 'row between' }, [btn, counter]),
-      short ? el('p', { class: 'hint-line', text: 'У тебя ' + fmt(balance()) + ' 🪙 — нужно ' + price + '.' }) : null,
+      full ? el('p', { class: 'hint-line', text: 'На проверке уже ' + SUG_LIMIT + ' твоих предложений — новое можно после проверки.' }) : null,
       msg
     ]));
-    if (short) btn.disabled = true;
+    if (full) btn.disabled = true;
 
     sect.appendChild(seg);
     sect.appendChild(form);
     sect.appendChild(el('ul', { class: 'sug-rules' }, [
       el('li', { text: 'Одобренное выйдет одним из следующих. Автора никто не увидит.' }),
-      el('li', { text: 'Не подошло — ' + price + ' 🪙 вернутся.' })
+      el('li', { text: 'Бесплатно. Ждать проверки могут до ' + SUG_LIMIT + ' твоих предложений сразу.' })
     ]));
   }
 

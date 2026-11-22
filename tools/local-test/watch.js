@@ -1,10 +1,9 @@
-// «Наблюдать» в картах, «Участники» в Профиле (5,5 строки), цена «Выбора» в «Своём вопросе».
+// «Наблюдать» в картах, «Участники» в Профиле (5,5 строки).
 //  Дурак: двое играют (ходы — прямо в базе), третий в браузере видит «Наблюдать», смотрит стол (без своих карт,
 //    над столом «наблюдаешь» и «К комнатам»), игра идёт — ошибок нет; второй вышел — «ИГРА ОКОНЧЕНА» без «Ещё раз».
 //  Верю — не верю: шестеро играют, седьмой наблюдает (внизу — первый игрок, в круге — пятеро), ходы идут; итог без «Ещё раз».
 //  Покер: двое за столом — у третьего «Наблюдать» рядом с «Сесть», за столом «Ты наблюдаешь», карт игроков не видно.
 //  Профиль: таблица «Участники» — видно 5 строк и половину шестой, прокручивается.
-//  «Свой вопрос»: у «Выбора» кнопка «Предложить за 50», у Вопроса — «за 100».
 //   DB=wt node watch.js         (WIDTH / HEIGHT — размер телефона; если участников меньше 7 — добавит недостающих)
 // Нужно: база с миграциями 08_watch.sql (Дурак) и 03_watch.sql (Верю — не верю) — строка в README; DB=wt node server.js
 const { execFileSync } = require('child_process');
@@ -156,18 +155,6 @@ function bluffStep(room, ids) {
   const headTop = await W.locator('.members-wrap thead th').first().evaluate((th) => th.getBoundingClientRect().top - th.closest('.members-wrap').getBoundingClientRect().top);
   ok(Math.abs(headTop) < 6, 'Участники: прокрутил вниз — шапка осталась сверху');
   await shot(W, 'watch-members-scrolled');
-
-  // ===== «Свой вопрос»: цена по виду =====
-  await W.locator('.bn-item', { hasText: 'Вопрос' }).click();
-  await W.waitForSelector('.sug-btn');
-  await W.locator('.sug-btn').first().click();
-  await W.waitForSelector('#sug-form .segment button');
-  await W.locator('#sug-form .segment button', { hasText: 'Выбор' }).click();
-  ok(await waitFor(async () => (await W.getByRole('button', { name: /Предложить за 50/ }).count()) > 0), '«Свой вопрос» → Выбор: «Предложить за 50»');
-  ok(/Не подошло — 50/.test(await W.locator('.sug-rules').textContent()), 'Выбор: «Не подошло — 50 🪙 вернутся»');
-  await shot(W, 'watch-sug-poll');
-  await W.locator('#sug-form .segment button', { hasText: 'Вопрос' }).click();
-  ok(await waitFor(async () => (await W.getByRole('button', { name: /Предложить за 100/ }).count()) > 0), 'Вопрос: «Предложить за 100»');
 
   ok(errors.length === 0, 'ошибок на странице нет' + (errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''));
   await browser.close();
