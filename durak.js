@@ -105,6 +105,11 @@
       title = fool ? 'Дурак' : r.my_place + ' место из ' + n;
       line = r.test ? 'тестовая, с ботами' : r.stake ? (net > 0 ? '+' : net < 0 ? '−' : '') + coins(Math.abs(net)) : 'без ставки';
       cls = fool ? ' lose' : r.my_place === 1 ? ' win' : '';
+    } else if (r.watch) {
+      // идёт чужая игра (или я из неё вышел) — можно наблюдать
+      title = 'Идёт игра';
+      line = playersText(n) + ' · ' + stakeTxt;
+      acts.push(el('button', { type: 'button', class: 'btn', text: 'Наблюдать', onclick: function () { openRoom(r.id); } }));
     } else if (r.mine) {
       title = r.status === 'choose' || r.status === 'play' ? 'Идёт игра' : r.status === 'ready' ? 'Сейчас начнётся' : r.test ? 'Тестовая комната' : 'Твоя комната';
       line = n + ' из 5 · ' + (r.test ? 'с ботами' : stakeTxt);
@@ -128,6 +133,13 @@
       acts.length ? el('div', { class: 'duel-acts' }, acts) : null,
       msg
     ]);
+  }
+
+  // Сколько человек играет: «2 игрока», «5 игроков»
+  function playersText(n) { return n + (n % 10 >= 2 && n % 10 <= 4 && (n < 12 || n > 14) ? ' игрока' : ' игроков'); }
+  // Наблюдатель: смотрит «из-за спины» первого игрока — он внизу (как соперник: только число карт и карты на столе)
+  function watchBox(p, st, oppBox) {
+    return el('div', { class: 'dk-watch' }, p ? [oppBox(p, st, 'me')] : []);
   }
 
   async function join(id, btn, msg) {
@@ -332,10 +344,10 @@
   function gameBar(st) {
     var me = st.my || {};
     var myP = playerAt(me.seat) || {};
-    var already = myP.place != null;        // уже вне игры — просто к списку комнат
+    var already = myP.place != null || !st.my;   // уже вне игры или наблюдаю — просто к списку комнат
     var b = el('span', { class: 'dk-bank' });
-    setText(b, st.test ? 'тестовая · с ботами' : st.stake ? 'банк ' + coins(bank(st)) : 'без ставки');
-    var quit = el('button', { type: 'button', class: 'dk-quit', text: 'Выйти', 'aria-expanded': String(!!K.quitAsk && !already), 'data-dismiss-trigger': 'dk-quit',
+    setText(b, (st.test ? 'тестовая · с ботами' : st.stake ? 'банк ' + coins(bank(st)) : 'без ставки') + (st.my ? '' : ' · наблюдаешь'));
+    var quit = el('button', { type: 'button', class: 'dk-quit', text: st.my ? 'Выйти' : 'К комнатам', 'aria-expanded': String(!!K.quitAsk && !already), 'data-dismiss-trigger': 'dk-quit',
       onclick: function () { if (already) { closeRoom(); return; } K.quitAsk = !K.quitAsk; paint(true); } });
     var kids = [b, quit];
     if (K.quitAsk && !already) {
@@ -409,8 +421,11 @@
       box.appendChild(stakeLine(st));
       box.appendChild(el('div', { class: 'dk-bar', 'aria-hidden': 'true' }, [el('i')]));
       box.appendChild(seatsList(st, function (p) { return { text: p.ready ? 'готово' : 'ждём', on: p.ready }; }));
-      if (!me.ready) acts.push(el('button', { type: 'button', class: 'btn primary duel-ready-btn', text: 'Готов', disabled: K.busy, onclick: function () { act('durak_ready'); } }));
-      acts.push(el('button', { type: 'button', class: 'btn', text: 'Выйти', disabled: K.busy, onclick: function () { act('durak_leave'); } }));
+      if (!st.my) acts.push(el('button', { type: 'button', class: 'btn', text: 'К комнатам', onclick: closeRoom }));
+      else {
+        if (!me.ready) acts.push(el('button', { type: 'button', class: 'btn primary duel-ready-btn', text: 'Готов', disabled: K.busy, onclick: function () { act('durak_ready'); } }));
+        acts.push(el('button', { type: 'button', class: 'btn', text: 'Выйти', disabled: K.busy, onclick: function () { act('durak_leave'); } }));
+      }
     }
     box.appendChild(el('div', { class: 'duel-acts' }, acts));
     box.appendChild(msgLine());
@@ -616,14 +631,15 @@
   }
 
   function playBox(st) {
-    var mySeat = st.my ? st.my.seat : 0;
+    var base = st.my ? null : playersBySeat()[0];     // наблюдаю: внизу первый игрок
+    var mySeat = st.my ? st.my.seat : base ? base.seat : 0;
     // соперники по часовой стрелке, начиная со следующего после меня: слева → сверху → справа
-    var opps = playersBySeat().filter(function (p) { return !p.me; }).sort(function (a, b) {
+    var opps = playersBySeat().filter(function (p) { return !p.me && p !== base; }).sort(function (a, b) {
       return ((a.seat - mySeat + 10) % 10) - ((b.seat - mySeat + 10) % 10);
     });
     var spots = { 1: ['top'], 2: ['tl', 'tr'], 3: ['l', 'top', 'r'], 4: ['l', 'tl', 'tr', 'r'] }[opps.length] || [];
     var ring = el('div', { class: 'dk-ring n' + opps.length }, opps.map(function (p, i) { return oppBox(p, st, spots[i]); }).concat([midEl(st)]));
-    return el('div', { class: 'dk-table' }, [ring, st.status === 'choose' ? meChooseBox(st) : meBox(st)]);
+    return el('div', { class: 'dk-table' }, [ring, !st.my ? watchBox(base, st, oppBox) : st.status === 'choose' ? meChooseBox(st) : meBox(st)]);
   }
 
   /* ---------- анимации ---------- */
@@ -686,7 +702,8 @@
     var box = el('div', { class: 'card dk-result' });
     var me = st.my || {};
     var fool = me.place === n;
-    box.appendChild(el('p', { class: 'duel-title' + (fool ? ' lose' : me.place === 1 ? ' win' : ''), text: fool ? 'ДУРАК' : me.place === 1 ? 'ПОБЕДА' : me.place + ' МЕСТО' }));
+    box.appendChild(el('p', { class: 'duel-title' + (fool ? ' lose' : me.place === 1 ? ' win' : ''),
+      text: !st.my ? 'ИГРА ОКОНЧЕНА' : fool ? 'ДУРАК' : me.place === 1 ? 'ПОБЕДА' : me.place + ' МЕСТО' }));
     box.appendChild(el('div', { class: 'dk-places' }, players.map(function (p) {
       var net = Number(p.payout || 0) - st.stake;
       var money = el('span', { class: 'dk-pl-money' + (net > 0 ? ' plus' : net < 0 ? ' minus' : '') });
@@ -709,7 +726,7 @@
       try { var id = await rpc('durak_rematch', { p_room: st.id }); A.loadPoints(); K.busy = false; openRoom(Number(id)); }
       catch (e) { K.busy = false; K.msg = errText(e); K.msgErr = true; paint(true); }
     });
-    acts.push(again);
+    if (st.my) acts.push(again);
     acts.push(el('button', { type: 'button', class: 'btn', text: 'К комнатам', onclick: closeRoom }));
     box.appendChild(el('div', { class: 'duel-acts' }, acts));
     box.appendChild(msgLine());

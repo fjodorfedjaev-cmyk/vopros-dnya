@@ -2150,3 +2150,15 @@ body.pf-lock { overflow: hidden; }
 .bf-verdict { font: 800 22px var(--font-display); }
 .bf-reveal.truth .bf-verdict { color: var(--ok, #3FB97F); }
 .bf-reveal.lie .bf-verdict { color: var(--err); }
+
+/* «Участники» в Профиле: видно 5 строк и половину шестой (высоту ставит fitMembers), остальное — прокруткой; шапка остаётся сверху */
+.members-wrap { overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.members-wrap thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: 0 1px 0 #2A2827; }
+
+/* Карты: наблюдаю за игрой — внизу первый игрок (как соперник: веер и карты на столе) */
+.dk-watch { display: flex; justify-content: center; }
+.dk-watch .dk-opp { min-width: 48%; }
+/* две кнопки у стола («Сесть» и «Наблюдать») — отдельной строкой под названием, чтобы оно не сжималось */
+.duel-row.two .duel-acts { grid-column: 1 / -1; flex-wrap: nowrap; }
+.duel-row.two .duel-acts .btn { flex: 1 1 0; }
+.dk-quit { white-space: nowrap; }

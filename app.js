@@ -190,7 +190,7 @@
     if (m.indexOf('bad_code') >= 0) text = 'Код приглашения не подошёл. Проверь его и попробуй ещё раз.';
     else if (m.indexOf('bad_name') >= 0) text = 'Введи имя, под которым тебя увидят друзья.';
     else if (m.indexOf('not_member') >= 0) text = 'Сначала нужно ввести код приглашения.';
-    else if (m.indexOf('sug_not_enough') >= 0) text = 'Не хватает монет: нужно 100 🪙.';
+    else if (m.indexOf('sug_not_enough') >= 0) text = 'Не хватает монет: нужно ' + sugPrice(S.sug && S.sug.kind) + ' 🪙.';
     else if (m.indexOf('sug_need_blank') >= 0) text = 'Нужен ровно один пропуск ___ — туда друзья впишут слово.';
     else if (m.indexOf('sug_bad_text') >= 0) text = 'Текст должен быть от 5 до 200 символов.';
     else if (m.indexOf('sug_same_options') >= 0) text = 'Варианты не должны повторяться.';
@@ -1908,9 +1908,8 @@
         el('td', { class: 'col-coins', text: S.coins && S.coins[s.user_id] !== undefined ? fmt(Math.floor(S.coins[s.user_id])) : '…' })
       ]);
     });
-    out.push(el('section', { class: 'sect' }, [
-      el('h2', { text: 'Участники' }),
-      el('div', { class: 'card table-wrap' }, [
+    // Видно 5 строк и половину шестой — понятно, что список прокручивается
+    var membersWrap = el('div', { class: 'card table-wrap members-wrap' }, [
         el('table', { class: 'board' }, [
           el('thead', null, [el('tr', null, [
             el('th', { scope: 'col', text: 'Кто' }),
@@ -1921,9 +1920,24 @@
           ])]),
           el('tbody', null, rows)
         ])
-      ])
-    ]));
+      ]);
+    fitMembers(membersWrap);
+    out.push(el('section', { class: 'sect' }, [el('h2', { text: 'Участники' }), membersWrap]));
     return out;
+  }
+
+  // Высота таблицы «Участники»: шапка + 5,5 строки (меряем, когда таблица уже на экране)
+  function fitMembers(wrap, tries) {
+    requestAnimationFrame(function () {
+      if (!wrap.isConnected) { if ((tries || 0) < 20) fitMembers(wrap, (tries || 0) + 1); return; }
+      var head = wrap.querySelector('thead'), rows = wrap.querySelectorAll('tbody tr');
+      if (rows.length <= 5) { wrap.style.maxHeight = ''; return; }
+      var h = head.getBoundingClientRect().height;
+      for (var i = 0; i < 5; i++) h += rows[i].getBoundingClientRect().height;
+      h += rows[5].getBoundingClientRect().height / 2;
+      var cs = getComputedStyle(wrap);
+      wrap.style.maxHeight = Math.round(h + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)) + 'px';
+    });
   }
 
   /* ----- меню своего ответа: нажимаешь на ответ — появляются действия ----- */
@@ -2483,10 +2497,11 @@
     return d;
   }
 
-  /* ----- «Свой вопрос»: предложить вопрос, фразу для «Слова» или «Выбор» за 100 монет ----- */
+  /* ----- «Свой вопрос»: предложить вопрос или фразу для «Слова» за 100 монет, «Выбор» — за 50 ----- */
   // Предложение уходит на проверку админу. Одобрил — выйдет одним из следующих (раньше обычных), автора никто не увидит.
   // Не подошло — монеты вернутся. Списывает и возвращает монеты только база, сайт лишь показывает.
-  var SUG_PRICE = 100;   // как в базе (suggest_question)
+  // Цена — как в базе (suggest_question): «Выбор» — 50, Вопрос и Слово — 100
+  function sugPrice(kind) { return kind === 'poll' ? 50 : 100; }
   var SUG_KINDS = [['question', 'Вопрос'], ['fill', 'Слово'], ['poll', 'Выбор']];
   var SUG_STATUS = { pending: 'На проверке', approved: 'Одобрено', rejected: 'Не подошло' };
   function sugKindName(k) { return k === 'fill' ? 'Слово' : k === 'poll' ? 'Выбор' : 'Вопрос'; }
@@ -2608,8 +2623,9 @@
       }, [x[1], n ? el('span', { class: 'seg-badge', 'aria-hidden': 'true', text: String(n) }) : null]);
     }));
     var msg = el('p', { class: 'msg', role: 'status' });
-    var btn = el('button', { type: 'submit', class: 'btn primary', text: 'Предложить за ' + SUG_PRICE + ' 🪙' });
-    var short = balance() < SUG_PRICE;
+    var price = sugPrice(k);
+    var btn = el('button', { type: 'submit', class: 'btn primary', text: 'Предложить за ' + price + ' 🪙' });
+    var short = balance() < price;
     var fields = [];
     var main, preview = null, counter = el('span', { class: 'count' });
 
@@ -2673,7 +2689,7 @@
         ev.preventDefault();
         var c = sugCheck(k, d);
         if (c.err) { showMsg(msg, 'err', c.err); return; }
-        if (balance() < SUG_PRICE) { showMsg(msg, 'err', 'Не хватает монет: нужно ' + SUG_PRICE + ' 🪙.'); return; }
+        if (balance() < price) { showMsg(msg, 'err', 'Не хватает монет: нужно ' + price + ' 🪙.'); return; }
         btn.disabled = true;
         showMsg(msg, '', 'Отправляю…');
         try {
@@ -2695,7 +2711,7 @@
       }
     }, fields.concat([
       el('div', { class: 'row between' }, [btn, counter]),
-      short ? el('p', { class: 'hint-line', text: 'У тебя ' + fmt(balance()) + ' 🪙 — нужно ' + SUG_PRICE + '.' }) : null,
+      short ? el('p', { class: 'hint-line', text: 'У тебя ' + fmt(balance()) + ' 🪙 — нужно ' + price + '.' }) : null,
       msg
     ]));
     if (short) btn.disabled = true;
@@ -2704,7 +2720,7 @@
     sect.appendChild(form);
     sect.appendChild(el('ul', { class: 'sug-rules' }, [
       el('li', { text: 'Одобренное выйдет одним из следующих. Автора никто не увидит.' }),
-      el('li', { text: 'Не подошло — ' + SUG_PRICE + ' 🪙 вернутся.' })
+      el('li', { text: 'Не подошло — ' + price + ' 🪙 вернутся.' })
     ]));
   }
 

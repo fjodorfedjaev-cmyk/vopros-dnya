@@ -111,6 +111,11 @@
       title = lastOne ? 'Последнее место' : r.my_place + ' место из ' + n;
       line = r.test ? 'тестовая, с ботами' : r.stake ? (net > 0 ? '+' : net < 0 ? '−' : '') + coins(Math.abs(net)) : 'без ставки';
       cls = lastOne ? ' lose' : r.my_place === 1 ? ' win' : '';
+    } else if (r.watch) {
+      // идёт чужая игра (или я из неё вышел) — можно наблюдать
+      title = 'Идёт игра';
+      line = playersText(n) + ' · ' + info;
+      acts.push(el('button', { type: 'button', class: 'btn', text: 'Наблюдать', onclick: function () { openRoom(r.id); } }));
     } else if (r.mine) {
       title = r.status === 'play' ? 'Идёт игра' : r.status === 'ready' ? 'Сейчас начнётся' : r.test ? 'Тестовая комната' : 'Твоя комната';
       line = n + ' из ' + r.max_seats + ' · ' + (r.test ? 'с ботами · ' + deckText(r.low, r.high, r.jokers) : info);
@@ -133,6 +138,13 @@
       acts.length ? el('div', { class: 'duel-acts' }, acts) : null,
       msg
     ]);
+  }
+
+  // Сколько человек играет: «2 игрока», «5 игроков»
+  function playersText(n) { return n + (n % 10 >= 2 && n % 10 <= 4 && (n < 12 || n > 14) ? ' игрока' : ' игроков'); }
+  // Наблюдатель: смотрит «из-за спины» первого игрока — он внизу (как соперник: только число карт и карты на столе)
+  function watchBox(p, st, oppBox) {
+    return el('div', { class: 'dk-watch' }, p ? [oppBox(p, st, 'me')] : []);
   }
 
   async function join(id, btn, msg) {
@@ -405,8 +417,9 @@
     var myP = playerAt(me.seat) || {};
     var already = myP.place != null || !st.my;
     var b = el('span', { class: 'dk-bank' });
-    setText(b, (st.test ? 'тестовая · с ботами' : st.stake ? 'банк ' + coins(bank(st)) : 'без ставки') + ' · ' + deckText(st.low, st.high, st.jokers));
-    var quit = el('button', { type: 'button', class: 'dk-quit', text: 'Выйти', 'aria-expanded': String(!!K.quitAsk && !already), 'data-dismiss-trigger': 'bf-quit',
+    setText(b, (st.test ? 'тестовая · с ботами' : st.stake ? 'банк ' + coins(bank(st)) : 'без ставки') + ' · ' + deckText(st.low, st.high, st.jokers)
+      + (st.my ? '' : ' · наблюдаешь'));
+    var quit = el('button', { type: 'button', class: 'dk-quit', text: st.my ? 'Выйти' : 'К комнатам', 'aria-expanded': String(!!K.quitAsk && !already), 'data-dismiss-trigger': 'bf-quit',
       onclick: function () { if (already) { closeRoom(); return; } K.quitAsk = !K.quitAsk; paint(true); } });
     var kids = [b, quit];
     if (K.quitAsk && !already) {
@@ -479,8 +492,11 @@
       box.appendChild(stakeLine(st));
       box.appendChild(el('div', { class: 'dk-bar', 'aria-hidden': 'true' }, [el('i')]));
       box.appendChild(seatsList(st, function (p) { return { text: p.ready ? 'готово' : 'ждём', on: p.ready }; }));
-      if (!me.ready) acts.push(el('button', { type: 'button', class: 'btn primary duel-ready-btn', text: 'Готово', disabled: K.busy, onclick: function () { act('bluff_ready'); } }));
-      acts.push(el('button', { type: 'button', class: 'btn', text: 'Выйти', disabled: K.busy, onclick: function () { act('bluff_leave'); } }));
+      if (!st.my) acts.push(el('button', { type: 'button', class: 'btn', text: 'К комнатам', onclick: closeRoom }));
+      else {
+        if (!me.ready) acts.push(el('button', { type: 'button', class: 'btn primary duel-ready-btn', text: 'Готово', disabled: K.busy, onclick: function () { act('bluff_ready'); } }));
+        acts.push(el('button', { type: 'button', class: 'btn', text: 'Выйти', disabled: K.busy, onclick: function () { act('bluff_leave'); } }));
+      }
     }
     box.appendChild(el('div', { class: 'duel-acts' }, acts));
     box.appendChild(msgLine());
@@ -629,13 +645,14 @@
   }
 
   function playBox(st) {
-    var mySeat = st.my ? st.my.seat : 0;
-    var opps = playersBySeat().filter(function (p) { return !p.me; }).sort(function (a, b) {
+    var base = st.my ? null : playersBySeat()[0];     // наблюдаю: внизу первый игрок
+    var mySeat = st.my ? st.my.seat : base ? base.seat : 0;
+    var opps = playersBySeat().filter(function (p) { return !p.me && p !== base; }).sort(function (a, b) {
       return ((a.seat - mySeat + 12) % 12) - ((b.seat - mySeat + 12) % 12);
     });
     var spots = { 1: ['top'], 2: ['tl', 'tr'], 3: ['l', 'top', 'r'], 4: ['l', 'tl', 'tr', 'r'], 5: ['l', 'tl', 'top', 'tr', 'r'] }[opps.length] || [];
     var ring = el('div', { class: 'dk-ring bf-ring n' + opps.length }, opps.map(function (p, i) { return oppBox(p, st, spots[i]); }).concat([midEl(st), bitaEl(st)]));
-    return el('div', { class: 'dk-table bf-table' }, [ring, st.my ? meBox(st) : null]);
+    return el('div', { class: 'dk-table bf-table' }, [ring, st.my ? meBox(st) : watchBox(base, st, oppBox)]);
   }
 
   /* ---------- анимации ---------- */
@@ -703,7 +720,8 @@
     var box = el('div', { class: 'card dk-result' });
     var me = st.my || {};
     var lastOne = me.place === n;
-    box.appendChild(el('p', { class: 'duel-title' + (lastOne ? ' lose' : me.place === 1 ? ' win' : ''), text: lastOne ? 'ПРОИГРЫШ' : me.place === 1 ? 'ПОБЕДА' : me.place + ' МЕСТО' }));
+    box.appendChild(el('p', { class: 'duel-title' + (lastOne ? ' lose' : me.place === 1 ? ' win' : ''),
+      text: !st.my ? 'ИГРА ОКОНЧЕНА' : lastOne ? 'ПРОИГРЫШ' : me.place === 1 ? 'ПОБЕДА' : me.place + ' МЕСТО' }));
     box.appendChild(el('div', { class: 'dk-places' }, players.map(function (p) {
       var net = Number(p.payout || 0) - st.stake;
       var money = el('span', { class: 'dk-pl-money' + (net > 0 ? ' plus' : net < 0 ? ' minus' : '') });
@@ -726,7 +744,7 @@
       try { var id = await rpc('bluff_rematch', { p_room: st.id }); A.loadPoints(); K.busy = false; openRoom(Number(id)); }
       catch (e) { K.busy = false; K.msg = errText(e); K.msgErr = true; paint(true); }
     });
-    acts.push(again);
+    if (st.my) acts.push(again);
     acts.push(el('button', { type: 'button', class: 'btn', text: 'К комнатам', onclick: closeRoom }));
     box.appendChild(el('div', { class: 'duel-acts' }, acts));
     box.appendChild(msgLine());

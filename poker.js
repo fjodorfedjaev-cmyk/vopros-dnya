@@ -215,17 +215,19 @@
     if (t.mine) {
       cls = ' incoming';
       acts.push(el('button', { type: 'button', class: 'btn primary', text: 'Вернуться', onclick: function () { openTable(t.id); } }));
-    } else if (n < 6) {
+    } else {
       var open = K.sitFor === t.id;
-      acts.push(el('button', { type: 'button', class: 'btn' + (open ? '' : ' primary'), text: open ? 'Закрыть' : 'Сесть', 'data-dismiss-trigger': 'pk-sit',
+      if (n < 6) acts.push(el('button', { type: 'button', class: 'btn' + (open ? '' : ' primary'), text: open ? 'Закрыть' : 'Сесть', 'data-dismiss-trigger': 'pk-sit',
         onclick: function () {
           K.form = false;
           if (K.sitFor === t.id) { K.sitFor = null; } else { K.sitFor = t.id; K.sitBuy = defaultBuy(t.min_buy, t.max_buy); }
           paint(true);
         } }));
+      // за столом уже играют — можно посмотреть, не садясь
+      if (n >= 2 && !open) acts.push(el('button', { type: 'button', class: 'btn', text: 'Наблюдать', onclick: function () { K.sitFor = null; openTable(t.id); } }));
     }
     var lineEl = el('span', { class: 'duel-line' }); setText(lineEl, line);
-    var row = el('div', { class: 'duel-row' + cls }, [
+    var row = el('div', { class: 'duel-row' + cls + (acts.length > 1 ? ' two' : '') }, [
       avatars(players),
       el('div', { class: 'duel-info' }, [el('span', { class: 'duel-name', text: title }), lineEl]),
       acts.length ? el('div', { class: 'duel-acts' }, acts) : null,
@@ -770,6 +772,7 @@
     }
     else if (g && g.kind === 'bust') box.appendChild(el('p', { class: 'duel-big', text: 'Фишки закончились' }));
     else if (g && g.kind === 'afk') box.appendChild(el('p', { class: 'duel-big', text: 'Время на ход вышло два раза подряд — фишки вернулись на баланс' }));
+    else if (!g) box.appendChild(el('p', { class: 'duel-big', text: 'Ты наблюдаешь' }));
     if (g && g.kind !== 'bust' && Number(g.net) !== 0) {
       var net = Number(g.net);
       var m = el('span', { class: 'pk-net' + (net > 0 ? ' plus' : ' minus') });
