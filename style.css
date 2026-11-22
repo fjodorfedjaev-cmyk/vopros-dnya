@@ -1149,7 +1149,7 @@ textarea.ta-auto { resize: none; overflow: hidden; }
 .kc-art { display: inline-flex; }
 .kc-art svg { display: block; width: 100%; height: 100%; }
 .kc .kc-mid .kc-art { width: 150px; height: 150px; }
-.kc-name { font: 600 22px/1.15 var(--font-display); padding: 0 14px 14px; }
+.kc-name { font: 600 22px/1.15 var(--font-display); padding: 0 14px 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* размер подгоняет fitName в cards.js */
 .kc-legendary .kc-name { color: #FFE7B8; }
 .kc-band { flex: none; height: 26px; background: var(--kc-band); color: var(--kc-band-ink); display: flex; align-items: center; justify-content: center; font: 600 10.5px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
 .kc-shine { position: absolute; z-index: 2; top: -20%; left: 0; width: 34%; height: 140%; background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 244, 214, 0.26), rgba(255, 255, 255, 0)); pointer-events: none; animation: kcShine 4.4s linear infinite; }
@@ -1233,7 +1233,7 @@ textarea.ta-auto { resize: none; overflow: hidden; }
 .kc .am-dot.am-dot2 { animation-delay: 0.18s; }
 .kc .am-dot.am-dot3 { animation-delay: 0.36s; }
 @keyframes amType { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; } 25% { transform: translateY(-1.5px); opacity: 1; } }
-/* Серебро: монета с толщиной делает полный оборот. Лицо сжимается (scaleX = cos угла) и сдвигается,
+/* Серебро: монета (толщина 1,5 из 24) делает полный оборот. Лицо сжимается (scaleX = cos угла) и сдвигается,
    рядом проступает ребро (полоса шириной толщина × sin угла и задний край), лицо темнеет, когда отворачивается.
    Кадры посчитаны заранее; на 90° и 270° сторона меняется мгновенно (два кадра подряд). */
 .kc .am-spin, .kc .am-cap, .kc .am-band { transform-box: view-box; transform-origin: 12px 12px; animation: amSpin 4.8s linear infinite; }
@@ -1243,131 +1243,131 @@ textarea.ta-auto { resize: none; overflow: hidden; }
 .kc .am-edge { animation: amEdge 4.8s linear infinite; }
 @keyframes amSpin {
   0%, 55% { transform: translateX(0) scaleX(1); }
-  56.11% { transform: translateX(0.019px) scaleX(1); }
-  57.22% { transform: translateX(0.073px) scaleX(0.998); }
-  58.33% { transform: translateX(0.16px) scaleX(0.992); }
-  59.44% { transform: translateX(0.278px) scaleX(0.977); }
-  60.56% { transform: translateX(0.421px) scaleX(0.946); }
-  61.67% { transform: translateX(0.583px) scaleX(0.894); }
-  62.78% { transform: translateX(0.756px) scaleX(0.814); }
-  63.89% { transform: translateX(0.926px) scaleX(0.702); }
-  65% { transform: translateX(1.081px) scaleX(0.556); }
-  66.11% { transform: translateX(1.204px) scaleX(0.376); }
-  67.22% { transform: translateX(1.281px) scaleX(0.169); }
-  68.05% { transform: translateX(1.3px) scaleX(0.002); }
-  68.06% { transform: translateX(-1.3px) scaleX(-0.002); }
-  68.33% { transform: translateX(-1.298px) scaleX(-0.058); }
-  69.44% { transform: translateX(-1.244px) scaleX(-0.291); }
-  70.56% { transform: translateX(-1.114px) scaleX(-0.515); }
-  71.67% { transform: translateX(-0.913px) scaleX(-0.712); }
-  72.78% { transform: translateX(-0.648px) scaleX(-0.867); }
-  73.89% { transform: translateX(-0.336px) scaleX(-0.966); }
+  56.11% { transform: translateX(0.011px) scaleX(1); }
+  57.22% { transform: translateX(0.042px) scaleX(0.998); }
+  58.33% { transform: translateX(0.092px) scaleX(0.992); }
+  59.44% { transform: translateX(0.16px) scaleX(0.977); }
+  60.56% { transform: translateX(0.243px) scaleX(0.946); }
+  61.67% { transform: translateX(0.337px) scaleX(0.894); }
+  62.78% { transform: translateX(0.436px) scaleX(0.814); }
+  63.89% { transform: translateX(0.534px) scaleX(0.702); }
+  65% { transform: translateX(0.624px) scaleX(0.556); }
+  66.11% { transform: translateX(0.695px) scaleX(0.376); }
+  67.22% { transform: translateX(0.739px) scaleX(0.169); }
+  68.05% { transform: translateX(0.75px) scaleX(0.002); }
+  68.06% { transform: translateX(-0.75px) scaleX(-0.002); }
+  68.33% { transform: translateX(-0.749px) scaleX(-0.058); }
+  69.44% { transform: translateX(-0.717px) scaleX(-0.291); }
+  70.56% { transform: translateX(-0.643px) scaleX(-0.515); }
+  71.67% { transform: translateX(-0.526px) scaleX(-0.712); }
+  72.78% { transform: translateX(-0.374px) scaleX(-0.867); }
+  73.89% { transform: translateX(-0.194px) scaleX(-0.966); }
   75% { transform: translateX(0px) scaleX(-1); }
-  76.11% { transform: translateX(0.336px) scaleX(-0.966); }
-  77.22% { transform: translateX(0.648px) scaleX(-0.867); }
-  78.33% { transform: translateX(0.913px) scaleX(-0.712); }
-  79.44% { transform: translateX(1.114px) scaleX(-0.515); }
-  80.56% { transform: translateX(1.244px) scaleX(-0.291); }
-  81.67% { transform: translateX(1.298px) scaleX(-0.058); }
-  81.95% { transform: translateX(1.3px) scaleX(-0.002); }
-  81.96% { transform: translateX(-1.3px) scaleX(0.002); }
-  82.78% { transform: translateX(-1.281px) scaleX(0.169); }
-  83.89% { transform: translateX(-1.204px) scaleX(0.376); }
-  85% { transform: translateX(-1.081px) scaleX(0.556); }
-  86.11% { transform: translateX(-0.926px) scaleX(0.702); }
-  87.22% { transform: translateX(-0.756px) scaleX(0.814); }
-  88.33% { transform: translateX(-0.583px) scaleX(0.894); }
-  89.44% { transform: translateX(-0.421px) scaleX(0.946); }
-  90.56% { transform: translateX(-0.278px) scaleX(0.977); }
-  91.67% { transform: translateX(-0.16px) scaleX(0.992); }
-  92.78% { transform: translateX(-0.073px) scaleX(0.998); }
-  93.89% { transform: translateX(-0.019px) scaleX(1); }
+  76.11% { transform: translateX(0.194px) scaleX(-0.966); }
+  77.22% { transform: translateX(0.374px) scaleX(-0.867); }
+  78.33% { transform: translateX(0.526px) scaleX(-0.712); }
+  79.44% { transform: translateX(0.643px) scaleX(-0.515); }
+  80.56% { transform: translateX(0.717px) scaleX(-0.291); }
+  81.67% { transform: translateX(0.749px) scaleX(-0.058); }
+  81.95% { transform: translateX(0.75px) scaleX(-0.002); }
+  81.96% { transform: translateX(-0.75px) scaleX(0.002); }
+  82.78% { transform: translateX(-0.739px) scaleX(0.169); }
+  83.89% { transform: translateX(-0.695px) scaleX(0.376); }
+  85% { transform: translateX(-0.624px) scaleX(0.556); }
+  86.11% { transform: translateX(-0.534px) scaleX(0.702); }
+  87.22% { transform: translateX(-0.436px) scaleX(0.814); }
+  88.33% { transform: translateX(-0.337px) scaleX(0.894); }
+  89.44% { transform: translateX(-0.243px) scaleX(0.946); }
+  90.56% { transform: translateX(-0.16px) scaleX(0.977); }
+  91.67% { transform: translateX(-0.092px) scaleX(0.992); }
+  92.78% { transform: translateX(-0.042px) scaleX(0.998); }
+  93.89% { transform: translateX(-0.011px) scaleX(1); }
   95%, 100% { transform: translateX(0) scaleX(1); }
 }
 @keyframes amCap {
   0%, 55% { transform: translateX(0) scaleX(1); }
-  56.11% { transform: translateX(-0.019px) scaleX(1); }
-  57.22% { transform: translateX(-0.073px) scaleX(0.998); }
-  58.33% { transform: translateX(-0.16px) scaleX(0.992); }
-  59.44% { transform: translateX(-0.278px) scaleX(0.977); }
-  60.56% { transform: translateX(-0.421px) scaleX(0.946); }
-  61.67% { transform: translateX(-0.583px) scaleX(0.894); }
-  62.78% { transform: translateX(-0.756px) scaleX(0.814); }
-  63.89% { transform: translateX(-0.926px) scaleX(0.702); }
-  65% { transform: translateX(-1.081px) scaleX(0.556); }
-  66.11% { transform: translateX(-1.204px) scaleX(0.376); }
-  67.22% { transform: translateX(-1.281px) scaleX(0.169); }
-  68.05% { transform: translateX(-1.3px) scaleX(0.002); }
-  68.06% { transform: translateX(1.3px) scaleX(0.002); }
-  68.33% { transform: translateX(1.298px) scaleX(0.058); }
-  69.44% { transform: translateX(1.244px) scaleX(0.291); }
-  70.56% { transform: translateX(1.114px) scaleX(0.515); }
-  71.67% { transform: translateX(0.913px) scaleX(0.712); }
-  72.78% { transform: translateX(0.648px) scaleX(0.867); }
-  73.89% { transform: translateX(0.336px) scaleX(0.966); }
+  56.11% { transform: translateX(-0.011px) scaleX(1); }
+  57.22% { transform: translateX(-0.042px) scaleX(0.998); }
+  58.33% { transform: translateX(-0.092px) scaleX(0.992); }
+  59.44% { transform: translateX(-0.16px) scaleX(0.977); }
+  60.56% { transform: translateX(-0.243px) scaleX(0.946); }
+  61.67% { transform: translateX(-0.337px) scaleX(0.894); }
+  62.78% { transform: translateX(-0.436px) scaleX(0.814); }
+  63.89% { transform: translateX(-0.534px) scaleX(0.702); }
+  65% { transform: translateX(-0.624px) scaleX(0.556); }
+  66.11% { transform: translateX(-0.695px) scaleX(0.376); }
+  67.22% { transform: translateX(-0.739px) scaleX(0.169); }
+  68.05% { transform: translateX(-0.75px) scaleX(0.002); }
+  68.06% { transform: translateX(0.75px) scaleX(0.002); }
+  68.33% { transform: translateX(0.749px) scaleX(0.058); }
+  69.44% { transform: translateX(0.717px) scaleX(0.291); }
+  70.56% { transform: translateX(0.643px) scaleX(0.515); }
+  71.67% { transform: translateX(0.526px) scaleX(0.712); }
+  72.78% { transform: translateX(0.374px) scaleX(0.867); }
+  73.89% { transform: translateX(0.194px) scaleX(0.966); }
   75% { transform: translateX(0px) scaleX(1); }
-  76.11% { transform: translateX(-0.336px) scaleX(0.966); }
-  77.22% { transform: translateX(-0.648px) scaleX(0.867); }
-  78.33% { transform: translateX(-0.913px) scaleX(0.712); }
-  79.44% { transform: translateX(-1.114px) scaleX(0.515); }
-  80.56% { transform: translateX(-1.244px) scaleX(0.291); }
-  81.67% { transform: translateX(-1.298px) scaleX(0.058); }
-  81.95% { transform: translateX(-1.3px) scaleX(0.002); }
-  81.96% { transform: translateX(1.3px) scaleX(0.002); }
-  82.78% { transform: translateX(1.281px) scaleX(0.169); }
-  83.89% { transform: translateX(1.204px) scaleX(0.376); }
-  85% { transform: translateX(1.081px) scaleX(0.556); }
-  86.11% { transform: translateX(0.926px) scaleX(0.702); }
-  87.22% { transform: translateX(0.756px) scaleX(0.814); }
-  88.33% { transform: translateX(0.583px) scaleX(0.894); }
-  89.44% { transform: translateX(0.421px) scaleX(0.946); }
-  90.56% { transform: translateX(0.278px) scaleX(0.977); }
-  91.67% { transform: translateX(0.16px) scaleX(0.992); }
-  92.78% { transform: translateX(0.073px) scaleX(0.998); }
-  93.89% { transform: translateX(0.019px) scaleX(1); }
+  76.11% { transform: translateX(-0.194px) scaleX(0.966); }
+  77.22% { transform: translateX(-0.374px) scaleX(0.867); }
+  78.33% { transform: translateX(-0.526px) scaleX(0.712); }
+  79.44% { transform: translateX(-0.643px) scaleX(0.515); }
+  80.56% { transform: translateX(-0.717px) scaleX(0.291); }
+  81.67% { transform: translateX(-0.749px) scaleX(0.058); }
+  81.95% { transform: translateX(-0.75px) scaleX(0.002); }
+  81.96% { transform: translateX(0.75px) scaleX(0.002); }
+  82.78% { transform: translateX(0.739px) scaleX(0.169); }
+  83.89% { transform: translateX(0.695px) scaleX(0.376); }
+  85% { transform: translateX(0.624px) scaleX(0.556); }
+  86.11% { transform: translateX(0.534px) scaleX(0.702); }
+  87.22% { transform: translateX(0.436px) scaleX(0.814); }
+  88.33% { transform: translateX(0.337px) scaleX(0.894); }
+  89.44% { transform: translateX(0.243px) scaleX(0.946); }
+  90.56% { transform: translateX(0.16px) scaleX(0.977); }
+  91.67% { transform: translateX(0.092px) scaleX(0.992); }
+  92.78% { transform: translateX(0.042px) scaleX(0.998); }
+  93.89% { transform: translateX(0.011px) scaleX(1); }
   95%, 100% { transform: translateX(0) scaleX(1); }
 }
 @keyframes amBand {
   0%, 55% { transform: scaleX(0); }
-  56.11% { transform: scaleX(0.037); }
-  57.22% { transform: scaleX(0.146); }
-  58.33% { transform: scaleX(0.321); }
-  59.44% { transform: scaleX(0.556); }
-  60.56% { transform: scaleX(0.842); }
-  61.67% { transform: scaleX(1.167); }
-  62.78% { transform: scaleX(1.511); }
-  63.89% { transform: scaleX(1.852); }
-  65% { transform: scaleX(2.162); }
-  66.11% { transform: scaleX(2.409); }
-  67.22% { transform: scaleX(2.563); }
-  68.05% { transform: scaleX(2.6); }
-  68.06% { transform: scaleX(2.6); }
-  68.33% { transform: scaleX(2.596); }
-  69.44% { transform: scaleX(2.487); }
-  70.56% { transform: scaleX(2.229); }
-  71.67% { transform: scaleX(1.825); }
-  72.78% { transform: scaleX(1.295); }
-  73.89% { transform: scaleX(0.672); }
+  56.11% { transform: scaleX(0.021); }
+  57.22% { transform: scaleX(0.084); }
+  58.33% { transform: scaleX(0.185); }
+  59.44% { transform: scaleX(0.321); }
+  60.56% { transform: scaleX(0.486); }
+  61.67% { transform: scaleX(0.673); }
+  62.78% { transform: scaleX(0.872); }
+  63.89% { transform: scaleX(1.069); }
+  65% { transform: scaleX(1.247); }
+  66.11% { transform: scaleX(1.39); }
+  67.22% { transform: scaleX(1.479); }
+  68.05% { transform: scaleX(1.5); }
+  68.06% { transform: scaleX(1.5); }
+  68.33% { transform: scaleX(1.497); }
+  69.44% { transform: scaleX(1.435); }
+  70.56% { transform: scaleX(1.286); }
+  71.67% { transform: scaleX(1.053); }
+  72.78% { transform: scaleX(0.747); }
+  73.89% { transform: scaleX(0.388); }
   75% { transform: scaleX(0); }
-  76.11% { transform: scaleX(0.672); }
-  77.22% { transform: scaleX(1.295); }
-  78.33% { transform: scaleX(1.825); }
-  79.44% { transform: scaleX(2.229); }
-  80.56% { transform: scaleX(2.487); }
-  81.67% { transform: scaleX(2.596); }
-  81.95% { transform: scaleX(2.6); }
-  81.96% { transform: scaleX(2.6); }
-  82.78% { transform: scaleX(2.563); }
-  83.89% { transform: scaleX(2.409); }
-  85% { transform: scaleX(2.162); }
-  86.11% { transform: scaleX(1.852); }
-  87.22% { transform: scaleX(1.511); }
-  88.33% { transform: scaleX(1.167); }
-  89.44% { transform: scaleX(0.842); }
-  90.56% { transform: scaleX(0.556); }
-  91.67% { transform: scaleX(0.321); }
-  92.78% { transform: scaleX(0.146); }
-  93.89% { transform: scaleX(0.037); }
+  76.11% { transform: scaleX(0.388); }
+  77.22% { transform: scaleX(0.747); }
+  78.33% { transform: scaleX(1.053); }
+  79.44% { transform: scaleX(1.286); }
+  80.56% { transform: scaleX(1.435); }
+  81.67% { transform: scaleX(1.497); }
+  81.95% { transform: scaleX(1.5); }
+  81.96% { transform: scaleX(1.5); }
+  82.78% { transform: scaleX(1.479); }
+  83.89% { transform: scaleX(1.39); }
+  85% { transform: scaleX(1.247); }
+  86.11% { transform: scaleX(1.069); }
+  87.22% { transform: scaleX(0.872); }
+  88.33% { transform: scaleX(0.673); }
+  89.44% { transform: scaleX(0.486); }
+  90.56% { transform: scaleX(0.321); }
+  91.67% { transform: scaleX(0.185); }
+  92.78% { transform: scaleX(0.084); }
+  93.89% { transform: scaleX(0.021); }
   95%, 100% { transform: scaleX(0); }
 }
 @keyframes amShade {
@@ -1441,12 +1441,12 @@ textarea.ta-auto { resize: none; overflow: hidden; }
 @keyframes amPop { 0%, 36% { transform: scale(0); opacity: 0; } 44% { transform: scale(1.35); opacity: 1; } 52%, 86% { transform: scale(1); opacity: 1; } 96%, 100% { transform: scale(0); opacity: 0; } }
 .kc .am-pop.am-burst { animation-name: amBurst; }
 @keyframes amBurst { 0%, 38% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.7); opacity: 1; } 62%, 86% { transform: scale(1); opacity: 0.8; } 96%, 100% { transform: scale(0); opacity: 0; } }
-/* Трамплин: шарик разгоняется по фиолетовой дорожке, летит по пунктирному полукругу (у краёв быстрее, наверху медленнее),
+/* Трамплин: шарик разгоняется по фиолетовой дорожке, отрывается не у края, летит по пунктирному полукругу (у краёв быстрее, наверху медленнее),
    приземляется с отскоком и пропадает. Кадры — точки того же полукруга, что нарисован пунктиром. */
 .kc .am-jump { animation: amJump 3.2s linear infinite; }
 @keyframes amJump {
-  0% { transform: translate(-11.5px, 5.5px); opacity: 0; }
-  5% { transform: translate(-11.5px, 5.5px); opacity: 1; animation-timing-function: ease-in; }
+  0% { transform: translate(-9.4px, 5.5px); opacity: 0; }
+  6% { transform: translate(-9.4px, 5.5px); opacity: 1; animation-timing-function: ease-in; }
   17% { transform: translate(-5.5px, 5.5px); }
   18.78% { transform: translate(-5.315px, 4.086px); }
   20.56% { transform: translate(-4.801px, 2.816px); }
@@ -1466,9 +1466,9 @@ textarea.ta-auto { resize: none; overflow: hidden; }
   45.44% { transform: translate(4.801px, 2.816px); }
   47.22% { transform: translate(5.315px, 4.086px); }
   49% { transform: translate(5.5px, 5.5px); animation-timing-function: ease-out; }
-  53% { transform: translate(6px, 4.5px); animation-timing-function: ease-in; }
-  57% { transform: translate(6.4px, 5.5px); opacity: 1; }
-  68%, 100% { transform: translate(6.9px, 5.5px); opacity: 0; }
+  53% { transform: translate(6.2px, 4.5px); animation-timing-function: ease-in; }
+  57% { transform: translate(6.8px, 5.5px); opacity: 1; }
+  68%, 100% { transform: translate(7.7px, 5.5px); opacity: 0; }
 }
 /* Разворот: стрелка делает оборот и крутится обратно, кусок кольца переезжает на другую сторону и назад */
 .kc .am-rev { transform-box: view-box; transform-origin: 12px 12px; animation: amRev 5s ease-in-out infinite; }

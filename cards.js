@@ -44,20 +44,19 @@
       '<path d="M4.5 3.5h15A2 2 0 0 1 21.5 5.5v9.5a2 2 0 0 1-2 2H11l-5 4.2V17H4.5a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2z" fill="url(#q)"/>' +
       '<path d="M5 6.2a2 2 0 0 1 1.6-1.3" fill="none" stroke="#FFF4D6" stroke-opacity=".6" stroke-width=".9" stroke-linecap="round"/>' +
       QMARK(12, 14.4, 10, '#2A1608') },
+    // пропуск: листок с текстом, пропуск в строке — маленькие оранжевые точки (как пустой пропуск в «Слове дня»)
     blank: { body: '<rect x="2.5" y="4.5" width="19" height="14" rx="2.2" fill="#EDE3D9"/>' +
       '<rect x="5.5" y="7.6" width="8.5" height="1.5" rx=".75" fill="#B7ADA4"/>' +
-      '<path d="M5.5 12.4h13" stroke="#F2782C" stroke-width="1.5" stroke-dasharray="1.7 1.2" stroke-linecap="round"/>' +
+      '<g fill="#F2782C"><circle cx="5.9" cy="12.4" r=".5"/><circle cx="7.4" cy="12.4" r=".5"/><circle cx="8.9" cy="12.4" r=".5"/><circle cx="10.4" cy="12.4" r=".5"/><circle cx="11.9" cy="12.4" r=".5"/><circle cx="13.4" cy="12.4" r=".5"/><circle cx="14.9" cy="12.4" r=".5"/><circle cx="16.4" cy="12.4" r=".5"/><circle cx="17.9" cy="12.4" r=".5"/></g>' +
       '<rect x="5.5" y="15" width="6" height="1.5" rx=".75" fill="#B7ADA4"/>' +
       '<path d="M15.4 21.6l.4-2.2 5.4-5.4 1.8 1.8-5.4 5.4z" fill="#F2782C"/><path d="M20.4 14.8l1.8 1.8" stroke="#C4500B" stroke-width=".9"/>' },
     arrow: { body: RING +
       '<path d="M16.5 4.21A9 9 0 0 1 20.46 8.92L17.64 9.95A6 6 0 0 0 15 6.8Z" fill="#F2782C"/>' +
       '<path d="M12 12L17.9 7.05" stroke="#F2ECE6" stroke-width="1.7" stroke-linecap="round"/>' +
       '<circle cx="12" cy="12" r="1.9" fill="#F2ECE6"/><circle cx="12" cy="12" r=".8" fill="#2A2725"/>' },
-    ball: { body: '<path d="M2.5 19.5L8.5 13.5 12.5 17.5 20.5 9.5" fill="none" stroke="#3A3634" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<path d="M2.5 19.5L8.5 13.5 12.5 17.5 20.5 9.5" fill="none" stroke="#5A5450" stroke-width=".7" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -1.2)"/>' +
-      '<defs>' + COIN_GRAD + '</defs><circle cx="6" cy="16" r="1.4" fill="url(#f)"/>' +
-      '<circle cx="17.2" cy="9.6" r="2.7" fill="#F2ECE6"/><circle cx="16.3" cy="8.7" r=".8" fill="#fff"/>' +
-      '<path d="M12.6 8.6h-2.4M13.4 11.2h-2.2" stroke="#A0968E" stroke-width=".7" stroke-linecap="round"/>' },
+    // шарик: дорожка-зигзаг из плиток, как в игре «Зигзаг» (верх тёмный, бока оранжевые), и один шарик
+    ball: { body: '<path d="M10.6 6.55L13.4 7.95V10.25L10.6 8.85z" fill="#C4500B"/><path d="M13.4 7.95L16.2 6.55V8.85L13.4 10.25z" fill="#8E3D0B"/><path d="M13.4 5.15L16.2 6.55L13.4 7.95L10.6 6.55z" fill="#45403C"/><path d="M7.8 7.95L10.6 9.35V11.65L7.8 10.25z" fill="#C4500B"/><path d="M10.6 9.35L13.4 7.95V10.25L10.6 11.65z" fill="#8E3D0B"/><path d="M10.6 6.55L13.4 7.95L10.6 9.35L7.8 7.95z" fill="#45403C"/><path d="M5 9.35L7.8 10.75V13.05L5 11.65z" fill="#C4500B"/><path d="M7.8 10.75L10.6 9.35V11.65L7.8 13.05z" fill="#8E3D0B"/><path d="M7.8 7.95L10.6 9.35L7.8 10.75L5 9.35z" fill="#45403C"/><path d="M7.8 10.75L10.6 12.15V14.45L7.8 13.05z" fill="#C4500B"/><path d="M10.6 12.15L13.4 10.75V13.05L10.6 14.45z" fill="#8E3D0B"/><path d="M10.6 9.35L13.4 10.75L10.6 12.15L7.8 10.75z" fill="#45403C"/><path d="M10.6 12.15L13.4 13.55V15.85L10.6 14.45z" fill="#C4500B"/><path d="M13.4 13.55L16.2 12.15V14.45L13.4 15.85z" fill="#8E3D0B"/><path d="M13.4 10.75L16.2 12.15L13.4 13.55L10.6 12.15z" fill="#45403C"/><path d="M13.4 13.55L16.2 14.95V17.25L13.4 15.85z" fill="#C4500B"/><path d="M16.2 14.95L19 13.55V15.85L16.2 17.25z" fill="#8E3D0B"/><path d="M16.2 12.15L19 13.55L16.2 14.95L13.4 13.55z" fill="#45403C"/><path d="M10.6 14.95L13.4 16.35V18.65L10.6 17.25z" fill="#C4500B"/><path d="M13.4 16.35L16.2 14.95V17.25L13.4 18.65z" fill="#8E3D0B"/><path d="M13.4 13.55L16.2 14.95L13.4 16.35L10.6 14.95z" fill="#45403C"/><path d="M7.8 16.35L10.6 17.75V20.05L7.8 18.65z" fill="#C4500B"/><path d="M10.6 17.75L13.4 16.35V18.65L10.6 20.05z" fill="#8E3D0B"/><path d="M10.6 14.95L13.4 16.35L10.6 17.75L7.8 16.35z" fill="#45403C"/>' +
+      '<ellipse cx="10.6" cy="10.75" rx="1.5" ry=".65" fill="#000" fill-opacity=".35"/><circle cx="10.6" cy="9.22" r="1.7" fill="#F2ECE6"/><circle cx="10" cy="8.62" r=".55" fill="#fff"/>' },
     // кресс-салат: горшочек с землёй и тонкие ростки, у каждого — пара круглых листочков
     cress: { body: '<defs><linearGradient id="p" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#A9461F"/><stop offset=".45" stop-color="#D9774B"/><stop offset="1" stop-color="#9A3E1A"/></linearGradient>' +
       '<linearGradient id="l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A6EA98"/><stop offset="1" stop-color="#5FB35C"/></linearGradient></defs>' +
@@ -128,12 +127,11 @@
       '<text x="4.4" y="10.4" font-family="Literata, Georgia, serif" font-weight="600" font-size="7.6" fill="#F2ECE6">×10</text>' },
 
     // ---- эпические ----
-    // трамплин: фиолетовая дорожка разбега, пунктир — ровно половина круга (по нему идёт низ шарика), тёмная площадка приземления
-    ramp: { body: '<rect x="1" y="14.6" width="8.2" height="3.2" rx="1" fill="#9B7BFF"/><path d="M2.2 15.4h5.8" stroke="#C9B8FF" stroke-width=".6" stroke-linecap="round"/>' +
-      '<rect x="17.6" y="14.6" width="5.4" height="3.2" rx="1" fill="#3E3757"/>' +
-      '<path d="M9.2 14.6A5.5 5.5 0 0 1 20.2 14.6" fill="none" stroke="#9B7BFF" stroke-width=".8" stroke-dasharray="1 1.3" stroke-linecap="round"/>' +
-      '<g class="am-jump"><circle cx="14.7" cy="7.1" r="2" fill="#F2ECE6"/><circle cx="14" cy="6.4" r=".55" fill="#fff"/>' +
-      '<path d="M11 6.4h-1.8M11.4 8.4h-2.4" stroke="#ADA3C8" stroke-width=".6" stroke-linecap="round"/></g>' },
+    // трамплин: фиолетовая дорожка разбега, пунктир — полукруг по центру картинки, отрыв и приземление не у края, а с запасом
+    ramp: { body: '<rect x="1" y="14.6" width="7.6" height="3.2" rx="1" fill="#9B7BFF"/><path d="M2.2 15.4h5.2" stroke="#C9B8FF" stroke-width=".6" stroke-linecap="round"/>' +
+      '<rect x="15.4" y="14.6" width="7.6" height="3.2" rx="1" fill="#3E3757"/>' +
+      '<path d="M6.5 14.6A5.5 5.5 0 0 1 17.5 14.6" fill="none" stroke="#9B7BFF" stroke-width=".8" stroke-dasharray="1 1.3" stroke-linecap="round"/>' +
+      '<g class="am-jump"><circle cx="12" cy="7.1" r="2" fill="#F2ECE6"/><circle cx="11.3" cy="6.4" r=".55" fill="#fff"/></g>' },
     // разворот: стрелка тонкая, усики наконечника расставлены поровну от линии — не сливаются с ней
     reverse: { body: RING +
       '<path class="am-flipseg" d="M8.92 3.54A9 9 0 0 1 15.08 3.54L14.05 6.36A6 6 0 0 0 9.95 6.36Z" fill="#9B7BFF"/>' +
@@ -176,6 +174,26 @@
     return s;
   }
 
+  // Название — в одну строку. Если не влезает (длинное слово на узкой витрине), шрифт уменьшается по 0,5 px,
+  // но не меньше 60% от обычного. Мерить можно только на странице, поэтому ResizeObserver: он срабатывает,
+  // когда карточка появилась и получила ширину. Шрифты сайта догружаются позже — тогда подгоняем ещё раз.
+  function fitName(n) {
+    if (!n.isConnected || !n.clientWidth) return false;
+    n.style.fontSize = '';
+    var size = parseFloat(getComputedStyle(n).fontSize), min = size * 0.6;
+    while (n.scrollWidth > n.clientWidth && size > min) { size -= 0.5; n.style.fontSize = size + 'px'; }
+    return true;
+  }
+  var nameObs = window.ResizeObserver ? new ResizeObserver(function (list) {
+    list.forEach(function (e) { if (fitName(e.target)) nameObs.unobserve(e.target); });
+  }) : null;
+  function refitNames() { var ns = document.querySelectorAll('.kc-name'); for (var i = 0; i < ns.length; i++) fitName(ns[i]); }
+  if (document.fonts) {
+    if (document.fonts.ready) document.fonts.ready.then(refitNames);
+    if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', refitNames);
+  }
+  window.addEventListener('resize', refitNames);
+
   // Карточка «во всю карту». card: { code, name, rarity, copies }, serial — номер копии (может не быть).
   // size: 'lg' (крупно) или 'md' (витрина).
   function face(card, serial, size) {
@@ -188,7 +206,9 @@
     var a = node('div', 'kc-mid');
     a.appendChild(art(card.code, card.name));
     k.appendChild(a);
-    k.appendChild(node('div', 'kc-name', card.name));
+    var nm = node('div', 'kc-name', card.name);
+    k.appendChild(nm);
+    if (nameObs) nameObs.observe(nm);
     k.appendChild(node('div', 'kc-band', 'Начало'));
     // Слой эффектов редкости (под рисунком): у эпической — туманность и искры, у легендарной — звёздочки.
     var dots = card.rarity === 'epic' ? 6 : card.rarity === 'legendary' ? 5 : 0;
