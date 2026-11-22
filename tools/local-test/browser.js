@@ -48,6 +48,47 @@ async function openPoker(p) {
   await p.waitForSelector('.pk', { timeout: 5000 });
 }
 
+// Открыть Игры → Карты → «Верю — не верю»
+async function openBluff(p) {
+  await p.locator('.bn-item', { hasText: 'Игры' }).click();
+  if (!(await p.locator('.bf').count())) {
+    await p.locator('.game-switch button', { hasText: 'Карты' }).click();
+    await p.locator('.cards-pick button', { hasText: 'Верю — не верю' }).click();
+  }
+  await p.waitForSelector('.bf', { timeout: 5000 });
+}
+
+// «Верю — не верю»: сходить, если мой ход. Новый круг — 1–3 карты (обычно одного номинала, иногда враньё);
+// ответ — «Не верю» / «Верю» / доложить 1–2 карты. Возвращает, что сделано.
+async function bluffMove(p, opts) {
+  opts = opts || {};
+  if (!(await p.locator('.dk-me.turn').count()) || await p.locator('.dk-anim').count()) return null;
+  try {
+    const cards = p.locator('.bf-hand button.dk-card');
+    const n = await cards.count();
+    if (await p.locator('.bf-put').count()) {
+      const k = Math.min(n, 1 + Math.floor(Math.random() * 3));
+      for (let i = 0; i < k; i++) await cards.nth(Math.floor(Math.random() * n)).click({ timeout: 2000 });
+      if (await p.locator('.bf-put[disabled]').count()) {   // номинал не угадался — выбрать на кнопках
+        const r = p.locator('.bf-ranks .bf-chip');
+        await r.nth(Math.floor(Math.random() * await r.count())).click({ timeout: 2000 });
+      }
+      if (opts.before) await opts.before('put');
+      await p.locator('.bf-put').click({ timeout: 2000 });
+      return 'put';
+    }
+    if (!(await p.locator('.bf-doubt').count())) return null;
+    const r = Math.random();
+    if (r < (opts.doubt || 0.4)) { await p.locator('.bf-doubt').click({ timeout: 2000 }); return 'doubt'; }
+    if (r < (opts.doubt || 0.4) + (opts.trust || 0.2) || !n) { await p.locator('.bf-trust').click({ timeout: 2000 }); return 'trust'; }
+    const k = Math.min(n, 1 + Math.floor(Math.random() * 2));
+    for (let i = 0; i < k; i++) await cards.nth(i).click({ timeout: 2000 });
+    if (opts.before) await opts.before('add');
+    await p.locator('.bf-add').click({ timeout: 2000 });
+    return 'add';
+  } catch (e) { return null; }   // стол успел смениться — попробуем снова
+}
+
 // Покер: сходить, если сейчас мой ход. Чаще уравнять/чек, иногда повысить через ползунок, иногда пас. Возвращает, что сделано.
 async function pokerMove(p, opts) {
   opts = opts || {};
@@ -112,4 +153,4 @@ function shooter(dir) {
   return (p, name) => p.screenshot({ path: path.join(dir, name + '.png'), fullPage: true });
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-module.exports = { launch, phone, openDurak, openPoker, pokerMove, moveIfMyTurn, chooseOpen, shooter, sleep };
+module.exports = { launch, phone, openDurak, openPoker, openBluff, bluffMove, pokerMove, moveIfMyTurn, chooseOpen, shooter, sleep };

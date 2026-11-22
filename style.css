@@ -2050,3 +2050,64 @@ body.pf-lock { overflow: hidden; }
 .mk-sort-acts .btn { flex: 1; }
 .mk-offer-me .mk-mine { color: #FFB27A; }
 .mk-own-note { margin-top: -6px; }
+
+/* джокер («Верю — не верю»): «Дж» и звезда */
+.dk-card.joker { color: #C4500B; }
+.dk-card.joker .dk-r { letter-spacing: -0.04em; }
+
+/* «Верю — не верю». Стол, карты и полёты — общие с «Дураком» (.dk-ring, .dk-opp, .dk-me, .dk-card, .dk-fx). */
+.bf-deck-box { display: flex; flex-direction: column; gap: 8px; }
+.bf-chips, .bf-ranks { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.bf-ranks { grid-template-columns: repeat(var(--c, 7), minmax(0, 1fr)); }
+.bf-chip {
+  min-height: 36px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: 600 14px var(--font-mono); -webkit-tap-highlight-color: transparent;
+}
+.bf-chip[aria-pressed="true"], .bf-chip[aria-checked="true"] { background: var(--btn); border-color: var(--btn); color: #fff; }
+.bf-deck-sum { margin: 0; font-size: 13px; }
+.bf-need { margin: 0; font-size: 13px; }
+
+.dk-opp-tag.none { visibility: hidden; }
+.bf-mid { flex-direction: column; justify-content: center; gap: 8px; padding: 8px 0; }
+.bf-mid-row { display: flex; align-items: center; justify-content: center; gap: 36px; }
+.bf-claim { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; min-height: 50px; justify-content: center; max-width: 100%; min-width: 0; }
+.bf-claim b { font: 800 27px/1.1 var(--font-display); color: var(--accent); white-space: nowrap; }
+.dk-ring.n3 .bf-claim b, .dk-ring.n5 .bf-claim b { font-size: 24px; }
+.bf-claim span { font: 500 12px var(--font-mono); color: var(--muted); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bf-claim.new b { font-size: 19px; color: var(--ink); opacity: 0.85; }
+.bf-pile { position: relative; width: 66px; height: 84px; flex: none; }
+.bf-pile .dk-card { position: absolute; left: 50%; top: 50%; --w: 50px; --h: 70px; margin: -35px 0 0 -25px; }
+.bf-pile .dk-card.u { filter: brightness(0.85); }
+.bf-pile.is-empty::before { content: ''; position: absolute; left: 50%; top: 50%; width: 50px; height: 70px; margin: -35px 0 0 -25px; border: 1px dashed var(--line); border-radius: 7px; }
+.bf-pile-n {
+  position: absolute; right: -4px; bottom: -2px; z-index: 2; font: 700 13px/1.35 var(--font-mono); color: #fff;
+  background: rgba(18, 18, 18, 0.88); border: 1px solid var(--line); border-radius: 7px; padding: 0 6px;
+}
+.dk-ring.n4 .bf-pile .dk-card, .dk-ring.n5 .bf-pile .dk-card { --w: 46px; --h: 64px; margin: -32px 0 0 -23px; }
+.dk-ring.n4 .bf-mid-row, .dk-ring.n5 .bf-mid-row { gap: 24px; }
+
+/* рука: карты идут внахлёст, если не помещаются; больше 9 карт — несколько рядов */
+.bf-hand { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
+.bf-hrow { container-type: inline-size; display: flex; justify-content: center; }
+.bf-hrow > .dk-card + .dk-card { margin-left: min(5px, calc((100cqw - var(--k) * var(--w)) / (var(--k) - 1))); }
+.bf-hand.rows { gap: 4px; }
+.bf-hand.rows .dk-card { --w: 40px; --h: 54px; }
+.bf-hand.rows .dk-card .dk-r { font-size: 14px; }
+.bf-hand.rows .dk-card .dk-s { font-size: 20px; margin-top: 9px; }
+.bf-hand.rows .dk-card.sel { transform: translateY(-6px); }
+.bf-acts { display: grid; grid-auto-flow: column; grid-template-columns: 1.3fr; grid-auto-columns: minmax(0, 1fr); gap: 8px; min-height: 44px; align-items: center; }
+.bf-acts .btn { padding: 10px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bf-acts .bf-put { grid-column: 1 / -1; }
+.bf-hint { text-align: center; color: var(--muted); font-size: 14px; }
+.bf-empty-hand { margin: 4px 0 0; text-align: center; font-size: 14px; }
+
+/* проверка: открытые карты над стопкой и «Правда!» / «Враньё!» */
+.bf-reveal {
+  position: absolute; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px 8px;
+  border-radius: 14px; background: rgba(18, 18, 18, 0.94); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.bf-reveal-cards { display: flex; }
+.bf-reveal-cards .dk-card + .dk-card { margin-left: -10px; }
+.bf-verdict { font: 800 22px var(--font-display); }
+.bf-reveal.truth .bf-verdict { color: var(--ok, #3FB97F); }
+.bf-reveal.lie .bf-verdict { color: var(--err); }

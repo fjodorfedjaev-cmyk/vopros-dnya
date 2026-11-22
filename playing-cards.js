@@ -1,5 +1,5 @@
-/* Игральные карты — общие для карточных игр («Дурак», «Покер»): как нарисовать карту и рубашку, и как карты летают по столу.
-   Карта — число 0..51: достоинство = карта / 4 + 2 (11 — валет, 14 — туз), масть = карта % 4 (♠ ♥ ♦ ♣).
+/* Игральные карты — общие для карточных игр («Дурак», «Покер», «Верю — не верю»): как нарисовать карту и рубашку, и как карты летают по столу.
+   Карта — число 0..51: достоинство = карта / 4 + 2 (11 — валет, 14 — туз), масть = карта % 4 (♠ ♥ ♦ ♣); 52..55 — джокеры.
    Элементы создаются через window.AppAPI.el (как и весь сайт). */
 (function () {
   'use strict';
@@ -7,22 +7,23 @@
   var NAMES = { 11: 'В', 12: 'Д', 13: 'К', 14: 'Т' };
   var VS = '︎'; // чтобы ♥ и ♦ рисовались значком, а не цветным смайликом
   function el() { return window.AppAPI.el.apply(null, arguments); }
-  function rank(c) { return Math.floor(c / 4) + 2; }
+  function isJoker(c) { return c >= 52; }
+  function rank(c) { return isJoker(c) ? 0 : Math.floor(c / 4) + 2; }   // у джокера номинала нет
   function suit(c) { return c % 4; }
   function rankName(r) { return NAMES[r] || String(r); }
-  function cardName(c) { return rankName(rank(c)) + SUITS[suit(c)] + VS; }
-  function isRed(c) { return suit(c) === 1 || suit(c) === 2; }
+  function cardName(c) { return isJoker(c) ? 'Джокер' : rankName(rank(c)) + SUITS[suit(c)] + VS; }
+  function isRed(c) { return !isJoker(c) && (suit(c) === 1 || suit(c) === 2); }
 
   // Лицо карты. opts: small, button, cls, label, pressed, onclick
   function face(c, opts) {
     opts = opts || {};
-    var cls = 'dk-card' + (isRed(c) ? ' red' : '') + (opts.small ? ' sm' : '') + (opts.cls ? ' ' + opts.cls : '');
+    var cls = 'dk-card' + (isRed(c) ? ' red' : '') + (isJoker(c) ? ' joker' : '') + (opts.small ? ' sm' : '') + (opts.cls ? ' ' + opts.cls : '');
     return el(opts.button ? 'button' : 'span', {
       class: cls, type: opts.button ? 'button' : null, 'aria-label': opts.label || cardName(c), 'data-card': String(c),
       'aria-pressed': opts.pressed != null ? String(!!opts.pressed) : null, onclick: opts.onclick || null
     }, [
-      el('span', { class: 'dk-r', 'aria-hidden': 'true', text: rankName(rank(c)) }),
-      el('span', { class: 'dk-s', 'aria-hidden': 'true', text: SUITS[suit(c)] + VS })
+      el('span', { class: 'dk-r', 'aria-hidden': 'true', text: isJoker(c) ? 'Дж' : rankName(rank(c)) }),
+      el('span', { class: 'dk-s', 'aria-hidden': 'true', text: isJoker(c) ? '★' : SUITS[suit(c)] + VS })
     ]);
   }
   // Рубашка. opts: small, button, n (число поверх), cls, label, onclick
@@ -100,7 +101,7 @@
   }
 
   window.PlayingCards = {
-    SUITS: SUITS, rank: rank, suit: suit, rankName: rankName, cardName: cardName, isRed: isRed,
+    SUITS: SUITS, rank: rank, suit: suit, rankName: rankName, cardName: cardName, isRed: isRed, isJoker: isJoker,
     face: face, back: back,
     REDUCED: REDUCED, layer: layer, wait: wait, centerOf: centerOf, placeAt: placeAt, fly: fly, flyBacks: flyBacks, flipAt: flipAt, flash: flash
   };
