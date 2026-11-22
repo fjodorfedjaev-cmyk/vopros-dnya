@@ -3370,6 +3370,13 @@
     });
 
     document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshQuietly(); });
+    // Долгое нажатие на надпись, смайлик или картинку не открывает меню телефона («Копировать», «Скачать картинку», поиск);
+    // в полях ввода меню остаётся (вставить, выделить). Картинку не утащить пальцем.
+    document.addEventListener('contextmenu', function (ev) {
+      var t = ev.target;
+      if (!(t && t.closest && t.closest('input, textarea, select, [contenteditable]'))) ev.preventDefault();
+    });
+    document.addEventListener('dragstart', function (ev) { if (ev.target && ev.target.tagName === 'IMG') ev.preventDefault(); });
     setupSwipe();
     // Заглавная буква: работает до обработчиков самих полей (capture), чтобы черновик сохранялся уже исправленным.
     function capField(t) { return t && t.dataset && t.dataset.cap; }

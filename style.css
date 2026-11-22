@@ -31,6 +31,12 @@
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body, button { touch-action: manipulation; }
+/* Текст, смайлики и значки на сайте не выделяются: иначе Chrome на Android по нажатию на слово открывает снизу
+   поиск Google («Поиск по нажатию»), а долгое нажатие — меню телефона. В полях ввода всё как обычно —
+   иначе на iPhone в них не напечатать. Меню долгого нажатия убирает ещё и app.js (contextmenu). */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select, [contenteditable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img, svg { -webkit-user-drag: none; }   /* картинку и значок не утащить пальцем */
 body {
   margin: 0;
   background: var(--bg);
