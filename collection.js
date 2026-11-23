@@ -10,13 +10,15 @@
    Паки (23.11): колода серии опустела — база дарит паки тем, кто открывал карточки (1 карточка — 1 пак, не больше 3).
    Подарок забирают в блоке открытия («Забрать»), паки лежат в «Мои паки»; открыть пак — cards_pack_open (что выпадет,
    решает база в момент открытия), продать — в Лавке, как карточку (пак — «карточка» серии с редкостью 'pack').
+   Режим проверки паков (только админ): Коллекция показывается так, будто колода уже опустела, — подарок, «Забрать»,
+   «Мои паки», открытие. Всё происходит только на телефоне (K.pv), в базу ничего не пишется; «Выйти» — всё как было.
    Связь с сайтом — через window.AppAPI (sb, el, toast, баланс), рисунки — window.Cards. */
 (function () {
   'use strict';
   var A = null;                 // AppAPI, появляется после запуска сайта
   var root = null;              // корневой элемент вкладки (живёт между перерисовками)
   var SERIES = 1;               // серия «Начало»
-  var K = { catalog: null, my: null, deck: null, gift: null, justClaimed: false, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
+  var K = { catalog: null, my: null, deck: null, gift: null, justClaimed: false, admin: false, pv: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
             mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0,
             mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'),
             mkSortRar: saved('mk-sort-rar', ['desc', 'asc'], ''), mkSortPrice: saved('mk-sort-price', ['desc', 'asc'], ''), mkPop: null,
@@ -67,7 +69,7 @@
 
   /* ---------- данные ---------- */
   function cardById(id) { return (K.catalog || []).filter(function (c) { return c.card_id === id; })[0] || null; }
-  function myCopies(cardId) { return (K.my || []).filter(function (k) { return k.card_id === cardId; }).sort(function (a, b) { return a.serial - b.serial; }); }
+  function myCopies(cardId) { return myAll().filter(function (k) { return k.card_id === cardId; }).sort(function (a, b) { return a.serial - b.serial; }); }
   function myLots() { return (K.lots || []).filter(function (l) { return l.mine; }); }
   // Есть ли у меня эта карточка: в коллекции или в моих лотах
   function haveCard(cardId) { return myCopies(cardId).length > 0 || myLots().some(function (l) { return l.card_id === cardId; }); }
@@ -76,16 +78,79 @@
   function albumCards() { return (K.catalog || []).filter(function (c) { return !isPack(c); }); }
   function packCard() { return (K.catalog || []).filter(isPack)[0] || null; }
   function myPacks() { var p = packCard(); return p ? myCopies(p.card_id) : []; }
-  function ownedIds() { var got = {}; (K.my || []).forEach(function (k) { if (!isPack(cardById(k.card_id))) got[k.card_id] = true; }); return got; }
+  function ownedIds() { var got = {}; myAll().forEach(function (k) { if (!isPack(cardById(k.card_id))) got[k.card_id] = true; }); return got; }
   // Серия закончилась (колода пуста) — паки уже есть. До этого пака в Лавке не видно.
   function packsOn() { var p = packCard(); return !!(K.deck && K.deck.deck_total && !K.deck.deck_left) || (p && (allLots(p.card_id).length > 0 || bidsOf(p.card_id).length > 0)); }
   function packWord(n) { return plural(n, 'пак', 'пака', 'паков'); }
+  /* ---------- режим проверки паков (только админ, ничего не сохраняется) ---------- */
+  // K.pv = { gift: сколько паков в подарке, packs: ненастоящие паки, cards: карточки из них, seq: счётчик }.
+  // У ненастоящих копий id отрицательные — так их не перепутать с настоящими, и в базу они не уходят.
+  function myAll() { return K.pv ? (K.my || []).concat(K.pv.packs, K.pv.cards) : (K.my || []); }
+  function isFake(copyId) { return copyId < 0; }
+  function deckView() {
+    if (!K.pv) return K.deck;
+    var d = K.deck || {};
+    return { series_name: d.series_name || 'Начало', price: null, deck_left: 0, deck_total: d.deck_total || 85,
+             left_common: 0, left_uncommon: 0, left_rare: 0, left_epic: 0, left_legendary: 0 };
+  }
+  function giftView() {
+    if (!K.pv) return K.gift || [];
+    return K.pv.gift ? [{ series_id: SERIES, series_name: deckView().series_name, packs: K.pv.gift }] : [];
+  }
+  function pvStart(gift) {
+    K.pv = { gift: gift, packs: [], cards: [], seq: 0 };
+    closeOverlay();
+    if (K.mode !== 'coll') setMode('coll'); else draw();
+    window.scrollTo(0, 0);
+  }
+  function pvStop() { K.pv = null; closeOverlay(); draw(); window.scrollTo(0, 0); A.toast('Режим проверки выключен — всё как было'); }
+  // «Забрать» в проверке: паки появляются только на телефоне
+  function pvClaim() {
+    var n = K.pv.gift, pc = packCard();
+    for (var i = 0; i < n; i++) {
+      var id = -(++K.pv.seq);
+      K.pv.packs.push({ copy_id: id, card_id: pc.card_id, serial: K.pv.seq, obtained_at: new Date().toISOString(), slot: null, can_melt: false });
+    }
+    K.pv.gift = 0;
+    return n;
+  }
+  // Открыть пак в проверке: та же жеребьёвка, что в базе, — одна из 85 исходных копий, номер сверх тиража
+  function pvOpen(copyId) {
+    var cards = albumCards(), pool = [];
+    cards.forEach(function (c) { for (var i = 0; i < c.copies; i++) pool.push(c); });
+    var c = pool[Math.floor(Math.random() * pool.length)];
+    var extra = K.pv.cards.filter(function (k) { return k.card_id === c.card_id; }).length;
+    var serial = c.copies + extra + 1;
+    var id = -(++K.pv.seq);
+    K.pv.packs = K.pv.packs.filter(function (k) { return k.copy_id !== copyId; });
+    K.pv.cards.push({ copy_id: id, card_id: c.card_id, serial: serial, obtained_at: new Date().toISOString(), slot: null, can_melt: false });
+    return { copy_id: id, card_id: c.card_id, code: c.code, name: c.name, rarity: c.rarity, serial: serial, copies: c.copies, packs_left: K.pv.packs.length };
+  }
+  // Плашка сверху в режиме проверки: что это, «Выйти», начать заново с подарком 0–3 паков
+  function pvBar() {
+    return el('section', { class: 'kpv', role: 'note' }, [
+      el('div', { class: 'kpv-head' }, [
+        el('span', { class: 'kpv-t' }, [el('b', { text: 'Режим проверки паков' }), el('span', { text: 'видно только тебе, ничего не сохраняется' })]),
+        el('button', { type: 'button', class: 'btn kpv-exit', text: 'Выйти', onclick: pvStop })
+      ]),
+      el('div', { class: 'kpv-row' }, [el('span', { text: 'Заново, подарок:' })].concat([0, 1, 2, 3].map(function (n) {
+        return el('button', { type: 'button', class: 'kpv-chip', text: String(n), 'aria-label': 'Начать заново: подарок ' + n + ' ' + packWord(n), onclick: function () { pvStart(n); } });
+      })))
+    ]);
+  }
+  // Ссылка внизу Коллекции — только у админа
+  function pvLink() {
+    if (!K.admin || K.pv || !packCard()) return null;
+    return el('button', { type: 'button', class: 'link kpv-link', text: 'Проверить паки (видно только тебе)', onclick: function () { pvStart(3); } });
+  }
+
   async function load() {
     var res = await Promise.all([
       rpc('cards_catalog', { p_series: SERIES }), rpc('cards_my'), rpc('cards_deck', { p_series: SERIES }),
       rpc('market_lots').catch(function (e) { K.lotsErr = e; return null; }), // лавка не загрузилась — коллекция всё равно работает
       rpc('market_bids').catch(function () { return null; }),
-      rpc('cards_pack_gift').catch(function () { return null; })            // подарок-паки (пусто — нет)
+      rpc('cards_pack_gift').catch(function () { return null; }),           // подарок-паки (пусто — нет)
+      K.admin ? true : rpc('is_admin').catch(function () { return false; })   // админу — режим проверки паков
     ]);
     K.catalog = res[0] || [];
     K.my = res[1] || [];
@@ -94,6 +159,7 @@
     if (res[3]) { K.lots = res[3]; K.lotsErr = null; }
     K.bids = res[4] || [];
     K.gift = res[5] || [];
+    K.admin = res[6] === true;
     if (K.mode === 'market' && K.mkTab === 'deals' && K.hist) refreshHist();   // история — только когда её смотрят
   }
 
@@ -101,7 +167,7 @@
   // В первый раз всё, что уже есть, считается увиденным. Новая копия (открыл или купил) — с меткой «Новая»,
   // пока не нажмёшь на карточку в альбоме.
   function seenKey() { return 'cards-seen:' + ((A && A.me && A.me()) || 'anon'); }
-  function saveSeen() { try { localStorage.setItem(seenKey(), JSON.stringify(Object.keys(K.seen).map(Number))); } catch (e) { /* без хранилища — просто без меток */ } }
+  function saveSeen() { try { localStorage.setItem(seenKey(), JSON.stringify(Object.keys(K.seen).map(Number).filter(function (n) { return n > 0; }))); } catch (e) { /* без хранилища — просто без меток */ } }
   function seenSet() {
     if (K.seen) return K.seen;
     var raw = null;
@@ -199,6 +265,7 @@
       return;
     }
     root.appendChild(modeSwitch());
+    if (K.pv) root.appendChild(pvBar());
     if (K.mode === 'market') { marketView().forEach(function (n) { root.appendChild(n); }); return; }
     seenSet();
     root.appendChild(heroCard());
@@ -207,14 +274,16 @@
     K.justClaimed = false;
     root.appendChild(albumSect());
     root.appendChild(showcaseSect());
+    var pl = pvLink();
+    if (pl) root.appendChild(pl);
   }
 
   // Блок открытия: серия, рубашка с подсветкой, «1 случайная карточка», кнопка с ценой, сколько осталось, шансы.
   function heroCard() {
-    var d = K.deck || {};
+    var d = deckView() || {};
     var price = d.price;
     if (!price && d.deck_total) {
-      var g = (K.gift || [])[0];
+      var g = giftView()[0];
       return g ? giftCard(g, d) : soonCard(d);
     }
     var short = price ? Math.max(0, cents(price) - cents(bal())) / 100 : 0;
@@ -260,7 +329,7 @@
     K.busy = true; btn.disabled = true; K.msg = '';
     setText(msg, '');
     try {
-      var n = Number(one(await rpc('cards_pack_claim', { p_series: g.series_id }))) || 0;
+      var n = K.pv ? pvClaim() : Number(one(await rpc('cards_pack_claim', { p_series: g.series_id }))) || 0;
       fan.classList.add('go');                       // паки «уезжают» вниз — в «Мои паки»
       await new Promise(function (r) { setTimeout(r, reduce ? 0 : 520); });
       K.busy = false; K.justClaimed = true;
@@ -342,7 +411,10 @@
     sheet.appendChild(odds);
     sheet.appendChild(el('div', { class: 'kc-actions' }, [
       el('button', { type: 'button', class: 'btn primary', text: 'Открыть пак', onclick: function () { openPack(); } }),
-      el('button', { type: 'button', class: 'btn', text: 'Продать в Лавке', onclick: function () { openSell(pc.card_id, mine[0], function () { openPackSheet(); }); } })
+      el('button', { type: 'button', class: 'btn', text: 'Продать в Лавке', onclick: function () {
+        if (K.pv) { A.toast('В режиме проверки Лавка выключена'); return; }
+        openSell(pc.card_id, mine[0], function () { openPackSheet(); });
+      } })
     ]));
     sheet.appendChild(el('p', { class: 'kc-note', text: 'Пак нельзя поставить на витрину или переплавить.' }));
     sheet.appendChild(msg);
@@ -502,6 +574,12 @@
     }
 
     var acts = el('div', { class: 'kc-actions' });
+    if (isFake(sel.copy_id)) {
+      acts.appendChild(el('p', { class: 'kc-note', text: 'Эта копия — из режима проверки: после выхода её не будет. Витрина, Лавка и переплавка у неё выключены.' }));
+      sheet.appendChild(acts);
+      sheet.appendChild(msg);
+      return;
+    }
     // витрина
     if (sel.slot) {
       acts.appendChild(el('button', { type: 'button', class: 'btn', text: 'Убрать с витрины', onclick: function () { shelfRemove(cardId, sel, msg); } }));
@@ -963,6 +1041,7 @@
   /* ---------- лавка: вкладка ---------- */
   var MK_TABS = [['market', 'Рынок'], ['sell', 'Продать'], ['deals', 'Мои сделки']];
   function marketView() {
+    if (K.pv) return [el('p', { class: 'kc-note mk-empty', text: 'В режиме проверки Лавка выключена — в ней настоящие монеты. Выйди из проверки, чтобы торговать.' })];
     if (!K.lots) {
       if (K.lotsErr) { var m = el('p', { class: 'msg err', role: 'alert' }); setText(m, errText(K.lotsErr)); return [m]; }
       return [el('p', { class: 'muted', text: 'Загружаю лавку…' })];
@@ -1717,6 +1796,7 @@
   // Карточку отпустили над полкой t.
   async function dropTo(d, t) {
     if (!d.copyId) return;
+    if (isFake(d.copyId)) { A.toast('Копию из режима проверки на витрину не поставить'); return; }
     var plan = planShelves(d.copyId, t);
     var same = plan.order.length === plan.on.length && plan.order.every(function (id, i) { return plan.on[i].copy_id === id; });
     if (same) return;
@@ -1748,7 +1828,7 @@
   // src: { price } — карточка из колоды за монеты; { pack: id копии пака } — открыть пак
   async function runReveal(src) {
     K.busy = true; K.msg = '';
-    var had = {}; (K.my || []).forEach(function (k) { had[k.card_id] = true; });
+    var had = {}; myAll().forEach(function (k) { had[k.card_id] = true; });
     myLots().forEach(function (l) { had[l.card_id] = true; }); // карточка в лавке — тоже «уже была»
 
     var o = overlay('kr' + (src.pack ? ' kr-pk' : ''), src.pack ? 'Открытие пака' : 'Открытие карточки');
@@ -1832,7 +1912,7 @@
         extra = el('p', { class: 'kr-sub' }); setText(extra, 'Повтор можно переплавить за ' + cat.melt_value + ' 🪙');
       }
       var toColl = el('button', { type: 'button', class: 'btn primary', text: 'В коллекцию', onclick: function () { finish(false); } });
-      var toShelf = el('button', { type: 'button', class: 'btn kr-ghost', text: 'На витрину', onclick: function () { finish('shelf'); } });
+      var toShelf = K.pv ? null : el('button', { type: 'button', class: 'btn kr-ghost', text: 'На витрину', onclick: function () { finish('shelf'); } });
       var again = el('button', { type: 'button', class: 'btn kr-again' });
       if (src.pack) {
         // ещё паки есть — «Открыть ещё пак · осталось N», нет — кнопки нет
@@ -1875,8 +1955,9 @@
     o._cleanup = onKey(function () { if (done) finish(false); });
 
     try {
-      res = one(src.pack ? await rpc('cards_pack_open', { p_copy: src.pack })
-                         : await rpc('cards_open', { p_series: SERIES, p_price: src.price }));
+      if (src.pack && K.pv) { await new Promise(function (r) { setTimeout(r, 350); }); res = pvOpen(src.pack); }
+      else res = one(src.pack ? await rpc('cards_pack_open', { p_copy: src.pack })
+                              : await rpc('cards_open', { p_series: SERIES, p_price: src.price }));
       if (!res) throw new Error('empty');
       if (res.balance != null) A.setBalance(Number(res.balance));
       rank = R(res.rarity).rank;
