@@ -378,7 +378,7 @@
       ]);
     }));
   }
-  // Окно пака: пак крупно, сколько у меня, что внутри и шансы, «Открыть пак», «Продать в Лавке»
+  // Окно пака: пак крупно, сколько у меня, шансы, «Открыть пак», «Продать в Лавке»
   function openPackSheet(note) {
     var pc = packCard(), mine = myPacks();
     if (!pc || !mine.length) { closeOverlay(); return; }
@@ -388,8 +388,6 @@
     if (note) setText(msg, note);
     sheet.appendChild(window.Cards.pack('lg'));
     sheet.appendChild(el('p', { class: 'kb-info' }, [el('span', { class: 'kd-dot r-pack', 'aria-hidden': 'true' }), 'Пак «' + seriesName() + '» · у тебя ' + mine.length]));
-    sheet.appendChild(el('p', { class: 'kb-note', text: 'Внутри — 1 случайная карточка серии, шансы — как в полной колоде из 85. '
-      + 'Карточка из пака — копия сверх тиража: у «Монеты» было №1–6, из пака будет №7/6.' }));
     var odds = packOdds(); odds.classList.add('kx-compact');
     sheet.appendChild(odds);
     sheet.appendChild(el('div', { class: 'kc-actions' }, [
@@ -399,7 +397,6 @@
         openSell(pc.card_id, mine[0], function () { openPackSheet(); });
       } })
     ]));
-    sheet.appendChild(el('p', { class: 'kc-note', text: 'Пак нельзя поставить на витрину или переплавить.' }));
     sheet.appendChild(msg);
   }
 
