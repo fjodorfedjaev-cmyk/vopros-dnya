@@ -302,7 +302,7 @@
       'На ход 30 секунд. Время вышло — база кладёт за тебя одну карту (без карт — отвечает «Верю»). Два раза подряд — вне игры, последнее место.',
       'Банк делят по местам: первый удваивает ставку, каждое следующее место получает меньше, последний — ничего.',
       '«Выйти» во время игры — поражение: ставка не вернётся.',
-      'Если в комнате один человек, через минуту она закрывается — ставка возвращается.'
+      'Если в комнате один человек, через минуту она закрывается, а если игра не началась за 3 минуты — тоже. Ставки возвращаются.'
     ];
     return fold('rulesOpen', 'Правила', [el('ul', { class: 'dk-rules-list' }, items.map(function (t) { return el('li', { text: t }); }))], 'dk-rules');
   }
@@ -398,9 +398,13 @@
     });
     var alone = st.alone_ms && st.status === 'open' ? Math.max(0, Math.ceil((st.alone_ms - (Date.now() + K.offset)) / 1000)) : null;
     K.rootEl.querySelectorAll('[data-alone]').forEach(function (n) {
-      n.textContent = alone == null ? '' : 'Закроется через ' + alone + ' с, если никто не зайдёт';
+      // один в комнате — «если никто не зайдёт»; двое и больше — «если игра не начнётся» (3 минуты с открытия)
+      n.textContent = alone == null ? '' : 'Закроется через ' + leftText(alone) + (playersBySeat().length >= 2 ? ', если игра не начнётся' : ', если никто не зайдёт');
     });
   }
+
+  // секунды до закрытия: «2:41», меньше минуты — «45 с»
+  function leftText(sec) { return sec >= 60 ? Math.floor(sec / 60) + ':' + (sec % 60 < 10 ? '0' : '') + sec % 60 : sec + ' с'; }
 
   async function act(name, args, okToast) {
     if (K.busy) return;
@@ -793,10 +797,11 @@
     else if (st.status === 'finished') body = resultBox(st);
     else {
       var lastLog = (st.log || [])[(st.log || []).length - 1];
-      var alone = lastLog && lastLog.kind === 'alone';
+      var why = lastLog && (lastLog.kind === 'alone' || lastLog.kind === 'expired') ? lastLog.kind : null;
       body = el('div', { class: 'card duel-lobby' }, [
-        el('p', { class: 'duel-big', text: alone ? 'Комната закрыта' : 'Комната закрыта — ставки вернулись' }),
-        alone ? el('p', { class: 'muted dk-alone', text: 'За минуту никто не зашёл' + (st.stake ? ' — ставка вернулась' : '') }) : null,
+        el('p', { class: 'duel-big', text: why ? 'Комната закрыта' : 'Комната закрыта — ставки вернулись' }),
+        why === 'alone' ? el('p', { class: 'muted dk-alone', text: 'За минуту никто не зашёл' + (st.stake ? ' — ставка вернулась' : '') }) : null,
+        why === 'expired' ? el('p', { class: 'muted dk-alone', text: 'За 3 минуты игра не началась' + (st.stake ? ' — ставки вернулись' : '') }) : null,
         el('div', { class: 'duel-acts' }, [el('button', { type: 'button', class: 'btn', text: 'К комнатам', onclick: closeRoom })])
       ].filter(Boolean));
     }

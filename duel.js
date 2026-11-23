@@ -194,7 +194,7 @@
       chips,
       el('label', { class: 'duel-label', for: 'duel-stake', text: 'Ставка' }),
       el('div', { class: 'duel-stake' }, [el('span', { class: 'duel-stake-in' }, [input, coinEl()]), quick]),
-      el('p', { class: 'muted small', text: 'Ставка сразу уходит в банк. Отказ, отмена или если за сутки никто не придёт — вернётся. Победитель забирает обе ставки.' }),
+      el('p', { class: 'muted small', text: 'Ставка сразу уходит в банк. Отказ, отмена или если за 3 минуты игра не начнётся — вернётся. Победитель забирает обе ставки.' }),
       go, msg
     ]);
   }
@@ -295,6 +295,7 @@
     var rules = el('p', { class: 'muted small duel-rules', text: RULES });
     if (st.status === 'open') {
       box.appendChild(el('p', { class: 'duel-big', text: 'Комната открыта — ждём, пока кто-нибудь зайдёт' }));
+      box.appendChild(el('p', { class: 'muted small', text: 'Не началась за 3 минуты — закроется, ставка вернётся' }));
       box.appendChild(rules);
       box.appendChild(el('div', { class: 'duel-acts' }, [
         el('button', { type: 'button', class: 'btn', text: 'Закрыть комнату', onclick: function (ev) { cancel({ id: st.id }, ev.currentTarget, msg); } }), back]));
@@ -307,6 +308,7 @@
         el('button', { type: 'button', class: 'btn', text: 'Отказаться', onclick: function (ev) { respond({ id: st.id }, false, ev.currentTarget, msg).then(closeDuel); } })]));
     } else if (st.status === 'invited') {
       box.appendChild(el('p', { class: 'duel-big', text: 'Ждём, пока ' + st.opp_name + ' примет вызов' }));
+      box.appendChild(el('p', { class: 'muted small', text: 'Не принят за 3 минуты — вызов отменится, ставка вернётся' }));
       box.appendChild(el('div', { class: 'duel-acts' }, [
         el('button', { type: 'button', class: 'btn', text: 'Отменить вызов', onclick: function (ev) { cancel({ id: st.id }, ev.currentTarget, msg); } }), back]));
     } else if (st.status === 'accepted') {
@@ -332,7 +334,8 @@
       box.appendChild(resultBlock(st));
       box.appendChild(el('div', { class: 'duel-acts' }, [back]));
     } else {
-      box.appendChild(el('p', { class: 'duel-big', text: st.status === 'declined' ? 'Вызов отклонён — ставка вернулась' : 'Дуэль отменена — ставки вернулись' }));
+      box.appendChild(el('p', { class: 'duel-big', text: st.status === 'declined' ? 'Вызов отклонён — ставка вернулась'
+        : st.status === 'expired' ? 'За 3 минуты игра не началась — ставка вернулась' : 'Дуэль отменена — ставки вернулись' }));
       box.appendChild(el('div', { class: 'duel-acts' }, [back]));
     }
     box.appendChild(msg);

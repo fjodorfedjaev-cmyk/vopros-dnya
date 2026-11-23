@@ -1,6 +1,6 @@
 // «Дурак»: один в комнате минуту — комната закрывается (07_alone.sql). Двое живых через весь сайт:
-//  1) в правилах — строка про одного в комнате; открыл комнату (ставка 10) — «Закроется через N с, если никто не зайдёт»;
-//  2) зашёл второй — отсчёт пропал; вышел — снова отсчёт (с его выхода);
+//  1) в правилах — строка про одного в комнате; открыл комнату (ставка 10) — «Закроется через 1:00 / N с, если никто не зайдёт»;
+//  2) зашёл второй — отсчёт до 3 минут с открытия «…, если игра не начнётся» (rooms/01_start_3min.sql); вышел — снова минута;
 //  3) «прошло» 57 секунд — через пару секунд «Комната закрыта», «За минуту никто не зашёл — ставка вернулась», монеты как были.
 //   node durak-alone.js
 // Нужно: ./db.sh e2e ../../supabase/durak/0[1-7]*.sql ../../supabase/poker/0[1-4]*.sql  и  DB=e2e node server.js
@@ -12,6 +12,8 @@ let fails = 0;
 const ok = (cond, text) => { console.log((cond ? '✓ ' : '✗ ') + text); if (!cond) fails++; };
 const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < (ms || 8000)) { if (await fn()) return true; await B.sleep(200); } return false; };
 const aloneText = async (p) => ((await p.locator('.dk-alone').textContent().catch(() => '')) || '').trim();
+// «через 1:00» или «через 45 с» → секунды
+const secs = (t) => { const m = t.match(/через (\d+):(\d\d)/); if (m) return Number(m[1]) * 60 + Number(m[2]); const s = t.match(/через (\d+) с/); return s ? Number(s[1]) : NaN; };
 
 (async () => {
   const browser = await B.launch(), errors = [];
@@ -33,10 +35,10 @@ const aloneText = async (p) => ((await p.locator('.dk-alone').textContent().catc
   await A.waitForSelector('.duel-lobby');
   const r = q(`select id from public.durak_rooms where creator = '${ids[0]}' order by id desc limit 1`);
   await B.sleep(700);
-  const t1 = await aloneText(A), s1 = Number((t1.match(/через (\d+) с/) || [])[1]);
+  const t1 = await aloneText(A), s1 = secs(t1);
   ok(s1 >= 57 && s1 <= 60 && /если никто не зайдёт/.test(t1), 'один в новой комнате: «' + t1 + '»');
   await B.sleep(1300);
-  const s1b = Number(((await aloneText(A)).match(/через (\d+) с/) || [])[1]);
+  const s1b = secs(await aloneText(A));
   ok(s1b <= s1 - 1, 'отсчёт идёт: ' + s1 + ' → ' + s1b);
   await shot(A, 'dk_alone_wait');
 
@@ -44,18 +46,18 @@ const aloneText = async (p) => ((await p.locator('.dk-alone').textContent().catc
   await Bp.waitForSelector('.duel-row button:has-text("Войти")', { timeout: 12000 });
   await Bp.locator('.duel-row button:has-text("Войти")').first().click();
   await Bp.waitForSelector('.duel-lobby');
-  ok(await waitFor(async () => (await A.locator('.dk-alone').count()) === 0), 'зашёл второй — отсчёта нет');
+  ok(await waitFor(async () => /если игра не начнётся/.test(await aloneText(A))), 'зашёл второй — отсчёт до 3 минут: «' + (await aloneText(A)) + '»');
   ok(q(`select alone_since is null from public.durak_rooms where id = ${r}`) === 't', 'в базе отметки «один» нет');
   await Bp.getByRole('button', { name: /^Выйти/ }).click();
-  ok(await waitFor(async () => (await A.locator('.dk-alone').count()) === 1), 'второй вышел — у первого снова отсчёт');
+  ok(await waitFor(async () => /если никто не зайдёт/.test(await aloneText(A))), 'второй вышел — у первого снова «если никто не зайдёт»');
   await B.sleep(600);
-  const s2 = Number(((await aloneText(A)).match(/через (\d+) с/) || [])[1]);
+  const s2 = secs(await aloneText(A));
   ok(s2 >= 57 && s2 <= 60, 'новая минута с выхода второго: ' + s2 + ' с');
 
   // 3. «прошло» 57 секунд — закрывается
   q(`update public.durak_rooms set alone_since = alone_since - interval '57 seconds' where id = ${r}`);
   await B.sleep(1500);
-  const s3 = Number(((await aloneText(A)).match(/через (\d+) с/) || [])[1]);
+  const s3 = secs(await aloneText(A));
   ok(s3 >= 0 && s3 <= 3, 'почти минута: ' + s3 + ' с');
   await shot(A, 'dk_alone_soon');
   ok(await waitFor(async () => (await A.locator('.duel-big', { hasText: 'Комната закрыта' }).count()) === 1, 8000), 'минута прошла — «Комната закрыта»');
