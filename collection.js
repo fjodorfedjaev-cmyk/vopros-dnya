@@ -8,7 +8,8 @@
    Продавец получает цену минус 10% (не меньше 0,01) — это сгорает.
    Все деньги считает база (market_sell / market_buy / market_bid …), сайт только показывает расчёт заранее.
    Паки (23.11): колода серии опустела — база дарит паки тем, кто открывал карточки (1 карточка — 1 пак, не больше 3).
-   Подарок забирают в блоке открытия («Забрать»), паки лежат в «Мои паки»; открыть пак — cards_pack_open (что выпадет,
+   Подарок забирают в блоке открытия («Забрать»), паки лежат в альбоме — плиткой после легендарной (как новая редкость);
+   открыть пак — cards_pack_open (что выпадет,
    решает база в момент открытия), продать — в Лавке, как карточку (пак — «карточка» серии с редкостью 'pack').
    Режим проверки паков (только админ): Коллекция показывается так, будто колода уже опустела, — подарок, «Забрать»,
    «Мои паки», открытие. Всё происходит только на телефоне (K.pv), в базу ничего не пишется; «Выйти» — всё как было.
@@ -18,7 +19,7 @@
   var A = null;                 // AppAPI, появляется после запуска сайта
   var root = null;              // корневой элемент вкладки (живёт между перерисовками)
   var SERIES = 1;               // серия «Начало»
-  var K = { catalog: null, my: null, deck: null, gift: null, justClaimed: false, admin: false, pv: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
+  var K = { catalog: null, my: null, deck: null, gift: null, admin: false, pv: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
             mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0,
             mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'),
             mkSortRar: saved('mk-sort-rar', ['desc', 'asc'], ''), mkSortPrice: saved('mk-sort-price', ['desc', 'asc'], ''), mkPop: null,
@@ -269,9 +270,6 @@
     if (K.mode === 'market') { marketView().forEach(function (n) { root.appendChild(n); }); return; }
     seenSet();
     root.appendChild(heroCard());
-    var packs = packsSect();
-    if (packs) root.appendChild(packs);
-    K.justClaimed = false;
     root.appendChild(albumSect());
     root.appendChild(showcaseSect());
     var pl = pvLink();
@@ -320,7 +318,6 @@
       fan,
       el('p', { class: 'ko-gift-n', text: n + ' ' + packWord(n) }),
       btn,
-      el('p', { class: 'ko-meta', text: '1 пак за каждую открытую карточку, но не больше 3' }),
       msg
     ]);
   }
@@ -330,11 +327,13 @@
     setText(msg, '');
     try {
       var n = K.pv ? pvClaim() : Number(one(await rpc('cards_pack_claim', { p_series: g.series_id }))) || 0;
-      fan.classList.add('go');                       // паки «уезжают» вниз — в «Мои паки»
+      fan.classList.add('go');                       // паки «уезжают» вниз — в альбом
       await new Promise(function (r) { setTimeout(r, reduce ? 0 : 520); });
-      K.busy = false; K.justClaimed = true;
+      K.busy = false;
+      if (K.filter === 'miss') { K.filter = 'all'; store('coll-filter', 'all'); }   // иначе плитки пака не видно
       await reload();
-      if (n) A.toast(n + ' ' + packWord(n) + ' — в коллекции');
+      showPackTile();
+      if (n) A.toast(n + ' ' + packWord(n) + ' — в альбоме');
     } catch (e) {
       K.busy = false; btn.disabled = false;
       setText(msg, errText(e));
@@ -346,34 +345,18 @@
     return el('section', { class: 'card ko ko-soon' }, [
       el('h2', { class: 'ko-title', text: 'Скоро новая коллекция' }),
       el('div', { class: 'ko-next', 'aria-hidden': 'true' }, [el('span', { text: '?' })]),
-      el('p', { class: 'ko-sub', text: 'Серия «' + name + '» закончилась: все ' + (d.deck_total || 85) + ' карточек разошлись.' }),
       el('p', { class: 'ko-meta', text: 'Карточки и паки «' + name + '» — в Лавке' })
     ]);
   }
-
-  // «Мои паки»: стопка паков, сколько, «Открыть пак». Нажал на стопку — окно пака (что внутри, продать).
-  function packsSect() {
-    var mine = myPacks();
-    if (!mine.length) return null;
-    var s = seenSet();
-    var fresh = mine.some(function (k) { return !s[k.copy_id]; });
-    var stack = el('button', {
-      type: 'button', class: 'kp-stack n' + Math.min(3, mine.length),
-      'aria-label': 'Паки: ' + mine.length + (fresh ? ', новые' : '') + '. Что внутри', onclick: function () { openPackSheet(); }
-    }, mine.slice(0, 3).map(function () { return window.Cards.pack('sm'); }));
-    if (fresh) stack.appendChild(el('span', { class: 'ka-new', text: mine.length > 1 ? 'Новые' : 'Новый' }));
-    var open = el('button', { type: 'button', class: 'btn primary kp-open', text: 'Открыть пак', onclick: function () { openPack(); } });
-    open.disabled = K.busy;
-    return el('section', { class: 'card kp' + (K.justClaimed ? ' kp-in' : '') }, [
-      stack,
-      el('div', { class: 'kp-info' }, [
-        el('h2', { class: 'kp-title' }, ['Мои паки', el('span', { class: 'kp-n', text: '×' + mine.length })]),
-        el('p', { class: 'kp-sub', text: 'В каждом — 1 случайная карточка «' + seriesName() + '»' }),
-        open,
-        el('button', { type: 'button', class: 'link kp-more', text: 'Что внутри', onclick: function () { openPackSheet(); } })
-      ])
-    ]);
+  // После «Забрать»: страница плавно едет к плитке пака в альбоме, плитка подсвечивается — вот где теперь паки
+  function showPackTile() {
+    var t = root && root.querySelector('.ka-tile.r-pack');
+    if (!t) return;
+    try { t.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' }); } catch (e) { t.scrollIntoView(); }
+    t.classList.add('ka-arrive');
+    setTimeout(function () { t.classList.remove('ka-arrive'); }, 4200);
   }
+
   function markPacksSeen() {
     var s = seenSet(), changed = false;
     myPacks().forEach(function (k) { if (!s[k.copy_id]) { s[k.copy_id] = 1; changed = true; } });
@@ -471,6 +454,8 @@
     var cards = albumCards().sort(function (a, b) { return (R(a.rarity).rank - R(b.rarity).rank) || (a.sort - b.sort); });
     var total = cards.length;
     var n = cards.filter(function (c) { return myCopies(c.card_id).length; }).length;
+    var pc = packCard();
+    if (pc && myPacks().length) cards.push(pc);   // пак — как новая редкость после легендарной, только пока паки есть
     var shown = cards.filter(function (c) { return K.filter === 'all' || (K.filter === 'got') === (myCopies(c.card_id).length > 0); });
     var filters = el('div', { class: 'ka-filters', role: 'group', 'aria-label': 'Какие карточки показать' }, FILTERS.map(function (f) {
       return el('button', { type: 'button', class: 'ka-filter', 'aria-pressed': String(K.filter === f[0]), text: f[1], onclick: function () {
@@ -494,6 +479,7 @@
   // Есть повторы — «×2», новая — метка «Новая». Нажатие — панель снизу, зажать — перетащить на витрину.
   function tile(c) {
     var mine = myCopies(c.card_id);
+    if (isPack(c)) return packTile(c, mine);
     var kids = [
       el('span', { class: 'ka-rar' }, [el('span', { class: 'kd-dot r-' + c.rarity, 'aria-hidden': 'true' }), R(c.rarity).name]),
       el('span', { class: 'ka-art', 'aria-hidden': 'true' }, [window.Cards.art(c.code)]),
@@ -509,6 +495,25 @@
       type: 'button', class: 'ka-tile r-' + c.rarity, 'data-drag': 'grid:' + c.card_id,
       'aria-label': c.name + ', ' + R(c.rarity).name.toLowerCase() + (mine.length > 1 ? ', копий: ' + mine.length : '') + (fresh ? ', новая' : ''),
       onclick: function () { if (!justDragged()) openDetail(c.card_id); }
+    }, kids);
+  }
+
+  // Плитка пака в альбоме: «Пак», рисунок упаковки, «×3», «Новые». Нажатие — окно пака (открыть, продать).
+  // На витрину пак не ставится, поэтому перетаскивания у плитки нет.
+  function packTile(c, mine) {
+    var s = seenSet();
+    var fresh = mine.some(function (k) { return !s[k.copy_id]; });
+    var kids = [
+      el('span', { class: 'ka-rar' }, [el('span', { class: 'kd-dot r-pack', 'aria-hidden': 'true' }), R('pack').name]),
+      el('span', { class: 'ka-art', 'aria-hidden': 'true' }, [window.Cards.art('pack')]),
+      el('span', { class: 'ka-name', text: c.name })
+    ];
+    if (mine.length > 1) kids.push(el('span', { class: 'ka-badge', text: '×' + mine.length }));
+    if (fresh) kids.push(el('span', { class: 'ka-new', text: mine.length > 1 ? 'Новые' : 'Новый' }));
+    return el('button', {
+      type: 'button', class: 'ka-tile r-pack',
+      'aria-label': 'Пак «' + seriesName() + '», у тебя ' + mine.length + (fresh ? ', новые' : '') + '. Открыть или продать',
+      onclick: function () { openPackSheet(); }
     }, kids);
   }
 

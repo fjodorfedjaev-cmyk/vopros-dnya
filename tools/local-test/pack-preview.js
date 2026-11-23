@@ -50,10 +50,10 @@ async function tapThrough(p) {
   await p.locator('.ko-gift .ko-open').click();
   await B.sleep(1300);
   await shot(p, 'pv_claimed');
-  ok('«Забрать»: «Мои паки ×3», «Скоро новая коллекция»', (await p.locator('.kp-n').textContent()).trim() === '×3' && await p.locator('.ko-soon').count() === 1);
+  ok('«Забрать»: плитка пака «×3» в альбоме, «Скоро новая коллекция»', (await p.locator('.ka-tile.r-pack .ka-badge').textContent()).trim() === '×3' && await p.locator('.ko-soon').count() === 1);
   ok('база не изменилась после «Забрать»', snap() === before);
   // окно пака: Лавка выключена
-  await p.locator('.kp-stack').click();
+  await p.locator('.ka-tile.r-pack').click();
   await p.waitForSelector('.kb-sheet .kpk');
   await p.locator('.kb-sheet').getByRole('button', { name: 'Продать в Лавке' }).click();
   await B.sleep(300);
@@ -90,7 +90,7 @@ async function tapThrough(p) {
   // заново: подарок 0 — сразу «Скоро…»; подарок 1 — «1 пак»
   await p.locator('.kpv-chip', { hasText: '0' }).click();
   await B.sleep(300);
-  ok('«Заново: 0» — сразу «Скоро новая коллекция», паков нет', await p.locator('.ko-soon').count() === 1 && !(await p.locator('.kp').count()));
+  ok('«Заново: 0» — сразу «Скоро новая коллекция», паков нет', await p.locator('.ko-soon').count() === 1 && !(await p.locator('.ka-tile.r-pack').count()));
   await p.locator('.kpv-chip', { hasText: '1' }).click();
   await B.sleep(300);
   await shot(p, 'pv_one');
@@ -103,7 +103,7 @@ async function tapThrough(p) {
   await B.sleep(600);
   await shot(p, 'pv_exit');
   ok('«Выйти»: снова «Открыть за», паков нет, альбом как был', /Открыть за/.test(await p.locator('.ko-open').textContent())
-    && !(await p.locator('.kp').count()) && !(await p.locator('.kpv').count()) && (await p.locator('.ka-count').textContent()).trim() === realCount);
+    && !(await p.locator('.ka-tile.r-pack').count()) && !(await p.locator('.kpv').count()) && (await p.locator('.ka-count').textContent()).trim() === realCount);
   ok('база не изменилась за всю проверку', snap() === before);
 
   await browser.close();

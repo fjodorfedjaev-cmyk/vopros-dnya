@@ -1,6 +1,6 @@
 // Сценарий «Паки» (23.11): колода «Начала» опустела — подарок-паки тем, кто открывал (1 карточка — 1 пак, не больше 3).
-// Админ открывает последнюю карточку на сайте → «Серия закончилась», веер паков, «Забрать» → «Мои паки ×3»,
-// на месте сундука — «Скоро новая коллекция»; окно пака (шансы как в полной колоде), открытие (упаковка рвётся,
+// Админ открывает последнюю карточку на сайте → «Серия закончилась», веер паков, «Забрать» → страница едет к плитке
+// пака в альбоме (после легендарной, «×3», подсветка), на месте сундука — «Скоро новая коллекция»; окно пака (шансы как в полной колоде), открытие (упаковка рвётся,
 // дальше по нажатиям), номер сверх тиража, «Открыть ещё пак», два быстрых нажатия, продажа пака в Лавке;
 // друг без покупок — сразу «Скоро новая коллекция», покупает пак в Лавке и открывает; второй друг — свой подарок.
 // База: ./db.sh pk cards-stub.sql profile-stub.sql ../../supabase/cards/01_cards.sql ../../supabase/market/01_market.sql \
@@ -57,19 +57,27 @@ async function toColl(p) {
     (await p.locator('.ko-gift .ko-title').textContent()).includes('Серия «Начало» закончилась')
     && (await p.locator('.ko-gift-n').textContent()).trim() === '3 пака'
     && await p.locator('.ko-gift .ko-open').textContent() === 'Забрать' && await p.locator('.ko-fan .kpk').count() === 3);
-  ok('до «Забрать» паков в коллекции нет', !(await p.locator('.kp').count()));
+  ok('до «Забрать» плитки пака в альбоме нет, внизу подарка нет строки «1 пак за каждую…»', !(await p.locator('.ka-tile.r-pack').count())
+    && !(await p.locator('.ko-gift').textContent()).includes('за каждую'));
   // «Забрать» — два быстрых нажатия: паков всё равно 3
   await p.locator('.ko-gift .ko-open').dblclick();
-  await B.sleep(1600);
+  await B.sleep(1300);
+  const pt = p.locator('.ka-tile.r-pack');
+  const arrive = await pt.evaluate(n => n.classList.contains('ka-arrive')).catch(() => false);
+  await B.sleep(700);
   await shot(p, 'pk_claimed');
-  ok('«Забрать»: «Мои паки ×3», в базе ровно 3 пака', (await p.locator('.kp-n').textContent()).trim() === '×3'
+  const inView = await pt.evaluate(n => { const r = n.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }).catch(() => false);
+  ok('«Забрать»: в базе ровно 3 пака, плитка пака «×3» в альбоме', (await pt.locator('.ka-badge').textContent()).trim() === '×3'
     && q(`select count(*) from public.card_copies where card_id = ${packId} and owner_id = '${admin}' and state = 'owned'`) === '3');
-  ok('на месте сундука — «Скоро новая коллекция»', (await p.locator('.ko-soon .ko-title').textContent()).includes('Скоро новая коллекция')
-    && !(await p.locator('.ko-gift').count()) && !(await p.locator('.ko-open').count()));
-  ok('паки «Новые», в альбоме пака нет, «X / 20»', await p.locator('.kp-stack .ka-new').count() === 1
-    && / \/ 20$/.test((await p.locator('.ka-count').textContent()).trim()) && await p.locator('.ka-tile').count() === 20);
+  ok('страница доехала до плитки пака, плитка подсвечена', inView && arrive);
+  ok('плитка пака — последняя, после легендарной: «Пак», «Новые»; «X / 20», плиток 21; блока «Мои паки» нет',
+    await p.locator('.ka-tile').count() === 21 && await p.locator('.ka-tile').last().evaluate(n => n.classList.contains('r-pack'))
+    && (await pt.locator('.ka-rar').textContent()).includes('Пак') && (await pt.locator('.ka-new').textContent()) === 'Новые'
+    && / \/ 20$/.test((await p.locator('.ka-count').textContent()).trim()) && !(await p.locator('.kp').count()));
+  ok('на месте сундука — «Скоро новая коллекция» без строки «…разошлись»', (await p.locator('.ko-soon .ko-title').textContent()).includes('Скоро новая коллекция')
+    && !(await p.locator('.ko-soon').textContent()).includes('разошлись') && !(await p.locator('.ko-gift').count()) && !(await p.locator('.ko-open').count()));
   // окно пака: шансы как в полной колоде
-  await p.locator('.kp-stack').click();
+  await pt.click();
   await p.waitForSelector('.kb-sheet .kpk');
   await B.sleep(400);
   const pcts = await p.locator('.kb-sheet .kx-pct').allTextContents();
@@ -80,10 +88,12 @@ async function toColl(p) {
     && await p.locator('.kb-sheet').getByRole('button', { name: 'Продать в Лавке' }).count() === 1 && (await p.locator('.kb-sheet .kb-info').textContent()).includes('у тебя 3'));
   await p.mouse.click(195, 40);
   await B.sleep(300);
-  ok('окно пака закрылось нажатием мимо, метка «Новые» снята', !(await p.locator('.kb-sheet').count()) && !(await p.locator('.kp-stack .ka-new').count()));
+  ok('окно пака закрылось нажатием мимо, метка «Новые» снята', !(await p.locator('.kb-sheet').count()) && !(await pt.locator('.ka-new').count()));
 
   // открыть пак: упаковка → рвётся → рубашка → по нажатиям → результат
-  await p.locator('.kp-open').click();
+  await pt.click();
+  await p.waitForSelector('.kb-sheet .kpk');
+  await p.locator('.kb-sheet').getByRole('button', { name: 'Открыть пак' }).click();
   await p.waitForSelector('.kr-stage:not(.kr-wait)', { timeout: 8000 });
   await B.sleep(300);
   await shot(p, 'pk_open_0');
@@ -106,11 +116,11 @@ async function toColl(p) {
   ok('второй пак открыт, паков больше не 2 → 1: «осталось 1»', (await p.locator('.kr-again').textContent()).includes('осталось 1'));
   await p.getByRole('button', { name: 'В коллекцию' }).click();
   await B.sleep(1200);
-  ok('«Мои паки ×1», в базе 2 открыто', (await p.locator('.kp-n').textContent()).trim() === '×1'
+  ok('остался 1 пак: плитка без «×N», в базе 2 открыто', await pt.count() === 1 && !(await pt.locator('.ka-badge').count())
     && q(`select count(*) from public.card_events where kind = 'unpack' and from_user = '${admin}'`) === '2');
 
   // последний пак — в Лавку за 150
-  await p.locator('.kp-stack').click();
+  await pt.click();
   await p.waitForSelector('.kb-sheet .kpk');
   await p.locator('.kb-sheet').getByRole('button', { name: 'Продать в Лавке' }).click();
   await p.waitForSelector('#mk-p');
@@ -120,8 +130,8 @@ async function toColl(p) {
   await p.locator('#mk-p').fill('150');
   await p.locator('.kb-sheet .btn.primary').click();
   await B.sleep(1500);
-  ok('пак выставлен за 150, «Мои паки» исчезли', q(`select count(*) from public.card_listings l join public.card_copies k on k.id = l.copy_id where k.card_id = ${packId} and l.status = 'active' and l.price = 150`) === '1'
-    && !(await p.locator('.kp').count()));
+  ok('пак выставлен за 150, плитка пака из альбома исчезла', q(`select count(*) from public.card_listings l join public.card_copies k on k.id = l.copy_id where k.card_id = ${packId} and l.status = 'active' and l.price = 150`) === '1'
+    && !(await pt.count()));
   // витрина и профиль: «Собрано X из 20»
   await p.locator('.bn-item', { hasText: 'Профиль' }).click();
   await B.sleep(1200);
@@ -150,9 +160,11 @@ async function toColl(p) {
   ok('друг купил пак', q(`select count(*) from public.card_copies where card_id = ${packId} and owner_id = '${u3}' and state = 'owned'`) === '1');
   await f.locator('.coll-switch button', { hasText: 'Коллекция' }).click();
   await B.sleep(600);
-  ok('у друга «Мои паки ×1»', (await f.locator('.kp-n').textContent()).trim() === '×1');
+  ok('у друга в альбоме плитка пака', await f.locator('.ka-tile.r-pack').count() === 1);
   // два быстрых нажатия «Открыть пак» — открывается один раз
-  await f.locator('.kp-open').dblclick();
+  await f.locator('.ka-tile.r-pack').click();
+  await f.waitForSelector('.kb-sheet .kpk');
+  await f.locator('.kb-sheet').getByRole('button', { name: 'Открыть пак' }).dblclick();
   await tapThrough(f);
   ok('друг открыл пак: «Новая карточка», «Собрано 1 из 20», без «Открыть ещё»', /Новая карточка/i.test(await f.locator('.kr-badge').textContent())
     && (await f.locator('.kr-prog-t').textContent()).includes('Собрано 1 из 20') && !(await f.locator('.kr-again').count())
