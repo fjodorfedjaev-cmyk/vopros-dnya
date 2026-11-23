@@ -223,8 +223,8 @@
           if (K.sitFor === t.id) { K.sitFor = null; } else { K.sitFor = t.id; K.sitBuy = defaultBuy(t.min_buy, t.max_buy); }
           paint(true);
         } }));
-      // за столом уже играют — можно посмотреть, не садясь
-      if (n >= 2 && !open) acts.push(el('button', { type: 'button', class: 'btn', text: 'Наблюдать', onclick: function () { K.sitFor = null; openTable(t.id); } }));
+      // за столом кто-то есть — можно посмотреть, не садясь (и пока ждут второго)
+      if (n >= 1 && !open) acts.push(el('button', { type: 'button', class: 'btn', text: 'Наблюдать', onclick: function () { K.sitFor = null; openTable(t.id); } }));
     }
     var lineEl = el('span', { class: 'duel-line' }); setText(lineEl, line);
     var row = el('div', { class: 'duel-row' + cls + (acts.length > 1 ? ' two' : '') }, [

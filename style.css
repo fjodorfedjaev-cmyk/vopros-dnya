@@ -1744,6 +1744,7 @@ html.sector-on #duel-sect { pointer-events: none; opacity: 0.35; }
 .dk-rules-list { margin: 0; padding: 12px 18px 14px 34px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
 .dk-stake { display: block; margin: -4px 0 10px; }
 .dk-alone { margin: -4px 0 10px; font-size: 13px; }
+.dk-watching { margin: 6px 0 2px; font-size: 13px; text-align: center; }
 /* над столом: банк слева, «Выйти» справа; предупреждение всплывает под кнопкой и ничего не сдвигает */
 .dk-gamebar { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 32px; padding: 0 2px; }
 .dk-bank { font: 500 12.5px var(--font-mono); color: var(--muted); }

@@ -130,9 +130,11 @@
         jb.addEventListener('click', function () { join(r.id, jb, msg); });
         acts.push(jb);
       }
+      // ещё не началась — можно зайти посмотреть, не входя (тестовые комнаты чужим не видны)
+      acts.push(el('button', { type: 'button', class: 'btn', text: 'Наблюдать', onclick: function () { openRoom(r.id); } }));
     }
     var lineEl = el('span', { class: 'duel-line' }); setText(lineEl, line);
-    return el('div', { class: 'duel-row' + cls }, [
+    return el('div', { class: 'duel-row' + cls + (acts.length > 1 ? ' two' : '') }, [
       avatars(players),
       el('div', { class: 'duel-info' }, [el('span', { class: 'duel-name', text: title }), lineEl]),
       acts.length ? el('div', { class: 'duel-acts' }, acts) : null,
@@ -407,6 +409,7 @@
     try {
       await rpc(name, Object.assign({ p_room: K.open }, args || {}));
       if (okToast) A.toast(okToast);
+      if (name === 'bluff_join') A.loadPoints();   // вошёл из наблюдения — ставка списана
       K.sel = []; K.rank = null;
       if (name === 'bluff_leave') { A.loadPoints(); K.busy = false; closeRoom(); return; }
       await tick();
@@ -503,7 +506,16 @@
       box.appendChild(seatsList(st, function (p) { return { text: p.creator ? 'создатель' : '', on: false }; }));
       if (n < 3) box.appendChild(el('p', { class: 'muted bf-need', text: 'Играют от 3 человек' }));
       if (st.creator) acts.push(el('button', { type: 'button', class: 'btn primary', text: 'Начать', disabled: n < 3 || K.busy, onclick: function () { act('bluff_start'); } }));
-      acts.push(el('button', { type: 'button', class: 'btn', text: st.stake ? 'Выйти — ставка вернётся' : 'Выйти', disabled: K.busy,
+      if (!st.my) {
+        // наблюдаю: можно войти (если есть место) или вернуться к комнатам
+        box.appendChild(el('p', { class: 'muted dk-watching', text: 'Ты наблюдаешь' }));
+        if (n < max) {
+          var jb = el('button', { type: 'button', class: 'btn primary', disabled: K.busy, onclick: function () { act('bluff_join'); } });
+          setText(jb, st.stake ? 'Войти · ' + coins(st.stake) : 'Войти');
+          acts.push(jb);
+        }
+        acts.push(el('button', { type: 'button', class: 'btn', text: 'К комнатам', onclick: closeRoom }));
+      } else acts.push(el('button', { type: 'button', class: 'btn', text: st.stake ? 'Выйти — ставка вернётся' : 'Выйти', disabled: K.busy,
         onclick: function () { act('bluff_leave', null, st.stake ? 'Ставка вернулась' : null); } }));
     } else {
       var me = st.my || {};
