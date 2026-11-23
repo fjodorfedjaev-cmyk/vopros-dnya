@@ -50,7 +50,7 @@ async function tapThrough(p) {
   await p.locator('.ko-gift .ko-open').click();
   await B.sleep(1300);
   await shot(p, 'pv_claimed');
-  ok('«Забрать»: плитка пака «×3» в альбоме, «Скоро новая коллекция»', (await p.locator('.ka-tile.r-pack .ka-badge').textContent()).trim() === '×3' && await p.locator('.ko-soon').count() === 1);
+  ok('«Забрать»: плитка пака «×3» в альбоме, на месте колоды — покупка (1-я неделя)', (await p.locator('.ka-tile.r-pack .ka-badge').textContent()).trim() === '×3' && await p.locator('.ko-buy').count() === 1);
   ok('база не изменилась после «Забрать»', snap() === before);
   // окно пака: Лавка выключена
   await p.locator('.ka-tile.r-pack').click();
@@ -88,14 +88,17 @@ async function tapThrough(p) {
   await p.locator('.coll-switch button', { hasText: 'Коллекция' }).click();
   await B.sleep(300);
   // заново: подарок 0 — сразу «Скоро…»; подарок 1 — «1 пак»
-  await p.locator('.kpv-chip', { hasText: '0' }).click();
+  await p.locator('.kpv-chip', { hasText: '0' }).first().click();
   await B.sleep(300);
-  ok('«Заново: 0» — сразу «Скоро новая коллекция», паков нет', await p.locator('.ko-soon').count() === 1 && !(await p.locator('.ka-tile.r-pack').count()));
-  await p.locator('.kpv-chip', { hasText: '1' }).click();
+  ok('«Заново: 0» — сразу покупка (1-я неделя), паков нет', await p.locator('.ko-buy').count() === 1 && !(await p.locator('.ka-tile.r-pack').count()));
+  await p.locator('.kpv-chip', { hasText: 'конец' }).click();
+  await B.sleep(300);
+  ok('«конец» продажи — «Скоро новая коллекция»', await p.locator('.ko-soon').count() === 1 && !(await p.locator('.ko-buy').count()));
+  await p.locator('.kpv-chip', { hasText: /^1$/ }).click();
   await B.sleep(300);
   await shot(p, 'pv_one');
   ok('«Заново: 1» — «1 пак», один пак в веере', (await p.locator('.ko-gift-n').textContent()).trim() === '1 пак' && await p.locator('.ko-fan .kpk').count() === 1);
-  await p.locator('.kpv-chip', { hasText: '2' }).click();
+  await p.locator('.kpv-chip', { hasText: /^2$/ }).click();
   await B.sleep(300);
   ok('«Заново: 2» — «2 пака»', (await p.locator('.ko-gift-n').textContent()).trim() === '2 пака');
   // выйти

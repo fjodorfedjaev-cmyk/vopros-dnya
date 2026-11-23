@@ -1158,6 +1158,8 @@ textarea.ta-auto { resize: none; overflow: hidden; }
 .kpk .kc-art { display: block; width: 100%; height: 100%; }
 .kpk-shine { position: absolute; top: 5%; left: 0; width: 38%; height: 90%; background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0)); pointer-events: none; animation: kcShine 5.2s linear infinite; }
 .kpk-md { width: 76px; }
+.kpk-xs { width: 30px; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); }
+.kpk-xs .kpk-shine { display: none; }
 .kpk-md .kpk-shine { animation-duration: 6s; }
 
 /* карточка «во всю карту» */
@@ -2218,6 +2220,21 @@ button.dk-card { cursor: pointer; }
 .kpv-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 .kpv-row > span { margin-right: 2px; }
 .kpv-chip { min-width: 38px; min-height: 34px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 600 14px var(--font-mono); }
+.kpv-chip.on { background: var(--btn); border-color: var(--btn); color: #fff; }
+.kpv-row .kpv-chip:not(:only-child) { font-family: var(--font-body); }
+/* покупка паков: первая неделя — на месте колоды (таймер), вторая — полоса над блоком коллекции */
+.ko-buy .ko-fan { height: 124px; }
+.ko-timer { display: inline-flex; gap: 6px; align-items: baseline; }
+.ko-left { font: 600 14px/1.2 var(--font-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.kps { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; border: 1.5px solid transparent; background: var(--surface) padding-box, linear-gradient(135deg, #A9A39D, #3FB97F 27%, #4C95F5 50%, #9B7BFF 73%, #F5B04A) border-box; }
+.kps-row { display: flex; align-items: center; gap: 12px; }
+.kps-pic { flex: none; display: flex; padding: 2px 4px; border: 0; background: none; cursor: pointer; }
+.kps-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.kps-t b { font: 600 15px/1.2 var(--font-body); color: var(--ink); }
+.kps-t > span { font-size: 12.5px; color: var(--muted); }
+.kps-t .ko-left { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.btn.kps-buy { flex: none; min-height: 40px; padding: 0 14px; font-size: 14px; white-space: nowrap; }
+.kps .msg:empty { display: none; }
 .kpv-link { align-self: center; min-height: 0; padding: 6px; font: 500 13px/1.4 var(--font-body); color: var(--muted); }
 .kx-list.kx-compact { gap: 4px; }
 .kx-compact .kx-row { padding: 6px 10px; gap: 8px; }

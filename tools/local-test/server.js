@@ -23,7 +23,7 @@ function lit(v) {
 }
 // функции, которые возвращают таблицу (PostgREST отдаёт их массивом)
 const SETS = { my_points: true, member_coins: true, member_stats: true,
-  cards_deck: true, cards_catalog: true, cards_my: true, cards_open: true, cards_melt: true, cards_showcases: true, cards_members: true, cards_pack_gift: true, cards_pack_open: true,
+  cards_deck: true, cards_catalog: true, cards_my: true, cards_open: true, cards_melt: true, cards_showcases: true, cards_members: true, cards_pack_gift: true, cards_pack_open: true, cards_pack_sale: true, cards_pack_buy: true,
   market_buy: true, market_lots: true, market_sell: true, market_bid: true, market_bid_reprice: true, market_bids: true, market_history: true };
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');

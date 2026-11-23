@@ -11,6 +11,8 @@
    Подарок забирают в блоке открытия («Забрать»), паки лежат в альбоме — плиткой после легендарной (как новая редкость);
    открыть пак — cards_pack_open (что выпадет,
    решает база в момент открытия), продать — в Лавке, как карточку (пак — «карточка» серии с редкостью 'pack').
+   Покупка паков (23.11): две недели после конца серии пак можно купить за 600 (cards_pack_buy, без ограничения).
+   Первую неделю — на месте колоды, вторую — полосой над блоком коллекции; таймер до конца продажи (часы — по базе).
    Режим проверки паков (только админ): Коллекция показывается так, будто колода уже опустела, — подарок, «Забрать»,
    «Мои паки», открытие. Всё происходит только на телефоне (K.pv), в базу ничего не пишется; «Выйти» — всё как было.
    Связь с сайтом — через window.AppAPI (sb, el, toast, баланс), рисунки — window.Cards. */
@@ -19,7 +21,7 @@
   var A = null;                 // AppAPI, появляется после запуска сайта
   var root = null;              // корневой элемент вкладки (живёт между перерисовками)
   var SERIES = 1;               // серия «Начало»
-  var K = { catalog: null, my: null, deck: null, gift: null, admin: false, pv: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
+  var K = { catalog: null, my: null, deck: null, gift: null, sale: null, clockOff: 0, salePhase: 0, admin: false, pv: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
             mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0,
             mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'),
             mkSortRar: saved('mk-sort-rar', ['desc', 'asc'], ''), mkSortPrice: saved('mk-sort-price', ['desc', 'asc'], ''), mkPop: null,
@@ -63,6 +65,7 @@
     if (/market_no_card/.test(m)) return 'Такой карточки нет.';
     if (/cards_pack_shelf/.test(m)) return 'Пак нельзя поставить на витрину.';
     if (/cards_not_pack/.test(m)) return 'Это не пак.';
+    if (/cards_pack_sale_over/.test(m)) return 'Продажа паков закончилась.';
     if (/not_member/.test(m)) return 'Сначала войди по коду приглашения.';
     if (/does not exist|could not find|schema cache/i.test(m)) return 'Коллекция ещё не готова: база не обновлена.';
     return 'Не получилось. Проверь интернет и попробуй ещё раз.';
@@ -99,12 +102,24 @@
     return K.pv.gift ? [{ series_id: SERIES, series_name: deckView().series_name, packs: K.pv.gift }] : [];
   }
   function pvStart(gift) {
-    K.pv = { gift: gift, packs: [], cards: [], seq: 0 };
+    K.pv = { gift: gift, packs: [], cards: [], seq: 0, sale: null };
+    pvSale(1);
     closeOverlay();
     if (K.mode !== 'coll') setMode('coll'); else draw();
     window.scrollTo(0, 0);
   }
   function pvStop() { K.pv = null; closeOverlay(); draw(); window.scrollTo(0, 0); A.toast('Режим проверки выключен — всё как было'); }
+  // Продажа в проверке: 1 — первая неделя (на месте колоды), 2 — вторая (полоса сверху), 0 — закончилась
+  function pvSale(week) {
+    var day = 864e5, now = Date.now();
+    if (!week) K.pv.sale = null;
+    else if (week === 1) K.pv.sale = { series_id: SERIES, price: 600, moves_at: new Date(now + 7 * day - 1000).toISOString(), ends_at: new Date(now + 14 * day - 1000).toISOString() };
+    else K.pv.sale = { series_id: SERIES, price: 600, moves_at: new Date(now - 1000).toISOString(), ends_at: new Date(now + 7 * day - 1000).toISOString() };
+  }
+  function pvBuy() {
+    var pc = packCard(), id = -(++K.pv.seq);
+    K.pv.packs.push({ copy_id: id, card_id: pc.card_id, serial: K.pv.seq, obtained_at: new Date().toISOString(), slot: null, can_melt: false });
+  }
   // «Забрать» в проверке: паки появляются только на телефоне
   function pvClaim() {
     var n = K.pv.gift, pc = packCard();
@@ -136,6 +151,10 @@
       ]),
       el('div', { class: 'kpv-row' }, [el('span', { text: 'Заново, подарок:' })].concat([0, 1, 2, 3].map(function (n) {
         return el('button', { type: 'button', class: 'kpv-chip', text: String(n), 'aria-label': 'Начать заново: подарок ' + n + ' ' + packWord(n), onclick: function () { pvStart(n); } });
+      }))),
+      el('div', { class: 'kpv-row' }, [el('span', { text: 'Продажа паков:' })].concat([[1, '1-я неделя'], [2, '2-я неделя'], [0, 'конец']].map(function (x) {
+        var on = x[0] === 0 ? !K.pv.sale : K.pv.sale && saleWeek(K.pv.sale) === x[0];
+        return el('button', { type: 'button', class: 'kpv-chip' + (on ? ' on' : ''), text: x[1], 'aria-pressed': String(!!on), onclick: function () { pvSale(x[0]); draw(); } });
       })))
     ]);
   }
@@ -151,7 +170,8 @@
       rpc('market_lots').catch(function (e) { K.lotsErr = e; return null; }), // лавка не загрузилась — коллекция всё равно работает
       rpc('market_bids').catch(function () { return null; }),
       rpc('cards_pack_gift').catch(function () { return null; }),           // подарок-паки (пусто — нет)
-      K.admin ? true : rpc('is_admin').catch(function () { return false; })   // админу — режим проверки паков
+      K.admin ? true : rpc('is_admin').catch(function () { return false; }),  // админу — режим проверки паков
+      rpc('cards_pack_sale', { p_series: SERIES }).catch(function () { return null; })   // продажа паков (пусто — не идёт)
     ]);
     K.catalog = res[0] || [];
     K.my = res[1] || [];
@@ -161,6 +181,8 @@
     K.bids = res[4] || [];
     K.gift = res[5] || [];
     K.admin = res[6] === true;
+    K.sale = one(res[7]) || null;
+    if (K.sale && K.sale.now_at) K.clockOff = Date.parse(K.sale.now_at) - Date.now();   // часы телефона могут спешить
     if (K.mode === 'market' && K.mkTab === 'deals' && K.hist) refreshHist();   // история — только когда её смотрят
   }
 
@@ -201,7 +223,7 @@
     await reload();
     syncPoll();
   }
-  function leave() { closeOverlay(); stopPoll(); }
+  function leave() { closeOverlay(); stopPoll(); stopTick(); }
 
   // Переключатель «Коллекция / Лавка». Выбор запоминается на этом телефоне.
   function modeSwitch() {
@@ -267,13 +289,17 @@
     }
     root.appendChild(modeSwitch());
     if (K.pv) root.appendChild(pvBar());
-    if (K.mode === 'market') { marketView().forEach(function (n) { root.appendChild(n); }); return; }
+    if (K.mode === 'market') { marketView().forEach(function (n) { root.appendChild(n); }); syncTick(); return; }
     seenSet();
+    var sale = saleView();
+    K.salePhase = salePhase(sale);
+    if (K.salePhase === 2) root.appendChild(saleStrip(sale));
     root.appendChild(heroCard());
     root.appendChild(albumSect());
     root.appendChild(showcaseSect());
     var pl = pvLink();
     if (pl) root.appendChild(pl);
+    syncTick();
   }
 
   // Блок открытия: серия, рубашка с подсветкой, «1 случайная карточка», кнопка с ценой, сколько осталось, шансы.
@@ -282,7 +308,9 @@
     var price = d.price;
     if (!price && d.deck_total) {
       var g = giftView()[0];
-      return g ? giftCard(g, d) : soonCard(d);
+      if (g) return giftCard(g, d);
+      if (K.salePhase === 1) return buyCard(saleView());   // первая неделя — покупка на месте колоды
+      return soonCard(d);
     }
     var short = price ? Math.max(0, cents(price) - cents(bal())) / 100 : 0;
     var btn = el('button', { type: 'button', class: 'btn primary ko-open' });
@@ -348,6 +376,111 @@
       el('p', { class: 'ko-meta', text: 'Карточки и паки «' + name + '» — в Лавке' })
     ]);
   }
+  /* ---------- покупка паков: 2 недели после конца серии ---------- */
+  function saleView() { return K.pv ? K.pv.sale : K.sale; }
+  function nowMs() { return Date.now() + (K.pv ? 0 : K.clockOff); }
+  function saleWeek(sale) { return nowMs() < Date.parse(sale.moves_at) ? 1 : 2; }
+  // 0 — продажи нет, 1 — первая неделя, 2 — вторая
+  function salePhase(sale) {
+    if (!sale) return 0;
+    var now = nowMs();
+    if (now >= Date.parse(sale.ends_at)) return 0;
+    return now < Date.parse(sale.moves_at) ? 1 : 2;
+  }
+  // «13 д 22:15:08», меньше суток — «22:15:08»
+  function leftText(ms) {
+    var t = Math.max(0, Math.floor(ms / 1000));
+    var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+    var hms = [h, m, sec].map(function (x) { return (x < 10 ? '0' : '') + x; }).join(':');
+    return d ? d + ' д ' + hms : hms;
+  }
+  function timer(sale) { return el('span', { class: 'ko-left', 'data-ends': sale.ends_at, text: leftText(Date.parse(sale.ends_at) - nowMs()) }); }
+  // Таймер: раз в секунду обновляем все «Осталось …»; неделя сменилась или продажа кончилась — перерисовываем
+  var tickT = null;
+  function syncTick() {
+    var want = !!saleView() && root && root.isConnected;
+    if (want && !tickT) tickT = setInterval(tick, 1000);
+    if (!want) stopTick();
+  }
+  function stopTick() { if (tickT) { clearInterval(tickT); tickT = null; } }
+  function tick() {
+    if (!root || !root.isConnected) { stopTick(); return; }
+    var sale = saleView();
+    if (!sale) { stopTick(); return; }
+    var ph = salePhase(sale);
+    if (K.mode === 'coll' && ph !== K.salePhase && !K.busy && !ov) {
+      if (ph === 0 && !K.pv) reload(); else draw();
+      return;
+    }
+    var now = nowMs();
+    root.querySelectorAll('[data-ends]').forEach(function (n) { n.textContent = leftText(Date.parse(n.getAttribute('data-ends')) - now); });
+  }
+  function canBuy(sale) { return K.pv || cents(bal()) >= sale.price * 100; }   // в проверке монеты не тратятся
+  // Первая неделя: на месте колоды — пак, «Купить за 600», «Осталось 13 д 22:15:08», «Что может выпасть»
+  function buyCard(sale) {
+    var btn = el('button', { type: 'button', class: 'btn primary ko-open' });
+    setText(btn, 'Купить за ' + sale.price + ' 🪙');   // не хватает монет — та же цена, кнопка неактивна
+    btn.disabled = K.busy || !canBuy(sale);
+    var msg = el('p', { class: 'msg', role: 'status', id: 'coll-msg' });
+    if (K.msg) setText(msg, K.msg);
+    btn.addEventListener('click', function () { buyPack(sale, btn, msg); });
+    return el('section', { class: 'card ko ko-buy' }, [
+      el('h2', { class: 'ko-title', text: 'Пак «' + seriesName() + '»' }),
+      el('div', { class: 'ko-fan n1', 'aria-hidden': 'true' }, [window.Cards.pack('md')]),
+      btn,
+      el('p', { class: 'ko-meta ko-timer' }, ['Осталось ', timer(sale)]),
+      el('button', { type: 'button', class: 'link ko-odds', text: 'Что может выпасть', onclick: openPackOdds }),
+      msg
+    ]);
+  }
+  // Вторая неделя: полоса над блоком коллекции — маленький пак, «ещё 6 д 03:12:44», «Купить · 600»
+  function saleStrip(sale) {
+    var btn = el('button', { type: 'button', class: 'btn primary kps-buy' });
+    setText(btn, 'Купить · ' + sale.price + ' 🪙');
+    btn.disabled = K.busy || !canBuy(sale);
+    var msg = el('p', { class: 'msg', role: 'status' });
+    btn.addEventListener('click', function () { buyPack(sale, btn, msg); });
+    return el('section', { class: 'card kps' }, [
+      el('div', { class: 'kps-row' }, [
+        el('button', { type: 'button', class: 'kps-pic', 'aria-label': 'Что может выпасть', onclick: openPackOdds }, [window.Cards.pack('xs')]),
+        el('span', { class: 'kps-t' }, [el('b', { text: 'Пак «' + seriesName() + '»' }), el('span', {}, ['ещё ', timer(sale)])]),
+        btn
+      ]),
+      msg
+    ]);
+  }
+  async function buyPack(sale, btn, msg) {
+    if (K.busy) return;
+    var had = myPacks().length;
+    K.busy = true; btn.disabled = true; K.msg = '';
+    setText(msg, '');
+    try {
+      if (K.pv) pvBuy();
+      else {
+        var r = one(await rpc('cards_pack_buy', { p_series: sale.series_id, p_price: sale.price }));
+        if (r) A.setBalance(Number(r.balance));
+      }
+      K.busy = false;
+      if (K.filter === 'miss') { K.filter = 'all'; store('coll-filter', 'all'); }
+      await reload();
+      if (!had) showPackTile();   // первый пак — показываем, где он лежит
+      A.toast(K.pv ? 'Пак куплен (проверка — монеты не тратятся)' : 'Пак куплен · −' + sale.price + ' 🪙');
+    } catch (e) {
+      K.busy = false;
+      var t = errText(e);
+      try { await reload(); } catch (e2) { /* ничего */ }
+      var m = root && (root.querySelector('.kps .msg') || document.getElementById('coll-msg'));
+      if (m) setText(m, t); else A.toast(t);
+    }
+  }
+  // «Что может выпасть» для покупки: шансы как в полной колоде
+  function openPackOdds() {
+    var sheet = bottomSheet('Что может выпасть');
+    sheet.appendChild(el('h2', { class: 'kb-title', text: 'Что может выпасть' }));
+    var odds = packOdds(); odds.classList.add('kx-compact');
+    sheet.appendChild(odds);
+  }
+
   // После «Забрать»: страница плавно едет к плитке пака в альбоме, плитка подсвечивается — вот где теперь паки
   function showPackTile() {
     var t = root && root.querySelector('.ka-tile.r-pack');

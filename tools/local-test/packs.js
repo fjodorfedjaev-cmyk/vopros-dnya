@@ -74,8 +74,7 @@ async function toColl(p) {
     await p.locator('.ka-tile').count() === 21 && await p.locator('.ka-tile').last().evaluate(n => n.classList.contains('r-pack'))
     && (await pt.locator('.ka-rar').textContent()).includes('Пак') && (await pt.locator('.ka-new').textContent()) === 'Новые'
     && / \/ 20$/.test((await p.locator('.ka-count').textContent()).trim()) && !(await p.locator('.kp').count()));
-  ok('на месте сундука — «Скоро новая коллекция» без строки «…разошлись»', (await p.locator('.ko-soon .ko-title').textContent()).includes('Скоро новая коллекция')
-    && !(await p.locator('.ko-soon').textContent()).includes('разошлись') && !(await p.locator('.ko-gift').count()) && !(await p.locator('.ko-open').count()));
+  ok('на месте колоды — покупка пака (первая неделя продажи), подарка больше нет', await p.locator('.ko-buy').count() === 1 && !(await p.locator('.ko-gift').count()));
   // окно пака: шансы как в полной колоде
   await pt.click();
   await p.waitForSelector('.kb-sheet .kpk');
@@ -142,7 +141,7 @@ async function toColl(p) {
   const f = await B.phone(browser, u3, errors, { tag: 'друг' });
   await toColl(f);
   await shot(f, 'pk_friend_soon');
-  ok('друг без покупок: сразу «Скоро новая коллекция», подарка нет', await f.locator('.ko-soon').count() === 1 && !(await f.locator('.ko-gift').count()));
+  ok('друг без покупок: подарка нет, сразу покупка пака', await f.locator('.ko-buy').count() === 1 && !(await f.locator('.ko-gift').count()));
   await f.locator('.coll-switch button', { hasText: 'Лавка' }).click();
   await f.waitForSelector('.mk-tl', { timeout: 8000 });
   await B.sleep(400);
