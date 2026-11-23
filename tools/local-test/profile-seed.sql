@@ -14,7 +14,7 @@ begin
   insert into public.sector_duels (p1, p2, stake, status, result, finished_at) values
     (a, f, 10, 'finished', 'p1', now()), (f, a, 10, 'finished', 'p2', now()), (f, a, 10, 'finished', 'p1', now()), (a, f, 10, 'finished', 'draw', now());
   -- три карточки другу и на витрину
-  for cid in select id from public.cards order by sort desc limit 3 loop
+  for cid in select id from public.cards where rarity <> 'pack' order by sort desc limit 3 loop
     select id into k from public.card_copies where card_id = cid order by serial limit 1;
     update public.card_copies set state = 'owned', owner_id = f, obtained_at = now() where id = k;
     insert into public.card_showcase (user_id, slot, copy_id) values (f, (select count(*) + 1 from public.card_showcase where user_id = f), k);

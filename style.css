@@ -1146,6 +1146,21 @@ textarea.ta-auto { resize: none; overflow: hidden; }
 .r-epic      { --kc-line: #9B7BFF; --kc-band: #9B7BFF; --kc-hi: #33285A; --kc-lo: #1C1729; --kc-glow: rgba(155, 123, 255, 0.26); --kc-pill: rgba(155, 123, 255, 0.24); --kc-text: #C3B2FF; --kc-sub: #ADA3C8; --kc-band-ink: #17112B; --kc-dot: #9B7BFF; }
 .r-legendary { --kc-line: #F5B04A; --kc-band: linear-gradient(90deg, #FFE08A, #F5A33F 50%, #F2782C); --kc-hi: #4A3216; --kc-lo: #23190F; --kc-glow: rgba(242, 150, 60, 0.34); --kc-pill: rgba(255, 199, 107, 0.2); --kc-text: #FFD58A; --kc-sub: #D9B98F; --kc-band-ink: #2A1608; --kc-dot: linear-gradient(140deg, #FFE08A, #F2782C); }
 
+/* пак (23.11): не редкость, а упаковка — перелив из всех пяти цветов редкостей */
+.r-pack      { --kc-line: #CFC6E0; --kc-grad: linear-gradient(135deg, #A9A39D, #3FB97F 27%, #4C95F5 50%, #9B7BFF 73%, #F5B04A); --kc-band: linear-gradient(90deg, #A9A39D, #3FB97F 27%, #4C95F5 50%, #9B7BFF 73%, #F5B04A); --kc-hi: #2B2A31; --kc-lo: #18171B; --kc-glow: rgba(255, 255, 255, 0.12); --kc-pill: rgba(255, 255, 255, 0.12); --kc-text: #F2ECE6; --kc-sub: #B8B0A8; --kc-band-ink: #121212; --kc-dot: linear-gradient(140deg, #3FB97F, #4C95F5 40%, #9B7BFF 70%, #F5B04A); }
+/* рамка плиток пака — тоже переливом (фон рамки — градиент, внутри — обычный тёмный фон) */
+.kt-pic.r-pack { border-color: transparent; background: radial-gradient(circle at 50% 45%, var(--kc-hi), var(--kc-lo) 78%) padding-box, var(--kc-grad) border-box; }
+.mk-tl.r-pack { border-color: transparent; background: var(--surface) padding-box, var(--kc-grad) border-box; }
+.kt-pic.r-pack .kc-art, .mk-tl.r-pack .mk-tl-art .kc-art { width: 46%; }
+.mk-pic.r-pack .kc-art { width: 50%; }
+/* сам пак: упаковка с бликом */
+.kpk { position: relative; display: block; flex: none; width: 150px; aspect-ratio: 142 / 216; overflow: hidden; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.5)); }
+.kpk .kc-art { display: block; width: 100%; height: 100%; }
+.kpk-shine { position: absolute; top: 5%; left: 0; width: 38%; height: 90%; background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0)); pointer-events: none; animation: kcShine 5.2s linear infinite; }
+.kpk-md { width: 76px; }
+.kpk-sm { width: 54px; }
+.kpk-md .kpk-shine, .kpk-sm .kpk-shine { animation-duration: 6s; }
+
 /* карточка «во всю карту» */
 .kc { position: relative; width: 240px; height: 336px; border-radius: 18px; box-sizing: border-box; border: 1.5px solid var(--kc-line); background: radial-gradient(circle at 50% 40%, var(--kc-hi) 0%, var(--kc-lo) 62%); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 26px var(--kc-glow); color: #F2ECE6; text-align: center; }
 .kc-top { display: flex; justify-content: space-between; align-items: center; padding: 14px 14px 0; }
@@ -1583,10 +1598,22 @@ body.kc-lock { overflow: hidden; }
 .kr-btns .btn { width: 100%; }
 .kr-spark { position: absolute; z-index: 1; width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle, #FFF6DA 0%, rgba(255, 210, 120, 0.7) 35%, rgba(255, 210, 120, 0) 70%); pointer-events: none; opacity: 0; animation: krSpark 1.8s ease-out forwards; }
 @keyframes krSpark { 0% { opacity: 0; transform: scale(0.2); } 25% { opacity: 1; transform: scale(1.3); } 100% { opacity: 0; transform: scale(0.4) translateY(-30px); } }
+/* открытие пака: пак лежит поверх рубашки; первое нажатие — верх отрывается и улетает, упаковка уезжает вниз */
+.kr-cover { position: absolute; z-index: 2; left: 50%; top: 50%; width: 250px; height: 380px; margin: -190px 0 0 -125px; pointer-events: none; }
+.kr-cover-top, .kr-cover-body { position: absolute; inset: 0; display: flex; justify-content: center; transition: transform 0.55s cubic-bezier(0.3, 0, 0.6, 1), opacity 0.5s; }
+.kr-cover .kpk { width: 250px; filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.6)); }
+.kr-cover-top { clip-path: inset(0 0 79.6% 0); }
+.kr-cover-body { clip-path: inset(20.4% 0 0 0); }
+.kr-cover.torn .kr-cover-top { transform: translate(60px, -170px) rotate(24deg); opacity: 0; transition-duration: 0.45s; }
+.kr-cover.torn .kr-cover-body { transform: translateY(150px) scale(0.92); opacity: 0; transition-delay: 0.12s; }
+.kr-wait .kr-cover { animation: krPulse 1.1s ease-in-out infinite; }
+.kr-pk .kr-stage { overflow: visible; }
 @media (max-height: 680px) { .kr-flip { width: 200px; height: 280px; } .kr .kc-mid .kc-art { width: 120px; height: 120px; } }
+@media (max-height: 680px) { .kr-cover { width: 210px; height: 320px; margin: -160px 0 0 -105px; } .kr-cover .kpk { width: 210px; } }
 @media (prefers-reduced-motion: reduce) {
   .kr-l, .kr-flip, .kr-result { transition: none; }
-  .kr-shake, .kr-wait .kc-back, .kc-shine, .kr-spark { animation: none; }
+  .kr-shake, .kr-wait .kc-back, .kc-shine, .kr-spark, .kpk-shine, .kr-wait .kr-cover, .ko-fan, .kp-in .kpk { animation: none; }
+  .kr-cover-top, .kr-cover-body, .ko-fan .kpk { transition: none; }
   .kc, .kc::before, .kc-fx::before, .kc-fx i { animation: none !important; }
   .kc.kc-rare::before { display: none; }
 }
@@ -2158,6 +2185,48 @@ button.dk-card { cursor: pointer; }
 .ko-odds { min-height: 0; margin-top: -4px; padding: 4px 6px; font: 500 13px/1.4 var(--font-body); color: var(--accent); }
 .ko .msg:empty { display: none; }
 @keyframes koFloat { 0%, 100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(-5px) rotate(1.5deg); } }
+/* колода опустела: подарок-паки веером и «Забрать»; без подарка — «Скоро новая коллекция» */
+.ko-fan { position: relative; display: flex; justify-content: center; height: 130px; margin: 6px 0 0; animation: koFloat 3.4s ease-in-out infinite; }
+.ko-fan .kpk { margin: 0 -12px; transform-origin: 50% 90%; transition: transform 0.5s cubic-bezier(0.5, 0, 0.75, 0), opacity 0.5s; }
+.ko-fan.n2 .kpk:nth-child(1) { transform: rotate(-9deg); }
+.ko-fan.n2 .kpk:nth-child(2) { transform: rotate(9deg); }
+.ko-fan.n3 .kpk:nth-child(1) { transform: rotate(-14deg) translateY(6px); }
+.ko-fan.n3 .kpk:nth-child(2) { z-index: 1; transform: translateY(-4px); }
+.ko-fan.n3 .kpk:nth-child(3) { transform: rotate(14deg) translateY(6px); }
+.ko-fan.go { animation: none; }
+.ko-fan.go .kpk { opacity: 0; transform: translateY(150px) scale(0.6) !important; }
+.ko-fan.go .kpk:nth-child(2) { transition-delay: 0.06s; }
+.ko-fan.go .kpk:nth-child(3) { transition-delay: 0.12s; }
+.ko-gift-n { margin: 2px 0 0; font: 600 18px/1.2 var(--font-display); color: var(--ink); }
+.ko-next { display: flex; align-items: center; justify-content: center; width: 96px; aspect-ratio: 5 / 7; margin: 4px 0 2px; box-sizing: border-box; border-radius: 12px; border: 1.5px dashed #4A4542; background: #171615; }
+.ko-next span { font: 600 44px/1 var(--font-display); color: #5A544F; }
+
+/* «Мои паки»: стопка, сколько, «Открыть пак» */
+.kp { display: flex; align-items: center; gap: 16px; }
+.kp-stack { position: relative; flex: none; width: 92px; height: 104px; padding: 0; border: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.kp-stack .kpk { position: absolute; left: 50%; top: 50%; margin: -41px 0 0 -27px; }
+.kp-stack.n2 .kpk:nth-child(1) { transform: translateX(-9px) rotate(-8deg); }
+.kp-stack.n2 .kpk:nth-child(2) { transform: translateX(9px) rotate(6deg); }
+.kp-stack.n3 .kpk:nth-child(1) { transform: translateX(-16px) rotate(-12deg); }
+.kp-stack.n3 .kpk:nth-child(2) { transform: translateY(-3px); }
+.kp-stack.n3 .kpk:nth-child(3) { transform: translateX(16px) rotate(12deg); }
+.kp-stack .ka-new { top: 0; right: -6px; z-index: 2; }
+.kp-info { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.kp-title { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 600 18px/1.2 var(--font-body); color: var(--ink); text-transform: none; letter-spacing: 0; }
+.kp-n { font: 500 15px var(--font-mono); color: var(--muted); }
+.kp-sub { margin: 0; font-size: 13px; color: var(--muted); }
+.kp-open { width: 100%; min-height: 44px; margin-top: 2px; }
+.kp-more { min-height: 0; padding: 2px; font: 500 13px/1.4 var(--font-body); color: var(--accent); }
+.kp-in .kpk { animation: kpIn 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.kp-in .kpk:nth-child(2) { animation-delay: 0.08s; }
+.kp-in .kpk:nth-child(3) { animation-delay: 0.16s; }
+@keyframes kpIn { from { opacity: 0; translate: 0 -40px; scale: 0.7; } to { opacity: 1; translate: 0 0; scale: 1; } }
+.kb-sheet > .kpk { width: 92px; margin-top: 2px; }
+.kx-list.kx-compact { gap: 4px; }
+.kx-compact .kx-row { padding: 6px 10px; gap: 8px; }
+.kx-compact .kx-name { font-size: 13px; }
+.kx-compact .kx-cards { font-size: 11.5px; }
+.kx-compact .kx-pct { font-size: 14px; }
 
 /* альбом: 3 колонки, редкость и название внутри плитки */
 .ka { gap: 12px; }

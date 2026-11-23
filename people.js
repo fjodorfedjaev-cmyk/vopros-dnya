@@ -115,7 +115,7 @@
     sheet.replaceChildren(
       el('button', { type: 'button', class: 'pf-close kc-close', 'aria-label': 'Закрыть', text: '×', onclick: close }),
       el('div', { class: 'pf-zoom' }, [window.Cards.face(c, c.serial, 'lg')]),
-      el('p', { class: 'kb-info', text: R.name + ' · ' + (c.copies === 1 ? '1/1' : '№' + c.serial + ' из ' + c.copies) }),
+      el('p', { class: 'kb-info', text: R.name + ' · ' + (c.serial > c.copies ? '№' + c.serial + '/' + c.copies + ' · из пака' : c.copies === 1 ? '1/1' : '№' + c.serial + ' из ' + c.copies) }),
       el('div', { class: 'kc-actions' }, [el('button', { type: 'button', class: 'btn', text: 'Назад', onclick: function () { draw(sheet, uid, info, d, false); } })])
     );
   }

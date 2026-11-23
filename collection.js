@@ -7,13 +7,16 @@
    Заявка на покупку: «куплю любой номер не дороже N», монеты откладываются; выставили не дороже — продано сразу.
    Продавец получает цену минус 10% (не меньше 0,01) — это сгорает.
    Все деньги считает база (market_sell / market_buy / market_bid …), сайт только показывает расчёт заранее.
+   Паки (23.11): колода серии опустела — база дарит паки тем, кто открывал карточки (1 карточка — 1 пак, не больше 3).
+   Подарок забирают в блоке открытия («Забрать»), паки лежат в «Мои паки»; открыть пак — cards_pack_open (что выпадет,
+   решает база в момент открытия), продать — в Лавке, как карточку (пак — «карточка» серии с редкостью 'pack').
    Связь с сайтом — через window.AppAPI (sb, el, toast, баланс), рисунки — window.Cards. */
 (function () {
   'use strict';
   var A = null;                 // AppAPI, появляется после запуска сайта
   var root = null;              // корневой элемент вкладки (живёт между перерисовками)
   var SERIES = 1;               // серия «Начало»
-  var K = { catalog: null, my: null, deck: null, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
+  var K = { catalog: null, my: null, deck: null, gift: null, justClaimed: false, lots: null, lotsErr: null, bids: null, hist: null, histErr: null, err: null, busy: false, msg: '',
             mode: savedMode(), filter: savedFilter(), seen: null, loadedAt: 0,
             mkTab: saved('mk-tab', ['market', 'sell', 'deals'], 'market'),
             mkSortRar: saved('mk-sort-rar', ['desc', 'asc'], ''), mkSortPrice: saved('mk-sort-price', ['desc', 'asc'], ''), mkPop: null,
@@ -55,6 +58,8 @@
     if (/market_bid_gone/.test(m)) return 'Этой заявки уже нет: её исполнили или отменили.';
     if (/market_bids_limit/.test(m)) return 'Не больше 20 заявок сразу. Отмени какую-нибудь в «Моих сделках».';
     if (/market_no_card/.test(m)) return 'Такой карточки нет.';
+    if (/cards_pack_shelf/.test(m)) return 'Пак нельзя поставить на витрину.';
+    if (/cards_not_pack/.test(m)) return 'Это не пак.';
     if (/not_member/.test(m)) return 'Сначала войди по коду приглашения.';
     if (/does not exist|could not find|schema cache/i.test(m)) return 'Коллекция ещё не готова: база не обновлена.';
     return 'Не получилось. Проверь интернет и попробуй ещё раз.';
@@ -66,11 +71,21 @@
   function myLots() { return (K.lots || []).filter(function (l) { return l.mine; }); }
   // Есть ли у меня эта карточка: в коллекции или в моих лотах
   function haveCard(cardId) { return myCopies(cardId).length > 0 || myLots().some(function (l) { return l.card_id === cardId; }); }
+  // Пак — тоже строка каталога (редкость 'pack'), но в альбом и «Собрано X из 20» он не входит
+  function isPack(c) { return !!c && c.rarity === 'pack'; }
+  function albumCards() { return (K.catalog || []).filter(function (c) { return !isPack(c); }); }
+  function packCard() { return (K.catalog || []).filter(isPack)[0] || null; }
+  function myPacks() { var p = packCard(); return p ? myCopies(p.card_id) : []; }
+  function ownedIds() { var got = {}; (K.my || []).forEach(function (k) { if (!isPack(cardById(k.card_id))) got[k.card_id] = true; }); return got; }
+  // Серия закончилась (колода пуста) — паки уже есть. До этого пака в Лавке не видно.
+  function packsOn() { var p = packCard(); return !!(K.deck && K.deck.deck_total && !K.deck.deck_left) || (p && (allLots(p.card_id).length > 0 || bidsOf(p.card_id).length > 0)); }
+  function packWord(n) { return plural(n, 'пак', 'пака', 'паков'); }
   async function load() {
     var res = await Promise.all([
       rpc('cards_catalog', { p_series: SERIES }), rpc('cards_my'), rpc('cards_deck', { p_series: SERIES }),
       rpc('market_lots').catch(function (e) { K.lotsErr = e; return null; }), // лавка не загрузилась — коллекция всё равно работает
-      rpc('market_bids').catch(function () { return null; })
+      rpc('market_bids').catch(function () { return null; }),
+      rpc('cards_pack_gift').catch(function () { return null; })            // подарок-паки (пусто — нет)
     ]);
     K.catalog = res[0] || [];
     K.my = res[1] || [];
@@ -78,6 +93,7 @@
     K.loadedAt = Date.now();
     if (res[3]) { K.lots = res[3]; K.lotsErr = null; }
     K.bids = res[4] || [];
+    K.gift = res[5] || [];
     if (K.mode === 'market' && K.mkTab === 'deals' && K.hist) refreshHist();   // история — только когда её смотрят
   }
 
@@ -186,6 +202,9 @@
     if (K.mode === 'market') { marketView().forEach(function (n) { root.appendChild(n); }); return; }
     seenSet();
     root.appendChild(heroCard());
+    var packs = packsSect();
+    if (packs) root.appendChild(packs);
+    K.justClaimed = false;
     root.appendChild(albumSect());
     root.appendChild(showcaseSect());
   }
@@ -194,6 +213,10 @@
   function heroCard() {
     var d = K.deck || {};
     var price = d.price;
+    if (!price && d.deck_total) {
+      var g = (K.gift || [])[0];
+      return g ? giftCard(g, d) : soonCard(d);
+    }
     var short = price ? Math.max(0, cents(price) - cents(bal())) / 100 : 0;
     var btn = el('button', { type: 'button', class: 'btn primary ko-open' });
     if (!price) btn.textContent = 'Колода закончилась';
@@ -211,6 +234,118 @@
       price ? el('button', { type: 'button', class: 'link ko-odds', text: 'Что может выпасть', onclick: openOdds }) : null,
       msg
     ]);
+  }
+
+  // Колода опустела, а у меня подарок: паки (по одному за каждую открытую карточку, не больше 3) — «Забрать»
+  function giftCard(g, d) {
+    var n = g.packs;
+    var fan = el('div', { class: 'ko-fan n' + Math.min(3, n), 'aria-hidden': 'true' }, Array.apply(null, Array(Math.min(3, n))).map(function () { return window.Cards.pack('md'); }));
+    var btn = el('button', { type: 'button', class: 'btn primary ko-open', text: 'Забрать' });
+    btn.disabled = K.busy;
+    var msg = el('p', { class: 'msg', role: 'status', id: 'coll-msg' });
+    if (K.msg) setText(msg, K.msg);
+    btn.addEventListener('click', function () { claimGift(g, btn, fan, msg); });
+    return el('section', { class: 'card ko ko-gift' }, [
+      el('h2', { class: 'ko-title', text: 'Серия «' + g.series_name + '» закончилась' }),
+      el('p', { class: 'ko-sub', text: 'Все ' + (d.deck_total || 85) + ' карточек разошлись. Подарок за участие:' }),
+      fan,
+      el('p', { class: 'ko-gift-n', text: n + ' ' + packWord(n) }),
+      btn,
+      el('p', { class: 'ko-meta', text: '1 пак за каждую открытую карточку, но не больше 3' }),
+      msg
+    ]);
+  }
+  async function claimGift(g, btn, fan, msg) {
+    if (K.busy) return;
+    K.busy = true; btn.disabled = true; K.msg = '';
+    setText(msg, '');
+    try {
+      var n = Number(one(await rpc('cards_pack_claim', { p_series: g.series_id }))) || 0;
+      fan.classList.add('go');                       // паки «уезжают» вниз — в «Мои паки»
+      await new Promise(function (r) { setTimeout(r, reduce ? 0 : 520); });
+      K.busy = false; K.justClaimed = true;
+      await reload();
+      if (n) A.toast(n + ' ' + packWord(n) + ' — в коллекции');
+    } catch (e) {
+      K.busy = false; btn.disabled = false;
+      setText(msg, errText(e));
+    }
+  }
+  // Колода опустела, подарка нет (или уже забран): на месте старой коллекции — следующая. Пока её нет — «Скоро».
+  function soonCard(d) {
+    var name = d.series_name || 'Начало';
+    return el('section', { class: 'card ko ko-soon' }, [
+      el('h2', { class: 'ko-title', text: 'Скоро новая коллекция' }),
+      el('div', { class: 'ko-next', 'aria-hidden': 'true' }, [el('span', { text: '?' })]),
+      el('p', { class: 'ko-sub', text: 'Серия «' + name + '» закончилась: все ' + (d.deck_total || 85) + ' карточек разошлись.' }),
+      el('p', { class: 'ko-meta', text: 'Карточки и паки «' + name + '» — в Лавке' })
+    ]);
+  }
+
+  // «Мои паки»: стопка паков, сколько, «Открыть пак». Нажал на стопку — окно пака (что внутри, продать).
+  function packsSect() {
+    var mine = myPacks();
+    if (!mine.length) return null;
+    var s = seenSet();
+    var fresh = mine.some(function (k) { return !s[k.copy_id]; });
+    var stack = el('button', {
+      type: 'button', class: 'kp-stack n' + Math.min(3, mine.length),
+      'aria-label': 'Паки: ' + mine.length + (fresh ? ', новые' : '') + '. Что внутри', onclick: function () { openPackSheet(); }
+    }, mine.slice(0, 3).map(function () { return window.Cards.pack('sm'); }));
+    if (fresh) stack.appendChild(el('span', { class: 'ka-new', text: mine.length > 1 ? 'Новые' : 'Новый' }));
+    var open = el('button', { type: 'button', class: 'btn primary kp-open', text: 'Открыть пак', onclick: function () { openPack(); } });
+    open.disabled = K.busy;
+    return el('section', { class: 'card kp' + (K.justClaimed ? ' kp-in' : '') }, [
+      stack,
+      el('div', { class: 'kp-info' }, [
+        el('h2', { class: 'kp-title' }, ['Мои паки', el('span', { class: 'kp-n', text: '×' + mine.length })]),
+        el('p', { class: 'kp-sub', text: 'В каждом — 1 случайная карточка «' + seriesName() + '»' }),
+        open,
+        el('button', { type: 'button', class: 'link kp-more', text: 'Что внутри', onclick: function () { openPackSheet(); } })
+      ])
+    ]);
+  }
+  function markPacksSeen() {
+    var s = seenSet(), changed = false;
+    myPacks().forEach(function (k) { if (!s[k.copy_id]) { s[k.copy_id] = 1; changed = true; } });
+    if (changed) saveSeen();
+    return changed;
+  }
+  // Шансы пака — как в полной колоде: доля копий каждой редкости среди всех 85
+  function packOdds() {
+    var cards = albumCards();
+    var total = cards.reduce(function (t, c) { return t + c.copies; }, 0);
+    return el('div', { class: 'kx-list' }, window.Cards.ORDER.map(function (r) {
+      var of = cards.filter(function (c) { return c.rarity === r; });
+      var n = of.reduce(function (t, c) { return t + c.copies; }, 0);
+      return el('div', { class: 'kx-row' }, [
+        el('span', { class: 'kd-dot r-' + r, 'aria-hidden': 'true' }),
+        el('span', { class: 'kx-info' }, [el('span', { class: 'kx-name', text: R(r).name }), el('span', { class: 'kx-cards', text: of.map(function (c) { return c.name; }).join(', ') })]),
+        el('span', { class: 'kx-left', text: n + ' из ' + total }),
+        el('span', { class: 'kx-pct', text: pct(n, total) })
+      ]);
+    }));
+  }
+  // Окно пака: пак крупно, сколько у меня, что внутри и шансы, «Открыть пак», «Продать в Лавке»
+  function openPackSheet(note) {
+    var pc = packCard(), mine = myPacks();
+    if (!pc || !mine.length) { closeOverlay(); return; }
+    if (markPacksSeen()) draw();
+    var sheet = bottomSheet('Пак «' + seriesName() + '»');
+    var msg = el('p', { class: 'msg', role: 'status' });
+    if (note) setText(msg, note);
+    sheet.appendChild(window.Cards.pack('lg'));
+    sheet.appendChild(el('p', { class: 'kb-info' }, [el('span', { class: 'kd-dot r-pack', 'aria-hidden': 'true' }), 'Пак «' + seriesName() + '» · у тебя ' + mine.length]));
+    sheet.appendChild(el('p', { class: 'kb-note', text: 'Внутри — 1 случайная карточка серии, шансы — как в полной колоде из 85. '
+      + 'Карточка из пака — копия сверх тиража: у «Монеты» было №1–6, из пака будет №7/6.' }));
+    var odds = packOdds(); odds.classList.add('kx-compact');
+    sheet.appendChild(odds);
+    sheet.appendChild(el('div', { class: 'kc-actions' }, [
+      el('button', { type: 'button', class: 'btn primary', text: 'Открыть пак', onclick: function () { openPack(); } }),
+      el('button', { type: 'button', class: 'btn', text: 'Продать в Лавке', onclick: function () { openSell(pc.card_id, mine[0], function () { openPackSheet(); }); } })
+    ]));
+    sheet.appendChild(el('p', { class: 'kc-note', text: 'Пак нельзя поставить на витрину или переплавить.' }));
+    sheet.appendChild(msg);
   }
 
   // «Что может выпасть»: карточка выпадает случайно из оставшихся в колоде копий,
@@ -261,7 +396,7 @@
   // Альбом: «Мой альбом 10 / 20», полоска, фильтры, сетка в 3 колонки (от обычных к легендарной).
   var FILTERS = [['all', 'Все'], ['got', 'Полученные'], ['miss', 'Не получены']];
   function albumSect() {
-    var cards = K.catalog.slice().sort(function (a, b) { return (R(a.rarity).rank - R(b.rarity).rank) || (a.sort - b.sort); });
+    var cards = albumCards().sort(function (a, b) { return (R(a.rarity).rank - R(b.rarity).rank) || (a.sort - b.sort); });
     var total = cards.length;
     var n = cards.filter(function (c) { return myCopies(c.card_id).length; }).length;
     var shown = cards.filter(function (c) { return K.filter === 'all' || (K.filter === 'got') === (myCopies(c.card_id).length > 0); });
@@ -341,6 +476,7 @@
   // Панель снизу: карточка крупно, редкость и сколько копий, выбор копии, витрина, продажа, переплавка.
   // note — сообщение сразу при открытии (например, «Витрина полная»).
   function openDetail(cardId, copyId, note) {
+    if (isPack(cardById(cardId))) { openPackSheet(note); return; }
     var c = cardById(cardId);
     var copies = myCopies(cardId);
     if (!c || !copies.length) { closeOverlay(); return; }
@@ -352,8 +488,9 @@
     sheet.appendChild(window.Cards.face(c, sel.serial, 'lg'));
     sheet.appendChild(el('p', { class: 'kb-info' }, [
       el('span', { class: 'kd-dot r-' + c.rarity, 'aria-hidden': 'true' }),
-      R(c.rarity).name + ' · ' + (c.copies === 1 ? 'единственная в игре' : 'у тебя ' + copies.length + ' из ' + c.copies + ' копий')
+      R(c.rarity).name + ' · ' + (c.copies === 1 ? 'единственная в тираже' : 'у тебя ' + copies.length + ' из ' + c.copies + ' копий')
     ]));
+    if (sel.serial > c.copies) sheet.appendChild(el('p', { class: 'kc-note', text: 'Эта копия — из пака, сверх тиража.' }));
 
     if (copies.length > 1) {
       sheet.appendChild(el('div', { class: 'kc-copies', role: 'group', 'aria-label': 'Твои копии' }, copies.map(function (k) {
@@ -671,7 +808,12 @@
     o.appendChild(sheet);
     return sheet;
   }
-  function copyNo(c, serial) { return c.copies === 1 ? '1/1' : '№' + serial + '/' + c.copies; }
+  function copyNo(c, serial) { return window.Cards.no(c, serial); }
+  // Тост о покупке: новая карточка, куплена карточка или куплен пак
+  function boughtText(c, serial, price, isNew) {
+    if (isPack(c)) return 'Куплен пак №' + serial + ' · −' + money(price) + ' 🪙';
+    return (isNew ? 'Новая карточка! «' : 'Куплено: «') + c.name + '» №' + serial + ' · −' + money(price) + ' 🪙';
+  }
   // кнопка денег — в два нажатия, как переплавка
   function twoTap(btn, label, armedLabel, act) {
     var armed = false, t = null;
@@ -709,7 +851,7 @@
       pic(c, 'mk-pic-lg'),
       el('div', { class: 'mk-chead-t' }, [
         el('h2', { class: 'kb-title', text: c.name }),
-        el('span', { class: 'mk-sub' }, [seriesName() + ' · ', el('span', { class: 'mk-rar-t r-' + c.rarity, text: R(c.rarity).name })]),
+        el('span', { class: 'mk-sub' }, isPack(c) ? [seriesName() + ' · 1 случайная карточка'] : [seriesName() + ' · ', el('span', { class: 'mk-rar-t r-' + c.rarity, text: R(c.rarity).name })]),
         have ? el('span', { class: 'mk-tag', text: 'У тебя: ' + have }) : null
       ])
     ]);
@@ -766,7 +908,9 @@
     go.addEventListener('click', function () { doList(c, sel, pc, go, msg, false); });
     label();
     sheet.appendChild(cardHead(c));
-    if (free.length > 1) {
+    if (isPack(c)) {
+      sheet.appendChild(el('p', { class: 'kb-info', text: 'Паков у тебя: ' + free.length }));
+    } else if (free.length > 1) {
       sheet.appendChild(el('div', { class: 'kc-copies', role: 'group', 'aria-label': 'Какую копию продать' }, free.map(function (k) {
         return el('button', {
           type: 'button', class: 'kc-chip', 'aria-pressed': String(k.copy_id === sel.copy_id), text: '№' + k.serial,
@@ -785,13 +929,13 @@
     if (bb) {
       var now = el('button', { type: 'button', class: 'btn' });
       twoTap(now, 'Продать сразу за ' + money(bb.price) + ' 🪙 · получишь ' + money(netC(cents(bb.price)) / 100),
-        'Точно? Продать №' + sel.serial + ' за ' + money(bb.price) + ' 🪙', function () { doList(c, sel, cents(bb.price), now, msg, true); });
+        (isPack(c) ? 'Точно? Продать пак за ' : 'Точно? Продать №' + sel.serial + ' за ') + money(bb.price) + ' 🪙', function () { doList(c, sel, cents(bb.price), now, msg, true); });
       acts.appendChild(now);
     }
     acts.appendChild(el('button', { type: 'button', class: 'btn kr-ghost mk-back', text: 'Назад', onclick: function () { if (back) back(); else openDetail(cardId, sel.copy_id); } }));
     sheet.appendChild(acts);
     sheet.appendChild(msg);
-    if (myCopies(cardId).length === 1) sheet.appendChild(el('p', { class: 'kc-note', text: 'Это твоя единственная «' + c.name + '».' }));
+    if (myCopies(cardId).length === 1) sheet.appendChild(el('p', { class: 'kc-note', text: isPack(c) ? 'Это твой последний пак.' : 'Это твоя единственная «' + c.name + '».' }));
     // на компьютере сразу ставим курсор в поле; на телефоне — нет, чтобы клавиатура не закрыла карточку
     if (!noFocusOnPhone()) box.focus();
   }
@@ -853,7 +997,7 @@
   };
   // Коллекции (серии) карточек. Пока одна — «Начало»; следующие добавятся сюда сами из каталога.
   function seriesList() {
-    var n = (K.catalog || []).length;
+    var n = albumCards().length;
     return [{ id: SERIES, name: seriesName(), cards: n }];
   }
   function marketCards() {
@@ -863,6 +1007,7 @@
     var rank = function (c) { return R(c.rarity).rank; };
     var cards = K.catalog.filter(function (c) {
       if (K.mkSeries !== 'all' && SERIES !== K.mkSeries) return false;      // пока все карточки — из «Начала»
+      if (isPack(c) && !packsOn()) return false;                            // пак — в Лавке, только когда серия закончилась
       return true;
     });
     var info = {};
@@ -1073,7 +1218,7 @@
       if (r) A.setBalance(Number(r.balance));
       K.busy = false;
       await load(); draw(); closeOverlay();
-      A.toast((isNew ? 'Новая карточка! «' : 'Куплено: «') + c.name + '» №' + l.serial + ' · −' + money(l.price) + ' 🪙');
+      A.toast(boughtText(c, l.serial, l.price, isNew));
     } catch (e) {
       K.busy = false;
       var t = errText(e);
@@ -1153,7 +1298,7 @@
       if (r && r.balance != null) A.setBalance(Number(r.balance));
       K.busy = false;
       await load(); draw(); closeOverlay();
-      if (r && r.kind === 'bought') A.toast((isNew ? 'Новая карточка! «' : 'Куплено: «') + c.name + '» №' + r.serial + ' · −' + money(r.price) + ' 🪙');
+      if (r && r.kind === 'bought') A.toast(boughtText(c, r.serial, r.price, isNew));
       else A.toast((bid ? 'Заявка изменена: ' : 'Заявка: ') + '«' + c.name + '» до ' + money(pc / 100) + ' 🪙');
     } catch (e) {
       K.busy = false;
@@ -1581,25 +1726,45 @@
     await reload();
   }
 
-  /* ---------- открытие карточки ---------- */
+  /* ---------- открытие карточки и пака ---------- */
   // Сначала платим (база выбирает карточку), потом раскрываем по нажатиям:
   // рубашка → серый фон → (если редкость выше) зелёный → синий → фиолетовый → золотой → переворот.
+  // У пака перед этим ещё одно нажатие: упаковка рвётся по линии отрыва, под ней — рубашка.
   async function openCard() {
     if (K.busy || !K.deck || !K.deck.price) return;
     var price = K.deck.price;
     if (bal() < price) { K.msg = 'Не хватает монет.'; draw(); return; }
+    runReveal({ price: price });
+  }
+  // Открыть пак: copyId — какой (без него — первый по номеру). Что выпадет — решает база (cards_pack_open).
+  function openPack(copyId) {
+    if (K.busy) return;
+    var mine = myPacks();
+    var k = mine.filter(function (x) { return x.copy_id === copyId; })[0] || mine[0];
+    if (!k) return;
+    markPacksSeen();
+    runReveal({ pack: k.copy_id });
+  }
+  // src: { price } — карточка из колоды за монеты; { pack: id копии пака } — открыть пак
+  async function runReveal(src) {
     K.busy = true; K.msg = '';
     var had = {}; (K.my || []).forEach(function (k) { had[k.card_id] = true; });
     myLots().forEach(function (l) { had[l.card_id] = true; }); // карточка в лавке — тоже «уже была»
 
-    var o = overlay('kr', 'Открытие карточки');
+    var o = overlay('kr' + (src.pack ? ' kr-pk' : ''), src.pack ? 'Открытие пака' : 'Открытие карточки');
     var layers = [1, 2, 3, 4, 5].map(function (i) { return el('div', { class: 'kr-l kr-l' + i, 'aria-hidden': 'true' }); });
     layers.forEach(function (l) { o.appendChild(l); });
     var flip = el('div', { class: 'kr-flip' });
     var backFace = el('div', { class: 'kr-face kr-back' }, [window.Cards.back('lg')]);
     var frontFace = el('div', { class: 'kr-face kr-front' });
     flip.appendChild(backFace); flip.appendChild(frontFace);
-    var stage = el('button', { type: 'button', class: 'kr-stage kr-wait', 'aria-label': 'Открыть' }, [flip]);
+    var stage = el('button', { type: 'button', class: 'kr-stage kr-wait', 'aria-label': src.pack ? 'Открыть пак' : 'Открыть' }, [flip]);
+    // пак лежит поверх рубашки: две половинки одного рисунка — полоска над линией отрыва и сама упаковка
+    var cover = src.pack ? el('div', { class: 'kr-cover', 'aria-hidden': 'true' }, [
+      el('div', { class: 'kr-cover-top' }, [window.Cards.pack('lg')]),
+      el('div', { class: 'kr-cover-body' }, [window.Cards.pack('lg')])
+    ]) : null;
+    if (cover) stage.appendChild(cover);
     var result = el('div', { class: 'kr-result' });
     o.appendChild(stage); o.appendChild(result);
     stage.focus();
@@ -1616,6 +1781,13 @@
     }
     function step() {
       if (!res || done) return;
+      if (cover) {   // первое нажатие у пака — упаковка рвётся
+        var c0 = cover; cover = null;
+        c0.classList.add('torn');
+        stage.setAttribute('aria-label', 'Открыть');
+        setTimeout(function () { c0.remove(); }, reduce ? 0 : 650);
+        return;
+      }
       if (level < rank) { level++; setLevel(level); shake(); return; }
       reveal();
     }
@@ -1630,13 +1802,18 @@
       if (res.rarity === 'legendary' && !reduce) sparkle(o);
       setTimeout(function () { showResult(card); }, reduce ? 0 : 650);
     }
+    // номер под карточкой: «№2 из 4», единственная в тираже, из пака — «№7/6 · сверх тиража»
+    function serialText() {
+      if (res.serial > res.copies) return 'из пака · №' + res.serial + '/' + res.copies + ', сверх тиража';
+      return res.copies === 1 ? 'единственная в тираже' : '№' + res.serial + ' из ' + res.copies;
+    }
     // Результат: «Новая карточка» или «Повтор · теперь ×3», редкость, прогресс альбома,
-    // «В коллекцию», «На витрину», «Открыть ещё за N» (не хватает монет — неактивна).
+    // «В коллекцию», «На витрину», «Открыть ещё за N» (не хватает монет — неактивна) или «Открыть ещё пак».
     function showResult(card) {
       var isNew = !had[res.card_id];
       var cat = cardById(res.card_id);
-      var total = (K.catalog || []).length;
-      var gotIds = {}; (K.my || []).forEach(function (k) { gotIds[k.card_id] = true; });
+      var total = albumCards().length;
+      var gotIds = ownedIds();
       var before = Object.keys(gotIds).length;
       gotIds[res.card_id] = true;
       var after = Object.keys(gotIds).length;
@@ -1644,7 +1821,7 @@
       var badge = el('span', { class: 'kr-badge r-' + res.rarity, text: isNew ? 'Новая карточка' : dup >= 2 ? 'Повтор · теперь ×' + dup : 'Повтор' });
       o.insertBefore(badge, stage);
       var info = el('p', { class: 'kr-sub' }, [el('span', { class: 'kd-dot r-' + res.rarity, 'aria-hidden': 'true' }),
-        ' ' + R(res.rarity).name + ' · ' + (res.copies === 1 ? 'единственная в игре' : '№' + res.serial + ' из ' + res.copies)]);
+        ' ' + R(res.rarity).name + ' · ' + serialText()]);
       var extra = null;
       if (isNew) {
         var fill = el('span', { style: 'width:' + (total ? Math.round(before / total * 100) : 0) + '%' });
@@ -1656,14 +1833,20 @@
       }
       var toColl = el('button', { type: 'button', class: 'btn primary', text: 'В коллекцию', onclick: function () { finish(false); } });
       var toShelf = el('button', { type: 'button', class: 'btn kr-ghost', text: 'На витрину', onclick: function () { finish('shelf'); } });
-      var next = res.next_price;
       var again = el('button', { type: 'button', class: 'btn kr-again' });
-      var short = next ? Math.max(0, cents(next) - cents(bal())) / 100 : 0;
-      if (!next) again.textContent = 'Колода закончилась';
-      else setText(again, 'Открыть ещё за ' + next + ' 🪙');   // не хватает монет — та же цена, кнопка неактивна
-      again.disabled = !next || short > 0;
-      again.addEventListener('click', function () { finish(true); });
-      result.replaceChildren.apply(result, [info, extra, el('div', { class: 'kr-btns' }, [toColl, toShelf, again])].filter(Boolean));
+      if (src.pack) {
+        // ещё паки есть — «Открыть ещё пак · осталось N», нет — кнопки нет
+        if (res.packs_left > 0) again.textContent = 'Открыть ещё пак · осталось ' + res.packs_left;
+        else again = null;
+      } else {
+        var next = res.next_price;
+        var short = next ? Math.max(0, cents(next) - cents(bal())) / 100 : 0;
+        if (!next) again.textContent = 'Колода закончилась';
+        else setText(again, 'Открыть ещё за ' + next + ' 🪙');   // не хватает монет — та же цена, кнопка неактивна
+        again.disabled = !next || short > 0;
+      }
+      if (again) again.addEventListener('click', function () { finish(true); });
+      result.replaceChildren.apply(result, [info, extra, el('div', { class: 'kr-btns' }, [toColl, toShelf, again].filter(Boolean))].filter(Boolean));
       result.classList.add('on');
       toColl.focus();
     }
@@ -1672,7 +1855,7 @@
       closeOverlay();
       K.busy = false;
       await reload();
-      if (more === true) { openCard(); return; }
+      if (more === true) { if (src.pack) openPack(); else openCard(); return; }
       if (more === 'shelf') {
         var sel = (K.my || []).filter(function (k) { return k.copy_id === Number(res.copy_id); })[0];
         if (!sel) return;
@@ -1692,15 +1875,16 @@
     o._cleanup = onKey(function () { if (done) finish(false); });
 
     try {
-      res = one(await rpc('cards_open', { p_series: SERIES, p_price: price }));
+      res = one(src.pack ? await rpc('cards_pack_open', { p_copy: src.pack })
+                         : await rpc('cards_open', { p_series: SERIES, p_price: src.price }));
       if (!res) throw new Error('empty');
-      A.setBalance(Number(res.balance));
+      if (res.balance != null) A.setBalance(Number(res.balance));
       rank = R(res.rarity).rank;
       stage.classList.remove('kr-wait');
     } catch (e) {
       closeOverlay();
       K.busy = false;
-      K.msg = errText(e);
+      if (src.pack) A.toast(errText(e)); else K.msg = errText(e);
       await reload();
       return;
     }
@@ -1725,10 +1909,10 @@
     function paint() {
       if (!K.catalog || !K.my) return;
       var on = shelved();
-      var got = {}; K.my.forEach(function (k) { got[k.card_id] = true; });
+      var got = ownedIds();
       node.replaceChildren(
         el('div', { class: 'me-shelf-head' }, [el('span', { class: 'me-card-l', text: 'Моя витрина' }),
-          el('span', { class: 'me-shelf-n', text: 'Собрано ' + Object.keys(got).length + ' из ' + K.catalog.length })]),
+          el('span', { class: 'me-shelf-n', text: 'Собрано ' + Object.keys(got).length + ' из ' + albumCards().length })]),
         el('div', { class: 'shelves' }, [0, 1, 2].map(function (i) {
           var k = on[i], c = k && cardById(k.card_id);
           if (!c) return el('div', { class: 'shelf shelf-empty' }, [el('span', { text: 'пусто' })]);
@@ -1767,7 +1951,7 @@
       var shelf = (res[1] || []).filter(function (x) { return x.user_id === userId; });
       var stat = (res[2] || []).filter(function (x) { return x.user_id === userId; })[0];
       var got = stat ? stat.distinct_cards : 0;
-      sheet.replaceChild(el('p', { class: 'muted', text: 'Собрано ' + got + ' из ' + K.catalog.length }), sheet.lastChild);
+      sheet.replaceChild(el('p', { class: 'muted', text: 'Собрано ' + got + ' из ' + albumCards().length }), sheet.lastChild);
       if (!shelf.length) { sheet.appendChild(el('p', { class: 'kc-note', text: 'Витрина пока пустая.' })); return; }
       sheet.appendChild(el('div', { class: 'shelves' }, shelf.map(function (x) {
         var c = cardById(x.card_id);

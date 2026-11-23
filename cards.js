@@ -14,7 +14,9 @@
     uncommon:  { rank: 2, name: 'Необычная',   plural: 'Необычные',   color: '#3FB97F' },
     rare:      { rank: 3, name: 'Редкая',      plural: 'Редкие',      color: '#4C95F5' },
     epic:      { rank: 4, name: 'Эпическая',   plural: 'Эпические',   color: '#9B7BFF' },
-    legendary: { rank: 5, name: 'Легендарная', plural: 'Легендарная', color: '#F5B04A' }
+    legendary: { rank: 5, name: 'Легендарная', plural: 'Легендарная', color: '#F5B04A' },
+    // пак — не редкость карточки, а запечатанная упаковка: перелив из всех пяти цветов (внутри может быть что угодно)
+    pack:      { rank: 6, name: 'Пак',         plural: 'Паки',        color: '#F2ECE6' }
   };
   var ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 
@@ -147,6 +149,29 @@
       QMARK(12, 15.6, 10.5, '#2A1608') }
   };
 
+  // Пак: запечатанная упаковка — перелив из пяти цветов редкости, зубчатые края, линия отрыва сверху,
+  // в центре — значок серии (как на рубашке). Рамка рисунка — по размеру упаковки, поэтому пак заполняет место карточки.
+  function zig(y0, y1) {   // зубчатый край: от x=5.2 до 18.8, зубцы через 0,68
+    var d = '';
+    for (var i = 0; i <= 20; i++) d += 'L' + (5.2 + i * 0.68).toFixed(2) + ' ' + (i % 2 ? y1 : y0) + ' ';
+    return d;
+  }
+  var RIDGES = '';
+  for (var ri = 1; ri < 20; ri++) RIDGES += 'M' + (5.2 + ri * 0.68).toFixed(2) + ' 2.3V3.7M' + (5.2 + ri * 0.68).toFixed(2) + ' 20.3V21.7';
+  ART.pack = { vb: '4.9 1.2 14.2 21.6', body: '<defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B3ADA7"/><stop offset=".27" stop-color="#3FB97F"/><stop offset=".5" stop-color="#4C95F5"/><stop offset=".73" stop-color="#9B7BFF"/><stop offset="1" stop-color="#F5B04A"/></linearGradient>' +
+    '<linearGradient id="ps" x1=".2" y1=".1" x2=".8" y2=".95"><stop offset="0" stop-color="#FFE08A"/><stop offset=".5" stop-color="#F5A33F"/><stop offset="1" stop-color="#E0661F"/></linearGradient></defs>' +
+    '<path d="M5.2 3.9V2.1 ' + zig(1.6, 2.2) + 'V3.9z" fill="url(#pg)"/><path d="M5.2 3.9V2.1 ' + zig(1.6, 2.2) + 'V3.9z" fill="#000" fill-opacity=".28"/>' +
+    '<path d="M5.2 20.1V21.9 ' + zig(22.4, 21.8) + 'V20.1z" fill="url(#pg)"/><path d="M5.2 20.1V21.9 ' + zig(22.4, 21.8) + 'V20.1z" fill="#000" fill-opacity=".28"/>' +
+    '<path d="' + RIDGES + '" stroke="#000" stroke-opacity=".18" stroke-width=".22"/>' +
+    '<rect x="5.2" y="3.7" width="13.6" height="16.6" rx=".5" fill="url(#pg)"/>' +
+    '<path d="M5.2 10.2L18.8 5.3V8.1L5.2 13z" fill="#fff" fill-opacity=".16"/><path d="M5.85 4.4V19.6" stroke="#fff" stroke-opacity=".28" stroke-width=".3"/>' +
+    '<path d="M6.1 5.6H17.9" stroke="#1A1716" stroke-opacity=".5" stroke-width=".3" stroke-dasharray=".7 .5"/>' +
+    '<path d="M5.2 5.1l.7.5-.7.5zM18.8 5.1l-.7.5.7.5z" fill="#1A1716" fill-opacity=".55"/>' +
+    '<circle cx="12" cy="12.1" r="4.3" fill="#161412" fill-opacity=".9"/><circle cx="12" cy="12.1" r="4.3" fill="none" stroke="#fff" stroke-opacity=".3" stroke-width=".35"/>' +
+    '<g transform="translate(12 12.1) scale(.3) translate(-12 -12)"><path d="' + SUN_RAYS + '" stroke="#F5A33F" stroke-width="1.6" stroke-linecap="round"/>' +
+    '<circle cx="12" cy="12" r="7.3" fill="url(#ps)"/>' + QMARK(12, 15.6, 10.5, '#2A1608') + '</g>' +
+    '<text x="12" y="18.7" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="1.25" letter-spacing=".3" fill="#1A1716" fill-opacity=".72">НАЧАЛО</text>' };
+
   // Рубашка: тёмная карта с маленьким «Солнцем дня» и названием серии
   var BACK = { vb: '-1 -1 26 26', body: '<defs><linearGradient id="s" x1=".2" y1=".1" x2=".8" y2=".95"><stop offset="0" stop-color="#FFB772"/><stop offset=".6" stop-color="#F2782C"/><stop offset="1" stop-color="#C4500B"/></linearGradient></defs>' +
     '<path d="' + SUN_RAYS + '" stroke="#F2782C" stroke-opacity=".7" stroke-width="1.1" stroke-linecap="round"/>' +
@@ -194,6 +219,9 @@
   }
   window.addEventListener('resize', refitNames);
 
+  // Номер копии: «№2/4»; у единственной в тираже — «1/1»; сверх тиража (из пака) — «№7/6», «№2/1»
+  function no(card, serial) { return card.copies === 1 && serial === 1 ? '1/1' : '№' + serial + '/' + card.copies; }
+
   // Карточка «во всю карту». card: { code, name, rarity, copies }, serial — номер копии (может не быть).
   // size: 'lg' (крупно) или 'md' (витрина).
   function face(card, serial, size) {
@@ -201,7 +229,7 @@
     var k = node('div', 'kc r-' + card.rarity + ' kc-' + card.rarity + ' kc-' + (size || 'lg'));
     var top = node('div', 'kc-top');
     top.appendChild(node('span', 'kc-pill', r.name));
-    if (serial) top.appendChild(node('span', 'kc-no', card.copies === 1 ? '1/1' : '№' + serial + '/' + card.copies));
+    if (serial) top.appendChild(node('span', 'kc-no', no(card, serial)));
     k.appendChild(top);
     var a = node('div', 'kc-mid');
     a.appendChild(art(card.code, card.name));
@@ -230,5 +258,13 @@
     return k;
   }
 
-  window.Cards = { RARITY: RARITY, ORDER: ORDER, svg: svg, art: art, face: face, back: back, has: function (code) { return !!ART[code]; } };
+  // Пак крупно (окно пака, открытие) или поменьше ('md'): упаковка с бликом
+  function pack(size) {
+    var k = node('div', 'kpk kpk-' + (size || 'lg'));
+    k.appendChild(art('pack', 'Пак «Начало»'));
+    var sh = node('span', 'kpk-shine'); sh.setAttribute('aria-hidden', 'true'); k.appendChild(sh);
+    return k;
+  }
+
+  window.Cards = { RARITY: RARITY, ORDER: ORDER, svg: svg, art: art, face: face, back: back, pack: pack, no: no, has: function (code) { return !!ART[code]; } };
 })();

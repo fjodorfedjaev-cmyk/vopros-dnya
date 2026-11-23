@@ -26,7 +26,7 @@ begin
 
   -- 2. карточки и витрина
   res := res || case when (r ->> 'cards')::integer = coalesce((select m.distinct_cards from public.cards_members() m where m.user_id = u2), 0)
-      and (r ->> 'cards_total')::integer = (select count(*) from public.cards)
+      and (r ->> 'cards_total')::integer = (select count(*) from public.cards where rarity <> 'pack')
       and jsonb_array_length(r -> 'shelf') = (select count(*) from public.card_showcase where user_id = u2)
     then E'ok   2 собрано X из Y и витрина — как в базе\n' else E'FAIL 2\n' end;
 
