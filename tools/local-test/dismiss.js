@@ -3,7 +3,9 @@
 const B = require('./browser');
 const { execFileSync } = require('child_process');
 const q = (sql) => execFileSync('psql', ['-h', '/tmp', '-p', '5433', '-U', 'postgres', '-d', process.env.DB || 'e2e', '-qAt', '-c', sql]).toString().trim();
-const [me, friend] = q('select id from public.profiles order by created_at limit 2').split('\n');
+// я — админ (у него в «Новой комнате» есть «Тестовая, с ботами»), друг — первый из остальных
+const me = q('select user_id from public.admins limit 1');
+const friend = q(`select id from public.profiles where id <> '${me}' order by created_at limit 1`);
 const day = '2026-11-18', t = '2026-11-18T08:00:00Z';
 const tables = {
   answers: [
@@ -71,6 +73,9 @@ const outside = (p) => p.mouse.click(195, 18);   // шапка страницы 
   await p.getByRole('button', { name: 'Новая комната' }).click(); await B.sleep(200);
   await p.locator('.dk-test-chip').click();
   ok('нажатия внутри формы её не закрывают', (await p.locator('.duel-form').count()) > 0);
+  await p.locator('.dk-rules summary').click(); await B.sleep(300);
+  ok('«Правила» открылись, а «Новая комната» осталась (кнопки и разделы её не закрывают)', (await p.locator('.duel-form').count()) > 0 && (await p.locator('.dk-rules[open]').count()) > 0);
+  await p.locator('.dk-rules summary').click(); await B.sleep(200);
   await p.getByRole('button', { name: 'Открыть тестовую комнату' }).click();
   await p.waitForSelector('.duel-lobby');
   await p.getByRole('button', { name: 'Добавить бота' }).click(); await B.sleep(300);

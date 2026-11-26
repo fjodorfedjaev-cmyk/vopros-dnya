@@ -29,7 +29,7 @@ const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t
   const rules = await A.locator('.dk-rules-list').textContent();
   ok(/На ход 1 минута/.test(rules) && /один человек/.test(rules) && !/не ограничено/.test(rules), 'в правилах: на ход 1 минута, один за столом — закрывается через минуту');
   await A.getByRole('button', { name: 'Новый стол' }).click();
-  await A.locator('.pk-level', { hasText: '0,01 / 0,02' }).click();
+  await A.locator('.pk-level', { hasText: '0,05 / 0,10' }).click();
   await A.getByRole('button', { name: /^Открыть стол/ }).click();
   await A.waitForSelector('.pk-table');
   const t = q(`select id from public.poker_tables where creator = '${ids[0]}' order by id desc limit 1`);

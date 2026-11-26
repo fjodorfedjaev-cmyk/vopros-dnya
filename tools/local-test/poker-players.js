@@ -1,5 +1,5 @@
 // Сценарий «Покер»: 2–6 живых игроков за одним столом через весь сайт (каждый — свой «телефон»).
-//   node poker-players.js 4 6   — четверо, 6 раздач. Первый открывает стол 0,01/0,02, остальные садятся из списка.
+//   node poker-players.js 4 6   — четверо, 6 раздач. Первый открывает стол 0,05/0,10, остальные садятся из списка.
 // В конце все встают: монеты всех вместе должны сойтись до копейки (комиссии нет).
 const { execFileSync } = require('child_process');
 const B = require('./browser');
@@ -16,7 +16,7 @@ const total = () => Number(q(`select sum(public.coins_of(id)) from public.profil
   for (let i = 0; i < N; i++) { P.push(await B.phone(browser, ids[i], errors, { tag: 'игрок' + (i + 1), mode: 'poker' })); }
   for (const p of P) await B.openPoker(p);
   await P[0].getByRole('button', { name: 'Новый стол' }).click();
-  await P[0].locator('.pk-level', { hasText: '0,01 / 0,02' }).click();
+  await P[0].locator('.pk-level', { hasText: '0,05 / 0,10' }).click();
   await P[0].getByRole('button', { name: /^Открыть стол/ }).click();
   await P[0].waitForSelector('.pk-table');
   for (let i = 1; i < N; i++) {

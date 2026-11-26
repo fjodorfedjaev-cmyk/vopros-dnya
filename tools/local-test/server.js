@@ -16,7 +16,8 @@ function psql(user, sql) {
 }
 function lit(v) {
   if (v === null || v === undefined) return 'null';
-  if (Array.isArray(v)) return 'ARRAY[' + v.map(Number).join(',') + ']::integer[]';
+  if (Array.isArray(v) && v.every(x => typeof x === 'number')) return 'ARRAY[' + v.map(Number).join(',') + ']::integer[]';
+  if (Array.isArray(v) || typeof v === 'object') return "'" + JSON.stringify(v).replace(/'/g, "''") + "'::jsonb";   // варианты «Выбора»
   if (typeof v === 'number') return String(v);
   if (typeof v === 'boolean') return v ? 'true' : 'false';
   return "'" + String(v).replace(/'/g, "''") + "'";
@@ -24,7 +25,9 @@ function lit(v) {
 // функции, которые возвращают таблицу (PostgREST отдаёт их массивом)
 const SETS = { my_points: true, member_coins: true, member_stats: true,
   cards_deck: true, cards_catalog: true, cards_my: true, cards_open: true, cards_melt: true, cards_showcases: true, cards_members: true, cards_pack_gift: true, cards_pack_open: true, cards_pack_sale: true, cards_pack_buy: true,
-  market_buy: true, market_lots: true, market_sell: true, market_bid: true, market_bid_reprice: true, market_bids: true, market_history: true };
+  market_buy: true, market_lots: true, market_sell: true, market_bid: true, market_bid_reprice: true, market_bids: true, market_history: true,
+  suggest_question: true, my_suggestions: true, admin_suggestions: true, sug_authors: true,
+  ensure_today_question: true, ensure_today_fill: true, ensure_today_poll: true, poll_extras_today: true };
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   if (req.method === 'POST' && u.pathname.startsWith('/mock/')) {

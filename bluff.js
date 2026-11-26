@@ -71,8 +71,11 @@
   }
   // Раскрывающийся блок («Правила», «История игр»): помнит, открыт ли он
   function fold(key, title, body, cls) {
-    var d = el('details', { class: 'day dk-fold ' + (cls || '') }, [el('summary', { text: title })].concat(body));
+    var sum = el('summary', { text: title });
+    var d = el('details', { class: 'day dk-fold ' + (cls || '') }, [sum].concat(body));
     d.open = !!K[key];
+    // запоминаем сразу по нажатию: если экран перерисуется раньше события toggle, блок всё равно останется как нажали
+    sum.addEventListener('click', function () { K[key] = !d.open; });
     d.addEventListener('toggle', function () { K[key] = d.open; });
     return d;
   }
@@ -284,7 +287,8 @@
       sum
     ]);
     sync();
-    if (A.dismissible) A.dismissible('bf-form', function () { if (K.form && !K.busy) { K.form = false; paint(true); } });
+    // закрывается своей кнопкой «Закрыть» или нажатием по пустому месту; другие кнопки, «Правила» и «История игр» её не трогают
+    if (A.dismissible) A.dismissible('bf-form', function () { if (K.form && !K.busy) { K.form = false; paint(true); } }, { blankOnly: true });
     return el('div', { class: 'card duel-form', 'data-dismiss': 'bf-form' }, [testRow, stakeBox, deckBox, go, msg]);
   }
 

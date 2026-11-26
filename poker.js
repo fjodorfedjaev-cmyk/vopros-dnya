@@ -7,16 +7,18 @@
   var A = null;
   var PC = window.PlayingCards;
   // Уровни блайндов — как в базе (poker_level). Вход за стол — от 40 до 100 больших блайндов.
-  var LEVELS = [[1, 0.01, 0.02], [2, 0.05, 0.10], [3, 0.25, 0.50], [4, 1, 2], [5, 5, 10], [6, 25, 50]];
+  // Уровня 1 (0,01 / 0,02) больше нет; номера остальных не меняются, самый большой — 7 (100 / 200).
+  var LEVELS = [[2, 0.05, 0.10], [3, 0.25, 0.50], [4, 1, 2], [5, 5, 10], [6, 25, 50], [7, 100, 200]];
   var K = {
-    list: null, listErr: null, form: false, level: 1, buy: '', test: false, listPoll: null,
+    list: null, listErr: null, form: false, level: LEVELS[0][0], buy: '', test: false, listPoll: null,
     sitFor: null, sitBuy: '',
     open: null, st: null, offset: 0, rtt: 1e9, poll: null, timer: null,
     rootEl: null, sig: '', busy: false, msg: '', msgErr: false, admin: false,
     lastI: -1, anim: false, wasTurn: false,
     quitAsk: false, topAsk: false, topBuy: '', raise: false, raiseTo: null
   };
-  try { var lv = parseInt(localStorage.getItem('poker-level'), 10); if (lv >= 1 && lv <= 6) K.level = lv; } catch (e) { /* ничего */ }
+  // запомненный уровень, если он ещё есть (раньше запомненный 0,01 / 0,02 — сменится на самый маленький)
+  try { var lv = parseInt(localStorage.getItem('poker-level'), 10); if (LEVELS.some(function (x) { return x[0] === lv; })) K.level = lv; } catch (e) { /* ничего */ }
 
   function el() { return A.el.apply(null, arguments); }
   function setText(node, t) { if (window.Coin && window.Coin.has(t)) window.Coin.fill(node, t); else node.textContent = t; }
@@ -173,8 +175,11 @@
     if (!K.open && K.rootEl && !(K.rootEl.contains(document.activeElement) && document.activeElement.tagName === 'INPUT')) paint(true);
   }
   function fold(key, title, body, cls) {
-    var d = el('details', { class: 'day dk-fold ' + (cls || '') }, [el('summary', { text: title })].concat(body));
+    var sum = el('summary', { text: title });
+    var d = el('details', { class: 'day dk-fold ' + (cls || '') }, [sum].concat(body));
     d.open = !!K[key];
+    // запоминаем сразу по нажатию: если экран перерисуется раньше события toggle, блок всё равно останется как нажали
+    sum.addEventListener('click', function () { K[key] = !d.open; });
     d.addEventListener('toggle', function () { K[key] = d.open; });
     return d;
   }
@@ -184,7 +189,7 @@
     out.push(el('div', { class: 'duel-head' }, [
       el('h2', { text: 'Столы' }),
       el('button', { type: 'button', class: 'btn' + (K.form ? '' : ' primary'), text: K.form ? 'Закрыть' : 'Новый стол',
-        'data-dismiss-trigger': 'pk-form', onclick: function () { K.form = !K.form; K.sitFor = null; if (K.form && !K.buy) resetBuy(); paint(true); } })
+        'data-dismiss-trigger': 'pk-form', onclick: function () { K.form = !K.form; if (K.form && !K.buy) resetBuy(); paint(true); } })
     ]));
     if (K.form) out.push(createForm());
     var tables = (K.list && K.list.tables) || [];
@@ -219,7 +224,6 @@
       var open = K.sitFor === t.id;
       if (n < 6) acts.push(el('button', { type: 'button', class: 'btn' + (open ? '' : ' primary'), text: open ? 'Закрыть' : 'Сесть', 'data-dismiss-trigger': 'pk-sit',
         onclick: function () {
-          K.form = false;
           if (K.sitFor === t.id) { K.sitFor = null; } else { K.sitFor = t.id; K.sitBuy = defaultBuy(t.min_buy, t.max_buy); }
           paint(true);
         } }));
@@ -256,7 +260,7 @@
     });
     var field = amountField(key, 'pk-buy-' + id, min, max, [['Мин', min], ['Макс', max]], sync);
     sync();
-    if (A.dismissible) A.dismissible(dkey, function () { if (!K.busy) { onClose(); paint(true); } });
+    if (A.dismissible) A.dismissible(dkey, function () { if (!K.busy) { onClose(); paint(true); } }, { blankOnly: true });
     return el('div', { class: 'pk-sit', 'data-dismiss': dkey }, [
       el('label', { class: 'duel-label', for: 'pk-buy-' + id, text: 'Сколько взять за стол' }), field, go, msg
     ]);
@@ -308,7 +312,8 @@
       testRow = el('div', { class: 'dk-test-row' }, [tb]);
     }
     sync();
-    if (A.dismissible) A.dismissible('pk-form', function () { if (K.form && !K.busy) { K.form = false; paint(true); } });
+    // закрывается своей кнопкой «Закрыть» или нажатием по пустому месту; другие кнопки, «Правила» и «История игр» её не трогают
+    if (A.dismissible) A.dismissible('pk-form', function () { if (K.form && !K.busy) { K.form = false; paint(true); } }, { blankOnly: true });
     return el('div', { class: 'card duel-form', 'data-dismiss': 'pk-form' }, [
       testRow, note, el('p', { class: 'duel-label', text: 'Блайнды' }), levels, buyBox, go, msg
     ]);

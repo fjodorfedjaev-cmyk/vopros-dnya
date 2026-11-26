@@ -225,15 +225,13 @@
   }
   function leave() { closeOverlay(); stopPoll(); stopTick(); }
 
-  // Переключатель «Коллекция / Лавка». Выбор запоминается на этом телефоне.
+  // Переключатель «Коллекция / Лавка». Выбор запоминается на этом телефоне. Цифры у «Лавки» нет.
   function modeSwitch() {
-    var n = (K.lots || []).filter(function (l) { return !l.mine; }).length;
     return el('div', { class: 'segment coll-switch', role: 'group', 'aria-label': 'Коллекция или лавка' }, [['coll', 'Коллекция'], ['market', 'Лавка']].map(function (x) {
       return el('button', {
         type: 'button', 'aria-pressed': String(K.mode === x[0]),
-        'aria-label': x[0] === 'market' && n ? 'Лавка, в продаже: ' + n : null,
         onclick: function () { setMode(x[0]); }
-      }, [x[1], x[0] === 'market' && n ? el('span', { class: 'seg-badge', 'aria-hidden': 'true', text: String(n) }) : null]);
+      }, [x[1]]);
     }));
   }
   function setMode(m) {
@@ -300,6 +298,22 @@
     var pl = pvLink();
     if (pl) root.appendChild(pl);
     syncTick();
+    keepLoops(root);
+  }
+
+  // Экран перерисовывается после любой кнопки (фильтр, «Забрать»…), и новые карточки начинали бы движение сначала:
+  // рубашка с «?» в блоке открытия подпрыгивала заново, свечение и рисунки на витрине — тоже. Поэтому у бесконечных
+  // анимаций ставим общее начало — момент открытия страницы: новая карточка продолжает ровно с того места, где была старая.
+  // Разовые анимации (появление, «вздрагивание») не трогаем.
+  function keepLoops(node, later) {
+    if (reduce || !node.getAnimations) return;
+    if (!node.isConnected) { if (!later) requestAnimationFrame(function () { keepLoops(node, true); }); return; }   // ещё не на экране
+    try {
+      node.getAnimations({ subtree: true }).forEach(function (a) {
+        var t = a.effect && a.effect.getComputedTiming ? a.effect.getComputedTiming() : null;
+        if (t && t.iterations === Infinity && a.startTime !== 0) a.startTime = 0;
+      });
+    } catch (e) { /* старый браузер — просто начнётся заново, как раньше */ }
   }
 
   // Блок открытия: серия, рубашка с подсветкой, «1 случайная карточка», кнопка с ценой, сколько осталось, шансы.
@@ -749,14 +763,13 @@
     return (K.my || []).filter(function (x) { return x.slot; }).sort(function (a, b) { return a.slot - b.slot; });
   }
   // Новая — на первую свободную полку слева. Полная витрина — просим сначала убрать одну.
+  // Две копии одной карточки (№2 и №5) могут стоять на витрине рядом.
   async function shelfAdd(cardId, sel, msg) {
     var on = shelved();
-    var twin = on.filter(function (k) { return k.card_id === cardId; })[0];
-    if (!twin && on.length >= 3) { setText(msg, 'Витрина полная: сначала убери одну карточку.'); return; }
+    if (on.length >= 3) { setText(msg, 'Витрина полная: сначала убери одну карточку.'); return; }
     await shelfSave(cardId, sel, msg, 'Поставлено на витрину', async function () {
       await packShelves(on);   // на всякий случай убираем дыры, если они были
-      // другая копия этой карточки уже стоит — новая встаёт на её место; иначе — первая свободная слева
-      await writeShelves(planShelves(sel.copy_id, twin ? on.indexOf(twin) : on.length));
+      await writeShelves(planShelves(sel.copy_id, on.length));
     });
   }
   // Убрали — те, что стояли правее, сдвигаются влево.
@@ -791,7 +804,7 @@
   // 1) Первое нажатие — над кнопкой всплывает красное предупреждение, что копия уникальная и пропадёт навсегда.
   // 2) Подтвердить — зажать кнопку и держать 5 секунд: полоска заполняется, идёт обратный отсчёт.
   //    Отпустили раньше (или просто нажали) — подсказка «держи 5 секунд», ничего не происходит.
-  // 3) 10 секунд ничего не трогали — кнопка возвращается в обычный вид.
+  // 3) 10 секунд ничего не трогали или нажали в любое другое место — кнопка возвращается в обычный вид.
   // Сама переплавка (и защита от двойного списания) — по-прежнему в базе (cards_melt).
   var HOLD_MS = 5000, ARM_IDLE_MS = 10000;
   function meltHold(c, sel, msg) {
@@ -811,8 +824,16 @@
     var armed = false, holding = false, t0 = 0, raf = 0, idle = null, done = false;
     function alive() { return btn.isConnected; }   // окно закрыли — ничего не делаем
     function restartIdle() { clearTimeout(idle); idle = setTimeout(disarm, ARM_IDLE_MS); }
+    // Нажатие мимо кнопки и предупреждения (по карточке, по другой кнопке, по пустому месту) — предупреждение пропадает.
+    // Ловим click, а не касание: прокрутка панели пальцем предупреждение не убирает.
+    function onElsewhere(ev) {
+      if (!alive()) { document.removeEventListener('click', onElsewhere, true); return; }
+      if (box.contains(ev.target)) return;
+      disarm();
+    }
     function arm() {
       armed = true;
+      document.addEventListener('click', onElsewhere, true);
       btn.classList.add('danger');
       setText(hint, '');
       setText(warnText, 'Точно? Копия №' + sel.serial + ' «' + c.name + '» уникальная — после переплавки она пропадёт навсегда.');
@@ -825,6 +846,7 @@
       if (holding || done) return;
       armed = false;
       clearTimeout(idle);
+      document.removeEventListener('click', onElsewhere, true);
       btn.classList.remove('danger');
       if (warn.parentNode) warn.parentNode.removeChild(warn);
       setText(label, idleText);
@@ -1887,7 +1909,10 @@
       drag.bar = el('div', { class: 'kc-dropbar', 'aria-hidden': 'true' }, [0, 1, 2].map(function (i) {
         var s = on[i], oc = s && cardById(s.card_id);
         var t = el('div', { class: 'kc-drop' + (oc ? ' r-' + oc.rarity : ''), 'data-drop': String(i) });
-        if (oc) t.appendChild(window.Cards.art(oc.code)); else t.textContent = '+';
+        if (oc) {
+          t.appendChild(window.Cards.art(oc.code));
+          t.appendChild(el('span', { class: 'kt-count', text: '№' + s.serial }));   // номер копии на полке
+        } else t.textContent = '+';
         return t;
       }));
       document.body.appendChild(drag.bar);
@@ -1898,17 +1923,12 @@
   }
 
   // Новый порядок витрины, если копию copyId положить на полку t (0, 1, 2).
-  // Одна карточка стоит на витрине только один раз: другая её копия уступает место.
+  // Копии одной карточки (№2 и №5) могут стоять рядом: каждая копия — сама по себе.
   function planShelves(copyId, t) {
     var on = shelved();
     var order = on.map(function (k) { return k.copy_id; });
-    var cardId = ((K.my || []).filter(function (x) { return x.copy_id === copyId; })[0] || {}).card_id;
     var from = order.indexOf(copyId);
     var moving = from >= 0;              // эта копия уже стоит на витрине — просто двигаем
-    if (!moving) {
-      var twin = on.filter(function (k) { return k.card_id === cardId; })[0];
-      if (twin) { from = order.indexOf(twin.copy_id); order[from] = copyId; } // другая копия — уступает место
-    }
     if (from >= 0) {
       if (t >= order.length) { order.splice(from, 1); order.push(copyId); }       // на пустую — в конец
       else if (t !== from) { order[from] = order[t]; order[t] = copyId; }         // поменять местами
@@ -2075,9 +2095,7 @@
         var sel = (K.my || []).filter(function (k) { return k.copy_id === Number(res.copy_id); })[0];
         if (!sel) return;
         markSeen(sel.card_id);
-        var on = shelved();
-        var twin = on.some(function (k) { return k.card_id === sel.card_id; });
-        if (!twin && on.length >= 3) { openDetail(sel.card_id, sel.copy_id, 'Витрина полная: сначала убери одну карточку.'); return; }
+        if (shelved().length >= 3) { openDetail(sel.card_id, sel.copy_id, 'Витрина полная: сначала убери одну карточку.'); return; }
         await shelfAdd(sel.card_id, sel, document.getElementById('coll-msg') || el('p'));
       }
     }
@@ -2136,6 +2154,7 @@
         }))
       );
       if (!on.length) node.appendChild(el('p', { class: 'me-shelf-note', text: 'Поставь карточки на витрину в Коллекции' }));
+      keepLoops(node);
     }
     paint();
     if (K.loadedAt && Date.now() - K.loadedAt < 30000) return;

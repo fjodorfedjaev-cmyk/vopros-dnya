@@ -72,12 +72,14 @@
 
   // Данные каждой игры хранятся отдельно. S.today, S.answers и т. д. указывают на данные игры, открытой сейчас (S.kind).
   function blankGame() {
-    return { today: null, answers: [], who: [], reactions: [], comments: [], commentReactions: [], editing: false, draft: '', archive: null };
+    return { today: null, answers: [], who: [], reactions: [], comments: [], commentReactions: [], editing: false, draft: '', archive: null, authors: {}, authorsFor: '' };
   }
   S.kd = { question: blankGame(), fill: blankGame(), poll: blankGame() };
   // «Свой вопрос»: что предлагаем, откуда пришли, мои предложения, очередь на проверку (только у админа) и черновики.
   function blankSug() {
-    return { kind: 'question', from: 'today', mine: null, pending: null, admin: false, err: null,
+    var show = false;
+    try { show = localStorage.getItem('sug-author') === '1'; } catch (e) { /* без хранилища — выключено */ }
+    return { kind: 'question', from: 'today', mine: null, pending: null, admin: false, err: null, showAuthor: show,
       drafts: { question: '', fill: '', poll: { text: '', opts: ['', '', '', ''] } } };
   }
   S.sug = blankSug();
@@ -462,16 +464,22 @@
   // (например, правку ответа с изменённым текстом не закрываем, чтобы текст не пропал).
   // Закрываем после самого нажатия (setTimeout), чтобы нажатая кнопка успела сработать.
   // Окна поверх экрана (праздник, карточка, грядка, выбор в профиле) закрываются своим фоном — их не трогаем.
+  // opts.blankOnly — закрывать только нажатием по пустому месту: другие кнопки, «Правила», «История игр», поля
+  // это окошко не трогают (так в списках карточных игр: «Новая комната» и «История игр» открыты одновременно).
   var dismissers = {};
-  function dismissible(key, close) { dismissers[key] = close; }
+  var CONTROLS = 'button, a, summary, input, select, textarea, label, [role="button"], [contenteditable]';
+  function dismissible(key, close, opts) { dismissers[key] = { close: close, blankOnly: !!(opts && opts.blankOnly) }; }
   function onOutsideClick(ev) {
     var t = ev.target;
     if (!t || !t.closest || t.closest('.celebrate, .kc-overlay, .kr, .farm-back, .set-back, .set-pop, .picker, .menu')) return;
     var todo = [];
+    var onControl = !!t.closest(CONTROLS);
     document.querySelectorAll('[data-dismiss]').forEach(function (node) {
       var key = node.getAttribute('data-dismiss');
       if (node.contains(t) || t.closest('[data-dismiss-trigger="' + key + '"]')) return;
-      if (dismissers[key]) todo.push(dismissers[key]);
+      var d = dismissers[key];
+      if (!d || (d.blankOnly && onControl)) return;
+      todo.push(d.close);
     });
     if (todo.length) setTimeout(function () { todo.forEach(function (fn) { try { fn(); } catch (e) { /* не страшно */ } }); }, 0);
   }
@@ -1038,6 +1046,7 @@
     for (var i = 0; i < 3; i++) if (res[i].error) throw res[i].error;
     applyPoints(res[4]);
     if (k === 'poll') await loadPollExtras();
+    await loadAuthors(k);
     var answers = res[0].data || [];
     var extra = await Promise.all([loadReactions(answers), loadComments(answers)]);
     G.answers = answers;
@@ -1049,6 +1058,36 @@
     G.commentReactions = creacts;
     // Статистика не должна ломать главный экран: если не загрузилась, просто не показываем серию.
     S.stats = res[3].error ? [] : (res[3].data || []);
+  }
+
+  // Авторы вышедших «Своих вопросов»: база отдаёт только тех, кто при отправке включил «Показывать автора».
+  // Спрашиваем один раз на набор номеров (обычный + дополнительные «Выборы»); не загрузилось — просто без автора.
+  async function loadAuthors(k) {
+    var G = S.kd[k];
+    var ids = [G.today && G.today.id].concat(k === 'poll' ? (S.pollX || []).map(function (x) { return x.poll_id; }) : [])
+      .filter(function (x) { return x != null; });
+    var key = ids.join(',');
+    if (!ids.length || key === G.authorsFor) return;
+    try {
+      var r = await sb.rpc('sug_authors', { p_kind: k, p_ids: ids });
+      if (r.error) throw r.error;
+      var map = {};
+      (r.data || []).forEach(function (x) { map[x.target_id] = x.user_id; });
+      G.authors = map; G.authorsFor = key;
+    } catch (e) { /* без автора тоже работает */ }
+  }
+  // «Автор · аватарка Имя» под вопросом; нажал на имя — мини-профиль
+  function authorLine(kind, id) {
+    var uid = id != null && S.kd[kind] && S.kd[kind].authors ? S.kd[kind].authors[id] : null;
+    if (!uid) return null;
+    var m = (S.members || []).filter(function (x) { return x.id === uid; })[0];
+    if (uid === S.userId && S.profile) m = S.profile;
+    if (!m) return null;
+    var name = m.display_name || 'Без имени';
+    return el('p', { class: 'q-author' }, [
+      el('span', { class: 'q-author-l', text: 'Автор' }),
+      person(uid, [avatar(name, m.color, true, m.avatar), el('span', { class: 'q-author-n', text: name })], { cls: 'q-author-who', label: 'Автор: ' + name })
+    ]);
   }
 
   async function loadComments(answers) {
@@ -1605,12 +1644,14 @@
       var mine = myAnswer();
       return el('section', { class: 'card qcard', 'aria-label': 'Фраза дня' }, [
         qhead(q.day, 'fill'),
-        fillSentence(q.text, mine && !S.editing ? mine.body : (S.draft || ''), 'qtext', 'fill-blank')
+        fillSentence(q.text, mine && !S.editing ? mine.body : (S.draft || ''), 'qtext', 'fill-blank'),
+        authorLine('fill', q.id)
       ]);
     }
     return el('section', { class: 'card qcard', 'aria-label': 'Вопрос дня' }, [
       qhead(q.day, 'question'),
-      el('p', { class: 'qtext q-accent', text: q.text })
+      el('p', { class: 'qtext q-accent', text: q.text }),
+      authorLine('question', q.id)
     ]);
   }
 
@@ -1665,7 +1706,7 @@
     var mine = null;
     answers.forEach(function (a) { if (a.user_id === S.userId) mine = a; });
     var cards = [pollCard({
-      slot: 1, head: qhead(q && q.day, 'poll'), text: q ? q.text : '',
+      slot: 1, head: qhead(q && q.day, 'poll'), text: q ? q.text : '', author: q ? authorLine('poll', q.id) : null,
       options: q && q.options, chosen: mine ? Number(mine.body) : -1,
       votes: mine ? answers.map(function (a) { return { user_id: a.user_id, choice: Number(a.body) }; }) : null,
       pick: function (i) { votePoll(sect, i); }
@@ -1674,7 +1715,7 @@
     (S.pollX || []).forEach(function (x) {
       if (!q || x.q_day !== q.day) return;
       cards.push(pollCard({
-        slot: x.slot, head: null, text: x.q_text, options: x.q_options,
+        slot: x.slot, head: null, text: x.q_text, options: x.q_options, author: authorLine('poll', x.poll_id),
         chosen: x.my_choice == null ? -1 : x.my_choice, votes: x.votes || null,
         pick: function (i) { voteExtra(sect, x, i); }
       }));
@@ -1707,6 +1748,7 @@
     return el('div', { class: 'card qcard poll-card', 'data-slot': String(o.slot) }, [
       o.head,
       el('p', { class: 'qtext', text: o.text || '' }),
+      o.author || null,
       list,
       el('p', { class: 'muted small poll-foot', text: mine
         ? (total === 1 ? 'Пока выбрал только ты' : 'Выбрали: ' + total)
@@ -2059,6 +2101,7 @@
       ? el('div', { class: 'card qcard ans mine tappable fill-top' }, [
           qhead(S.today.day, 'fill'),
           body,
+          authorLine('fill', S.today.id),
           el('p', { class: 'saved-line', text: '✓ Твой ответ сохранён' }),
           anchor,
           actionsRow(receivedReactions(mine.id, S.reactions), mcb),
@@ -2067,6 +2110,7 @@
       : el('div', { class: 'card qcard ans mine tappable q-top' }, [
           qhead(S.today.day, 'question'),
           el('p', { class: 'qtext q-accent', text: S.today.text }),
+          authorLine('question', S.today.id),
           body,
           anchor,
           actionsRow(receivedReactions(mine.id, S.reactions), mcb),
@@ -2498,7 +2542,8 @@
   }
 
   /* ----- «Свой вопрос»: предложить вопрос, фразу для «Слова» или «Выбор» — бесплатно, на проверке не больше 5 сразу ----- */
-  // Предложение уходит на проверку админу. Одобрил — выйдет одним из следующих (раньше обычных), автора никто не увидит.
+  // Предложение уходит на проверку админу. Одобрил — выйдет одним из следующих (раньше обычных).
+  // Автора не видно никому, если не включить «Показывать автора»: тогда у вышедшего вопроса — имя и аватарка.
   // Не подошло — монеты вернутся. Списывает и возвращает монеты только база, сайт лишь показывает.
   var SUG_LIMIT = 5;     // как в базе (suggest_question): столько предложений одного человека может ждать проверки
   function sugMinePending() { return (S.sug.mine || []).filter(function (x) { return x.s_status === 'pending'; }).length; }
@@ -2691,7 +2736,7 @@
         btn.disabled = true;
         showMsg(msg, '', 'Отправляю…');
         try {
-          var r = await sb.rpc('suggest_question', { p_kind: k, p_text: c.text, p_options: c.options });
+          var r = await sb.rpc('suggest_question', { p_kind: k, p_text: c.text, p_options: c.options, p_show_author: !!S.sug.showAuthor });
           if (r.error) throw r.error;
           var row = firstRow(r.data);
           if (row) setBalance(Number(row.s_balance));
@@ -2708,6 +2753,7 @@
         }
       }
     }, fields.concat([
+      authorSwitch(),
       el('div', { class: 'row between' }, [btn, counter]),
       full ? el('p', { class: 'hint-line', text: 'На проверке уже ' + SUG_LIMIT + ' твоих предложений — новое можно после проверки.' }) : null,
       msg
@@ -2717,9 +2763,29 @@
     sect.appendChild(seg);
     sect.appendChild(form);
     sect.appendChild(el('ul', { class: 'sug-rules' }, [
-      el('li', { text: 'Одобренное выйдет одним из следующих. Автора никто не увидит.' }),
+      el('li', { text: 'Одобренное выйдет одним из следующих. Автора видно, только если включить «Показывать автора».' }),
       el('li', { text: 'Бесплатно, а за одобренное — +20 🪙. Ждать проверки могут до ' + SUG_LIMIT + ' твоих предложений сразу.' })
     ]));
+  }
+
+  // Переключатель «Показывать автора» (запоминается на телефоне). Включён — под вышедшим вопросом будет имя и аватарка.
+  function authorSwitch() {
+    var hint = el('span', { class: 'sug-author-h' });
+    var b = el('button', { type: 'button', class: 'sug-author', role: 'switch' }, [
+      el('span', { class: 'sw-track', 'aria-hidden': 'true' }, [el('span', { class: 'sw-knob' })]),
+      el('span', { class: 'sug-author-t' }, [el('span', { class: 'sug-author-l', text: 'Показывать автора' }), hint])
+    ]);
+    function sync() {
+      b.setAttribute('aria-checked', String(!!S.sug.showAuthor));
+      hint.textContent = S.sug.showAuthor ? 'Под вопросом будет твоё имя и аватарка' : 'Никто не узнает, что это ты';
+    }
+    b.addEventListener('click', function () {
+      S.sug.showAuthor = !S.sug.showAuthor;
+      try { localStorage.setItem('sug-author', S.sug.showAuthor ? '1' : '0'); } catch (e) { /* не страшно */ }
+      sync();
+    });
+    sync();
+    return b;
   }
 
   function fillSugMine(sect) {
@@ -2742,6 +2808,7 @@
         ]),
         s.s_kind === 'fill' ? fillSentence(s.s_text, '', 'sug-text') : el('p', { class: 'sug-text', text: s.s_text }),
         s.s_kind === 'poll' && Array.isArray(s.s_options) ? el('p', { class: 'sug-optline', text: s.s_options.join(' · ') }) : null,
+        s.s_show_author ? el('p', { class: 'sug-note sug-with', text: 'С автором: будет видно твоё имя' }) : null,
         s.s_status === 'rejected' ? el('p', { class: 'sug-note', text: 'Монеты вернулись на баланс' }) : null
       ]);
     })));
@@ -2812,6 +2879,7 @@
       ]),
       ta,
       isPoll ? el('div', { class: 'sug-opts' }, opts) : null,
+      s.s_show_author ? el('p', { class: 'sug-note sug-with', text: 'Автор попросил показать имя — будет видно у вопроса' }) : null,
       el('div', { class: 'row' }, [ok, no]),
       msg
     ]);

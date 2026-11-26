@@ -26,7 +26,7 @@ const mine = (n) => Array.from({ length: n }, (_, i) => ({ s_id: 100 + i, s_kind
     ok(kind + ': кнопка «Предложить» без цены и активна', (await btn.innerText()).trim() === 'Предложить' && await btn.isEnabled(), await btn.innerText());
   }
   const rules = await p.locator('.sug-rules').innerText();
-  ok('внизу — «Бесплатно. Ждать проверки могут до 5…», про возврат монет ничего', /Бесплатно\. Ждать проверки могут до 5/.test(rules) && !/вернутся/.test(rules), rules.replace(/\n/g, ' / '));
+  ok('внизу — «Бесплатно, а за одобренное — +20… Ждать проверки могут до 5…», про возврат монет ничего', /Бесплатно, а за одобренное — \+20/.test(rules) && /Ждать проверки могут до 5/.test(rules) && !/вернутся/.test(rules), rules.replace(/\n/g, ' / '));
   await p.screenshot({ path: __dirname + '/shots/sug_free.png', fullPage: true });
   await open(5);
   const btn = p.locator('#sug-form button[type=submit]');

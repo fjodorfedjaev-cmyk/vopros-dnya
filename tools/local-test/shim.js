@@ -9,6 +9,9 @@
       .then(function (r) { return r.json(); });
   }
   var LOCAL_RPC = /^(durak_|poker_|bluff_|cards_|market_|my_points$|member_coins$|member_stats$|member_profile$|is_admin$)/;
+  // «Свой вопрос» и вопросы дня — в локальную базу только по желанию сценария (localStorage 'local-sug' = '1', база с suggest-stub.sql);
+  // иначе, как раньше, — пустые ответы или 'mock-rpc'
+  if (localStorage.getItem('local-sug') === '1') LOCAL_RPC = /^(durak_|poker_|bluff_|cards_|market_|my_points$|member_coins$|member_stats$|member_profile$|is_admin$|suggest_question$|my_suggestions$|admin_suggestions$|admin_review_suggestion$|sug_authors$|ensure_today_|poll_extras_today$)/;
   var DEFAULTS = {
     ensure_today_question: [{ q_day: '2026-11-18', q_id: 1, q_category: 'funny', q_text: 'Тестовый вопрос дня?' }],
     ensure_today_fill: [{ q_day: '2026-11-18', q_id: 1, q_category: 'fill', q_text: 'Тест ___ фраза' }],
